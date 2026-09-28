@@ -198,7 +198,7 @@ def scale_prices(
     if mid is None or mid <= 0:
         return norm
     scales: dict[Decimal, Scale] = {}
-    for price in _premium_prices(norm):
+    for price in premium_prices(norm):
         if (each := closest_scale(price.raw, mid)) is None:
             return NeedsReview(reasons=["price_scale_ambiguous"])
         scales[price.raw] = each
@@ -245,7 +245,7 @@ def mid_price(quote: Quote | None) -> Decimal | None:
     return quote.last
 
 
-def _premium_prices(norm: NormalizedSignal) -> list[Price]:
+def premium_prices(norm: NormalizedSignal) -> list[Price]:
     prices = [norm.entry_price, norm.entry_price_low, norm.entry_price_high, *norm.tp_levels]
     if norm.stop_basis != "underlying":
         prices.append(norm.stop_level)

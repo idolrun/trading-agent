@@ -73,3 +73,12 @@ Every rule in the table has a test; `decide` is deterministic (same inputs → s
 
 ## Open decisions touched
 OD-18, OD-25, OD-26.
+
+## Implementation notes (2026-09-28)
+- Files: `decide/types.py` (inputs/outputs), `decide/rules.py` (sizing, tick floor, exit qty, TP legs — the doc's `sizing.py`/`exits.py`/`brackets.py` folded into one pure module), `decide/engine.py`. Tests: `tests/unit/decide/test_rules.py` (+ hypothesis on legs), `tests/scenarios/test_decide_trade_patterns.py`.
+- `DecisionInputs` is a frozen dataclass with only what F023 uses (signal, validation, link, position, lot, config, tick, posted_at); F024 adds its fields. `account_equity` omitted until OD-26 ("X% commons") is decided — stock entries use the stock tier.
+- Buy limit = signal price (or top of range) × (1 + chase), **floored** to the tick (never pays more than the chase). Tick unknown → review `tick_unknown`; unknown tier name → review `unknown_size_tier:<name>`; tiers/chase unset → qty blank (F024 disables "config incomplete").
+- `ProposedAction` adds `review_reasons` and `candidate_position_ids`. Review = any review reason or missing field (validation reasons, `missing:*`, ambiguous/none link, `field_confidence < t_field`). Blank qty (C26/C52/C82) is **not** review; approvability requires a qty (F036).
+- Premium prices still at `scale=None` on an option card → review `price_scale_undecided`. **F026 must scale follow-up prices against the linked contract's quote before `decide`.**
+- Breakeven stop without a level → `stop.level=None` + `breakeven_options` (the user picks). `correction` and `unparsed` produce no card here (F038 / F026 raw review).
+- Exit fractions use integer division (`Decimal(1)/3 × 3` floors to 0).
