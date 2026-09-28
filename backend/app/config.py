@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     deepseek_api_key: SecretStr | None = None
     openai_compat_api_key: SecretStr | None = None  # base_url goes in llm.params
+    typesafe_api_key: SecretStr | None = None  # Jev fast path (F033); None = LLM path only
     # Development only: accept chain entries without a passing gate run (never in production).
     allow_ungated_models: bool = False
     # Integration tests only (tests/integration/conftest.py).

@@ -1,0 +1,112 @@
+"""F033: Appendix A mapping and TRD §4.4 routing, on recorded-shape Jev answers."""
+
+import uuid
+from decimal import Decimal
+
+from typesafe_sdk import Choice
+
+from app.interpret.candidates import find_candidates
+from app.interpret.jev.mapping import map_answers
+from app.interpret.jev.questions import NUMBER_ROLES, build_questions
+from app.interpret.jev.state import build_jev_state
+from app.interpret.models import MsgType
+from app.interpret.route import route
+from app.interpret.signal import LiteralSpan
+from tests.jev_helpers import CFG, EXAMPLE, c, example_answers, n, score
+from tests.llm_helpers import ctx
+
+P1 = uuid.UUID("00000000-0000-0000-0000-0000000000b1")
+
+
+def run(text: str = EXAMPLE, book: list[tuple[uuid.UUID, str]] = (), **overrides):  # type: ignore[no-untyped-def,assignment]
+    context = ctx(text, book=book)
+    candidates = find_candidates(text)
+    result = map_answers(example_answers(**overrides), context, candidates, CFG)
+    return result, route(result, CFG)
+
+
+def test_trd_example_assembles_literal_fields_from_candidates() -> None:
+    _, decision = run()
+    assert decision.path == "assemble" and not decision.link_ambiguous
+    assert decision.parsed is not None and decision.parsed.interpreter == "jev"
+    [signal] = decision.parsed.signals
+    f = signal.fields
+    assert signal.msg_type is MsgType.ENTRY and signal.instrument == "option"
+    assert f.strike is not None and f.strike.value == Decimal(770)
+    assert f.entry_price is not None and f.entry_price.value == Decimal("0.95")
+    assert f.stop_level is not None and f.stop_level.value == Decimal(769)
+    assert f.stop_basis == "underlying"
+    assert f.underlying is not None and f.underlying.value == "spy"
+    assert f.right is not None and f.right.value == "call"
+    assert f.size_tier is not None and f.size_tier.value == "lotto"
+    assert f.expiry_token is None
+    by_candidate = {
+        "strike": "n1",
+        "entry_price": "n2",
+        "stop_level": "n3",
+        "underlying": "t1",
+    }
+    for name, cid in by_candidate.items():
+        source = getattr(f, name).source
+        assert isinstance(source, LiteralSpan) and source.candidate_id == cid
+        assert EXAMPLE[source.start : source.end] == source.raw  # value came from the span
+    assert signal.field_confidence["strike"] == Decimal("0.97")
+
+
+def test_two_numbers_claiming_the_strike_go_to_the_slow_path() -> None:
+    _, decision = run(role_n2=c("strike", 0.9))
+    assert decision.path == "slow_path"
+    assert any("claimed by n1, n2" in r for r in decision.reasons)
+    assert decision.hints is not None and decision.hints["role_n2"]["choice"] == "strike"
+
+
+def test_low_confidence_or_missing_required_field_goes_to_the_slow_path() -> None:
+    assert run(role_n1=c("strike", 0.6))[1].path == "slow_path"
+    assert run(ticker=c("not_stated"))[1].path == "slow_path"  # underlying required for entry
+    assert run(msg_type=c("entry", 0.7))[1].path == "slow_path"
+    assert run(signal_count=c("multiple"))[1].path == "slow_path"
+    assert run(has_prose_condition=n(0.9))[1].path == "slow_path"  # the LLM reads the words
+    assert run(candle_close=n(0.5))[1].path == "slow_path"  # yes/no uncertain
+
+
+def test_weak_link_is_an_ambiguous_hint_not_an_upgrade() -> None:
+    _, decision = run(book=[(P1, "SPY 770C")], links_to=c(str(P1), 0.6))
+    assert decision.path == "assemble" and decision.link_ambiguous
+    assert decision.parsed is not None
+    assert decision.parsed.signals[0].link_hint.target == "ambiguous"
+    _, sure = run(book=[(P1, "SPY 770C")], links_to=c(str(P1), 0.95))
+    assert sure.parsed is not None and sure.parsed.signals[0].link_hint.target == P1
+
+
+def test_chatter_is_feed_only_only_above_t_chat() -> None:
+    assert run("what a day", msg_type=c("chatter", 0.95))[1].path == "feed_only"
+    assert run("what a day", msg_type=c("chatter", 0.85))[1].path == "slow_path"
+
+
+def test_trim_or_soft_exit_at_middling_intent_is_a_soft_exit() -> None:
+    mt = c("trim", 0.5, soft_exit=0.45)
+    result, _ = run("might take some here", msg_type=mt, exit_intent=score(2.1))
+    assert result.msg_type is MsgType.SOFT_EXIT and result.msg_type_confidence == Decimal("0.95")
+    result, _ = run("might take some here", msg_type=mt, exit_intent=score(3.2))
+    assert result.msg_type is MsgType.TRIM  # clear partial sell intent: stays uncertain trim
+
+
+def test_jev_unavailable_routes_to_slow_path() -> None:
+    assert route(None, CFG).path == "slow_path"
+
+
+def test_questions_cover_every_number_candidate_with_no_match_options() -> None:
+    context, candidates = ctx(EXAMPLE), find_candidates(EXAMPLE)
+    q = build_questions(context, candidates, ["default", "lotto", "small"])
+    assert {f"role_{x.id}" for x in candidates.numbers} <= q.keys()
+    role = q["role_n1"]
+    assert isinstance(role, Choice) and set(role.criteria) == set(NUMBER_ROLES)
+    for name, no_match in (
+        ("ticker", "not_stated"),
+        ("expiry", "not_stated"),
+        ("links_to", "new_position"),
+    ):
+        choice = q[name]
+        assert isinstance(choice, Choice) and no_match in choice.criteria
+    state = build_jev_state(context, candidates)
+    assert [x["text"] for x in state["candidates"]["numbers"]] == ["770c", ".95", "769"]
