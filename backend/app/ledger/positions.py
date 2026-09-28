@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.instruments import Instrument, OptionContract, Stock
 from app.interpret.models import MsgType
 from app.ledger.models import PositionChange, PositionStatus, ProviderPosition
 from app.validate.normalize import NormalizedSignal
@@ -183,3 +184,16 @@ def _same_contract(position: PositionState, signal: NormalizedSignal) -> bool:
 def _require_live(position: PositionState, t: MsgType) -> None:
     if position.status == PositionStatus.CLOSED:
         raise InvalidTransition(f"{t} on a closed provider position")
+
+
+def contract_of(position: PositionState) -> Instrument:
+    """The tradable instrument the provider position refers to."""
+    if position.instrument == "stock":
+        return Stock(symbol=position.underlying)
+    assert position.expiry and position.strike and position.option_right  # noqa: S101 — shape
+    return OptionContract(
+        underlying=position.underlying,
+        expiry=position.expiry,
+        strike=position.strike,
+        right=position.option_right,
+    )

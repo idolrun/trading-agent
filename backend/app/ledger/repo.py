@@ -85,6 +85,7 @@ async def record(
     signal_id: uuid.UUID | None = None,
     manual_correction_id: int | None = None,
     channel_id: int | None = None,
+    position_id: uuid.UUID | None = None,
     at: datetime | None = None,
 ) -> ProviderPosition:
     """Write one ledger change: insert/update the position and its history event together.
@@ -94,6 +95,7 @@ async def record(
     values["tp_levels"] = list(values["tp_levels"])
     if row is None:
         row = ProviderPosition(
+            provider_position_id=position_id or uuid.uuid4(),  # deterministic from apply (F026)
             provider_id=provider_id,
             opened_channel_id=channel_id,
             opened_by_signal_id=signal_id,

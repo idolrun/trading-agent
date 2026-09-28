@@ -69,3 +69,14 @@ Milestone M2 path works with fixtures; no duplicate card on re-processing (TRD �
 
 ## Open decisions touched
 OD-14.
+
+## Implementation notes (2026-09-29)
+- Pre-tx planning lives in `pipeline/processor.py` (`PipelineProcessor._plan`): signals are planned in `idx` order over an in-memory copy of the provider book, so a later signal in the same message sees an earlier one's effect. `apply_event` locks the book and compares `{position_id: updated_at}` with the plan's snapshot; any difference raises `BookChanged` (the dispatcher retries the event).
+- Deterministic ids: `signal_id = uuid5(NS, "signal:msg:evtype:seq:idx")`, new position `uuid5(NS, "position:<signal_id>")` (`ledger.repo.record(position_id=…)`), card `uuid5(dedupe_key "<signal_id>:<action>")`. Re-run = first signal exists → nothing but the inbox mark is written.
+- The provider ledger changes only when validation is `ok` and the link is `linked`/`new_position`; `InvalidTransition` → one review card `ledger:<reason>`. A `new_position` link row is written only when the position was actually created (DB CHECK).
+- Follow-up premiums still unscaled on a linked option position are scaled against that contract's live quote before the ledger/decide (`_scale_follow_up`); no quote → review `market_data_unavailable`.
+- Inbox `stale` iff the context is stale **and** the event carried an entry/add; otherwise `done` (`late` copied).
+- `NOTIFY cards` payload is JSON `{"type": "card.created"|"card.updated", "id": …}` (F029 bus contract). Card-expiry timers are scheduled with `timers.repo.schedule` (dedupe `card_expiry:<card_id>`); F027 adds the scheduler.
+- `apply_raw_review` + `RawReviewPoisonHandler` (poison alert now carries `card_id`). `UnconfiguredInterpreter` (production until F035, user-confirmed) → raw review + `parser_degraded` alert; literal-span mismatch → raw review (AC-11). `FixtureInterpreter` via `INTERPRETATION_FIXTURES_DIR`, non-production only.
+- Edit/delete events are marked `done` without cards until F038. `pipeline/hooks.py` not created: no post-commit consumer yet (push listens on the bus, F029; F036 adds approval-graph starts).
+- Tests use their own full-contract messages (the AC-18 message fixture has no expiries): `tests/integration/pipeline/{harness.py,test_apply.py,test_pipeline_sequencing.py}`.

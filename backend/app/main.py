@@ -22,19 +22,21 @@ from app.broker.fake import FakeBroker
 from app.broker.port import BrokerClient, BrokerEvents
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
-from app.dispatcher.service import AlertPoisonHandler, Dispatcher
-from app.dispatcher.stub import StubProcessor
+from app.dispatcher.service import Dispatcher
 from app.ingest.feed_health import FeedHealthMonitor
 from app.ingest.gaps import GapDetector
+from app.interpret.interpreter import FixtureInterpreter, Interpreter, UnconfiguredInterpreter
 from app.logging import configure_logging
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
 from app.markettime import SystemClock
 from app.messageapi.fake import FakeMessageHistory
 from app.messageapi.port import MessageHistory
+from app.pipeline.processor import PipelineProcessor, RawReviewPoisonHandler
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.system.heartbeat import run_heartbeat
+from app.validate.service import ValidationService
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +104,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     background = [config_listener]
     dispatcher = None
     if settings.background_enabled:
-        # Stub interpretation until the pipeline processor (F026) / message graph (F035).
+        processor = PipelineProcessor(
+            session_factory,
+            config=config_service,
+            interpreter=_interpreter(settings),
+            validation=ValidationService(
+                session_factory,
+                marketdata=marketdata,
+                alerts=app.state.alerts,
+                clock=app.state.clock,
+            ),
+            marketdata=marketdata,
+            flags=app.state.flags,
+            alerts=app.state.alerts,
+            clock=app.state.clock,
+        )
         dispatcher = Dispatcher(
             session_factory,
             config=config_service,
-            processor=StubProcessor(session_factory),
-            poison=AlertPoisonHandler(app.state.alerts),
+            processor=processor,
+            poison=RawReviewPoisonHandler(session_factory, app.state.alerts),
             clock=app.state.clock,
             listen_dsn=libpq_dsn(str(settings.database_url)),
         )
@@ -127,6 +143,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)
         await engine.dispose()
+
+
+def _interpreter(settings: Settings) -> Interpreter:
+    """Fixtures in dev/tests only; production has no interpreter until F035, so every message
+    becomes a raw review card + parser alert (nothing is silently dropped)."""
+    if settings.environment != "production" and settings.interpretation_fixtures_dir:
+        return FixtureInterpreter(settings.interpretation_fixtures_dir)
+    return UnconfiguredInterpreter()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
