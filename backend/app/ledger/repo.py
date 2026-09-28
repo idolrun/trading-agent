@@ -2,14 +2,28 @@
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
+from app.instruments import Instrument as Contract
+from app.instruments import OptionContract, broker_symbol
 from app.interpret.models import MessageLink, Signal
 from app.ledger.correlation import ParentLink
-from app.ledger.models import PositionStatus, ProviderPosition, ProviderPositionEvent
+from app.ledger.lots import LotUpdate
+from app.ledger.models import (
+    Instrument,
+    Lot,
+    LotChange,
+    LotEvent,
+    LotStatus,
+    OptionRight,
+    PositionStatus,
+    ProviderPosition,
+    ProviderPositionEvent,
+)
 from app.ledger.positions import PositionUpdate
 
 
@@ -110,3 +124,99 @@ async def record(
     )
     await db.flush()
     return row
+
+
+async def open_lot_for_position(db: AsyncSession, provider_position_id: uuid.UUID) -> Lot | None:
+    lot: Lot | None = await db.scalar(
+        select(Lot).where(
+            col(Lot.provider_position_id) == provider_position_id,
+            col(Lot.status) == LotStatus.OPEN,
+        )
+    )
+    return lot
+
+
+async def lock_lot(db: AsyncSession, lot_id: uuid.UUID) -> Lot | None:
+    lot: Lot | None = await db.scalar(
+        select(Lot).where(col(Lot.lot_id) == lot_id).with_for_update()
+    )
+    return lot
+
+
+async def open_lots(db: AsyncSession, underlying: str | None = None) -> list[Lot]:
+    """All open lots incl. foreign (C47 counts toward limits); optionally one underlying."""
+    query = select(Lot).where(col(Lot.status) == LotStatus.OPEN)
+    if underlying is not None:
+        query = query.where(col(Lot.underlying) == underlying)
+    return list((await db.scalars(query.order_by(col(Lot.opened_at)))).all())
+
+
+async def record_lot(
+    db: AsyncSession,
+    update: LotUpdate,
+    *,
+    row: Lot | None = None,
+    instrument: Contract | None = None,
+    provider_position_id: uuid.UUID | None = None,
+    provider_id: int | None = None,
+    fill_id: uuid.UUID | None = None,
+    reason: str | None = None,
+    at: datetime | None = None,
+) -> Lot:
+    """Write one lot change and its `lot_events` row. A new lot (`row=None`) needs the
+    `instrument`; it is foreign exactly when it has no provider position (C47)."""
+    now = at or datetime.now(UTC)
+    if row is None:
+        if instrument is None:
+            raise ValueError("a new lot needs its instrument")
+        option = instrument if isinstance(instrument, OptionContract) else None
+        row = Lot(
+            provider_position_id=provider_position_id,
+            provider_id=provider_id,
+            is_foreign=provider_position_id is None,
+            instrument=Instrument.OPTION if option else Instrument.STOCK,
+            broker_symbol=broker_symbol(instrument),
+            underlying=option.underlying if option else broker_symbol(instrument),
+            expiry=option.expiry if option else None,
+            strike=option.strike if option else None,
+            option_right=OptionRight(option.right) if option else None,
+            qty=update.qty_after,
+            avg_price=update.avg_after,
+            status=update.status,
+            opened_at=now,
+            updated_at=now,
+        )
+        db.add(row)
+    else:
+        row.qty, row.avg_price, row.status, row.updated_at = (
+            update.qty_after,
+            update.avg_after,
+            update.status,
+            now,
+        )
+        if update.status == LotStatus.CLOSED:
+            row.closed_at = now
+    await db.flush()
+    db.add(
+        LotEvent(
+            lot_id=row.lot_id,
+            change=update.change,
+            fill_id=fill_id,
+            qty_before=update.qty_before,
+            qty_after=update.qty_after,
+            avg_before=update.avg_before,
+            avg_after=update.avg_after,
+            reason=reason,
+            at=now,
+        )
+    )
+    await db.flush()
+    return row
+
+
+async def create_foreign_lot(
+    db: AsyncSession, instrument: Contract, qty: int, avg: Decimal | None, *, reason: str
+) -> Lot:
+    """Reconciliation only (F046): a broker position no system lot explains (read-only)."""
+    update = LotUpdate(LotChange.ADOPT_FOREIGN, None, qty, None, avg)
+    return await record_lot(db, update, instrument=instrument, reason=reason)

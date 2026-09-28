@@ -39,3 +39,8 @@ FR-16 lot rules proven; every change writes `lot_events`.
 
 ## Implementation steps
 1. Pure `apply_fill`. 2. Repo. 3. Tests.
+
+## Implementation notes (2026-09-28)
+- Result type is `LotUpdate(change, qty_before, qty_after, avg_before, avg_after)` (`LotChange` is already the F005 event enum): buy without a lot = `open`, buy on a lot = `fill_add`, partial sell = `fill_reduce`, sell to 0 = `close` (status derived). A sell beyond the lot, a sell with no lot, or a non-positive qty raise `ValueError` (not `assert`, which `-O` strips).
+- `cost_basis(instrument, qty, avg)` (option ×100) returns `None` when avg is unknown — F024 treats that as "risk unknown", never 0.
+- Repo lives in `ledger/repo.py` (no separate `lots_repo.py`): `open_lot_for_position`, `lock_lot`, `open_lots(underlying=None)`, `record_lot` (row + `lot_events`), `create_foreign_lot` (`adopt_foreign`). `open_lots_summary()` was not added: F024's snapshot needs every open lot for quotes anyway and sums from `open_lots()`.
