@@ -1,0 +1,21 @@
+# Local PostgreSQL only; the app runs via `uv` in dev. Credentials come from the repo-root .env.
+services:
+  postgres:
+    image: postgres:17.11-bookworm
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      TRADING_OWNER_PASSWORD: ${TRADING_OWNER_PASSWORD:?set in .env}
+      TRADING_APP_PASSWORD: ${TRADING_APP_PASSWORD:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "trading"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

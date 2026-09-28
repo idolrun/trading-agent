@@ -18,3 +18,9 @@ async def client(settings: Settings) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_settings] = lambda: settings
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if "integration" in item.path.parts:
+            item.add_marker(pytest.mark.integration)
