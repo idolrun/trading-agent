@@ -37,8 +37,10 @@ INSTRUCTION = "Report the signals in the current message."
 
 @cache
 def load_prompt(version: str) -> str:
-    """`extract@v1` → prompts/extract_v1.md."""
-    return (PROMPTS / f"{version.replace('@', '_')}.md").read_text()
+    """`extract@v1` → llm_extract/prompts/extract_v1.md; `note@v1` → interpret/prompts/…"""
+    name = f"{version.replace('@', '_')}.md"
+    path = PROMPTS / name
+    return (path if path.exists() else PROMPTS.parent.parent / "prompts" / name).read_text()
 
 
 def build_agent(
