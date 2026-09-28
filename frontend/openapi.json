@@ -564,6 +564,50 @@
         "title": "CardState",
         "type": "string"
       },
+      "ChainEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "gate_run": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Run"
+          },
+          "model": {
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "anthropic",
+              "openai",
+              "deepseek",
+              "openai_compat"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "prompt"
+        ],
+        "title": "ChainEntry",
+        "type": "object"
+      },
       "ConfigResponse": {
         "properties": {
           "document": {
@@ -1014,21 +1058,81 @@
       },
       "LlmConfig": {
         "additionalProperties": false,
-        "description": "Model registry slot; roles, prices, params and validation are added by F031.",
+        "description": "Model registry (TRD \u00a74.8). Keys of `prices`/`params` are \"provider:model\".",
         "properties": {
-          "chains": {
+          "concurrency": {
             "additionalProperties": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
             },
             "default": {},
-            "title": "Chains",
+            "title": "Concurrency",
             "type": "object"
+          },
+          "params": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "default": {},
+            "title": "Params",
+            "type": "object"
+          },
+          "prices": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Price"
+            },
+            "default": {},
+            "title": "Prices",
+            "type": "object"
+          },
+          "roles": {
+            "$ref": "#/components/schemas/LlmRoles",
+            "default": {
+              "extract": {
+                "chain": [],
+                "deadline_ms": 3000,
+                "per_attempt_cap_ms": 2000
+              },
+              "note": {
+                "chain": [],
+                "deadline_ms": 4000
+              },
+              "prelabel": {
+                "chain": []
+              }
+            }
           }
         },
         "title": "LlmConfig",
+        "type": "object"
+      },
+      "LlmRoles": {
+        "additionalProperties": false,
+        "properties": {
+          "extract": {
+            "$ref": "#/components/schemas/RoleConfig",
+            "default": {
+              "chain": [],
+              "deadline_ms": 3000,
+              "per_attempt_cap_ms": 2000
+            }
+          },
+          "note": {
+            "$ref": "#/components/schemas/RoleConfig",
+            "default": {
+              "chain": [],
+              "deadline_ms": 4000
+            }
+          },
+          "prelabel": {
+            "$ref": "#/components/schemas/RoleConfig",
+            "default": {
+              "chain": []
+            }
+          }
+        },
+        "title": "LlmRoles",
         "type": "object"
       },
       "LotDetail": {
@@ -2114,6 +2218,58 @@
         "title": "PositionStatus",
         "type": "string"
       },
+      "Price": {
+        "additionalProperties": false,
+        "description": "USD per million tokens.",
+        "properties": {
+          "cached_input_per_mtok": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Cached Input Per Mtok"
+          },
+          "input_per_mtok": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Input Per Mtok"
+          },
+          "output_per_mtok": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Output Per Mtok"
+          }
+        },
+        "required": [
+          "input_per_mtok",
+          "output_per_mtok",
+          "cached_input_per_mtok"
+        ],
+        "title": "Price",
+        "type": "object"
+      },
       "ProposalOut": {
         "properties": {
           "breakevenOptions": {
@@ -2327,6 +2483,45 @@
           "credentialId"
         ],
         "title": "RegisterVerifyResponse",
+        "type": "object"
+      },
+      "RoleConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "chain": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChainEntry"
+            },
+            "title": "Chain",
+            "type": "array"
+          },
+          "deadline_ms": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Ms"
+          },
+          "per_attempt_cap_ms": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Attempt Cap Ms"
+          }
+        },
+        "title": "RoleConfig",
         "type": "object"
       },
       "RuntimeConfig": {
@@ -2545,7 +2740,23 @@
           "llm": {
             "$ref": "#/components/schemas/LlmConfig",
             "default": {
-              "chains": {}
+              "concurrency": {},
+              "params": {},
+              "prices": {},
+              "roles": {
+                "extract": {
+                  "chain": [],
+                  "deadline_ms": 3000,
+                  "per_attempt_cap_ms": 2000
+                },
+                "note": {
+                  "chain": [],
+                  "deadline_ms": 4000
+                },
+                "prelabel": {
+                  "chain": []
+                }
+              }
             }
           },
           "llm_monthly_budget_usd": {
