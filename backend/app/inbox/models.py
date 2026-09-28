@@ -14,9 +14,9 @@ from app.db import (
     bigint,
     check_in,
     choice,
-    created_at,
     flag,
     jsonb,
+    now_default,
     positive_ids,
     smallint,
     timestamptz,
@@ -83,7 +83,7 @@ class MessageEvent(SQLModel, table=True):
     text: str | None = None
     payload: dict[str, Any] = jsonb()
     backfilled: bool = flag()
-    received_at: datetime = created_at()
+    received_at: datetime = now_default()
 
 
 class InboxItem(SQLModel, table=True):
@@ -124,7 +124,7 @@ class InboxItem(SQLModel, table=True):
     skip_reason: SkipReason | None = choice(default=None, nullable=True)
     claimed_at: datetime | None = timestamptz(nullable=True)
     finished_at: datetime | None = timestamptz(nullable=True)
-    updated_at: datetime = created_at()
+    updated_at: datetime = now_default()
 
 
 class StageTiming(SQLModel, table=True):
@@ -142,4 +142,4 @@ class StageTiming(SQLModel, table=True):
     event_seq: int = Field(primary_key=True)
     attempt: int = Field(sa_type=SmallInteger, primary_key=True)
     stage: Stage = choice(primary_key=True)
-    at: datetime = created_at()
+    at: datetime = now_default()

@@ -19,7 +19,7 @@ from sqlalchemy import (
     text,
     true,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -90,7 +90,7 @@ def positive_ids(*columns: str) -> list[CheckConstraint]:
     return [CheckConstraint(f"{c} > 0", name=f"{c}_positive") for c in columns]
 
 
-def created_at() -> Any:
+def now_default() -> Any:
     """`timestamptz NOT NULL DEFAULT now()`; also set in Python so ORM inserts never send NULL."""
     return Field(
         default_factory=utcnow, sa_type=TIMESTAMPTZ, sa_column_kwargs={"server_default": func.now()}
@@ -112,6 +112,13 @@ def jsonb(*, nullable: bool = False) -> Any:
     return Field(default=None if nullable else ..., sa_type=JSONB, nullable=nullable)
 
 
+def jsonb_object() -> Any:
+    """`jsonb NOT NULL DEFAULT '{}'`."""
+    return Field(
+        default_factory=dict, sa_type=JSONB, sa_column_kwargs={"server_default": text("'{}'")}
+    )
+
+
 def bigint(*, nullable: bool = False, **kwargs: Any) -> Any:
     return Field(default=None if nullable else ..., sa_type=BigInteger, nullable=nullable, **kwargs)
 
@@ -131,6 +138,10 @@ def array(item_type: Any) -> Any:
         sa_type=ARRAY(item_type),
         sa_column_kwargs={"server_default": text("'{}'")},
     )
+
+
+def inet(*, nullable: bool = True) -> Any:
+    return Field(default=None, sa_type=INET, nullable=nullable)
 
 
 def identity_pk() -> Any:

@@ -1,6 +1,7 @@
 """Shared helpers for schema constraint tests."""
 
-from datetime import UTC, datetime
+import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.models import AuthSession, PasskeyCredential
 from app.inbox.models import InboxItem, InboxStatus, MessageEvent
 
 T0 = datetime(2026, 9, 28, 14, 30, tzinfo=UTC)
@@ -59,3 +61,16 @@ async def add_inbox(session: AsyncSession, event: MessageEvent, **overrides: Any
     session.add(item)
     await session.commit()
     return item
+
+
+async def add_session(session: AsyncSession) -> uuid.UUID:
+    """A passkey credential + auth session; returns `session_id` (FK target of audit rows)."""
+    credential = PasskeyCredential(credential_id=b"cred-1", public_key=b"pk")
+    auth = AuthSession(
+        token_hash=b"hash-1", credential_id=b"cred-1", expires_at=T0 + timedelta(hours=1)
+    )
+    session.add(credential)
+    await session.flush()
+    session.add(auth)
+    await session.commit()
+    return auth.session_id

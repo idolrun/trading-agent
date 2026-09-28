@@ -22,9 +22,9 @@ from app.db import (
     bigint,
     check_in,
     choice,
-    created_at,
     identity_pk,
     jsonb,
+    now_default,
     positive_ids,
     smallint,
 )
@@ -112,7 +112,7 @@ class Signal(SQLModel, table=True):
     stale: bool
     late: bool
     schema_version: int = Field(sa_type=SmallInteger)
-    created_at: datetime = created_at()
+    created_at: datetime = now_default()
 
 
 class MessageLink(SQLModel, table=True):
@@ -144,4 +144,4 @@ class MessageLink(SQLModel, table=True):
     confidence: Decimal | None = Field(default=None, max_digits=5, decimal_places=4)
     candidate_position_ids: list[uuid.UUID] = array(Uuid)
     supersedes_link_id: int | None = bigint(nullable=True, foreign_key="message_links.id")
-    created_at: datetime = created_at()
+    created_at: datetime = now_default()

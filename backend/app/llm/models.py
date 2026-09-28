@@ -64,7 +64,7 @@ class ModelCall(SQLModel, table=True):
     event_type: EventType | None = choice(default=None, nullable=True)
     event_seq: int | None = None
     card_id: uuid.UUID | None = None  # FK → cards added in 0004
-    eval_run_id: uuid.UUID | None = None  # FK → eval_runs added in 0003
+    eval_run_id: uuid.UUID | None = Field(default=None, foreign_key="eval_runs.eval_run_id")
     provider: ModelProvider = choice()
     model: str
     role: ModelRole = choice()
