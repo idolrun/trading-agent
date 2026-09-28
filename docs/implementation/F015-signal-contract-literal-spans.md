@@ -64,3 +64,10 @@ AC-11: a literal span not present in the source text is always rejected.
 
 ## Implementation steps
 1. Types. 2. Raw parsers per field kind. 3. Verifier. 4. Tests. 5. Export JSON schema used by F032.
+
+## Implementation notes (2026-09-28)
+- Provenance classes are named `LiteralSpan`, `ContextSource`, `ResolvedSource` (doc: `Literal_`, `Context_`, `Resolved`) to avoid shadowing `typing.Literal`; discriminator `kind` unchanged. `F[T]` uses PEP 695 syntax (verified on Pydantic 2.13).
+- All contract models use `extra="forbid"`: unknown keys from a model are schema errors.
+- Raw parsers (`spans.parse_raw`): text fields (`underlying`, `expiry_token`, `size_tier`) compare after trimming, dropping a leading `$` and casefolding; price/level fields need exactly one number in the raw (thousands commas allowed; `140/con` → 140, scale is F018); `right` reads `call(s)`/`put(s)`/`c`/`p`/`770c`; `qty_stated` needs one integer.
+- The span search itself is exact and case-sensitive; only the value comparison is normalized.
+- `interpreter="stub"` is allowed in the contract; the `signals.interpreter` column (jev/llm/none) mapping is F026's.
