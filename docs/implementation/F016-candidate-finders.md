@@ -46,3 +46,9 @@ Every numeric value in a test corpus of synthetic messages appears as a candidat
 
 ## Implementation steps
 1. Regexes + stop-list. 2. Overlap resolution. 3. ID assignment. 4. Tests.
+
+## Implementation notes (2026-09-28)
+- TRD §4.2 example offsets: `769` starts at 23 and the second `spy` at 27 (the doc's 22/26 were off by one); the test uses the real offsets.
+- Overlap rule: numbers and ticker-like words lying inside an expiry token (`10/16`, `oct 16`, `0dte`) belong to the token only. Tokens that are genuinely two things are reported in both lists: `1/2`, `1/3`, `1/4` (date or fraction) and `50%` (number and fraction) — the model picks the role.
+- Numbers accept thousands separators (`1,250`) and suffixes `c/p/%/k` or `/con`; a trailing letter that is not a suffix is left out (`3x` → `3`).
+- Tickers: 1–5 letters, optional `$`, not glued to digits (`770c` gives no `c` ticker); stop-list in code.
