@@ -54,3 +54,10 @@ AC-18 linking clause at unit level; ambiguity always explicit; cross-provider li
 
 ## Implementation steps
 1. Types. 2. Pure resolver. 3. Repo queries. 4. Tests.
+
+## Implementation notes (2026-09-28)
+- `resolve_link(signal: NormalizedSignal, hint: LinkHint, ctx: LinkInputs, *, t_link, hint_method) -> LinkDecision | None`. `hint_method` (`jev`/`llm`) is supplied by the caller from the interpreter; `None` = the type never links (watch, commentary, chatter, conditional, out-of-scope, unparsed).
+- `new_position` decisions carry `position_id=None`; F026 creates the position and writes the link row (DB CHECK requires the id).
+- Entry contract match is exact (instrument, underlying, expiry, strike, right; stocks by underlying); an incomplete entry never matches.
+- Reply rule: parent message's current links (`repo.parent_links`, latest `message_links` row per signal, any author) are filtered to this provider's open book; exactly one match → `reply`, otherwise fall through to the hint.
+- No separate `correlation_repo.py`: the one new query lives in `ledger/repo.py` next to `lock_open_book` (the open book the resolver uses).

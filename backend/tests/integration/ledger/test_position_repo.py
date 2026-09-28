@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.db import create_session_factory, in_transaction
+from app.interpret.models import LinkMethod, LinkOutcome, MessageLink
 from app.ledger import repo
+from app.ledger.correlation import ParentLink
 from app.ledger.models import ProviderPositionEvent
 from app.ledger.positions import apply_to_position, state_of
 from app.validate.normalize import NormalizedSignal, Price
@@ -124,3 +126,44 @@ async def test_recent_underlyings(factory: Factory, db_session: AsyncSession) ->
     async with factory() as db:
         assert await repo.recent_underlyings(db, 7, NOW.replace(hour=0)) == ["GOOGL"]
         assert await repo.recent_underlyings(db, 8, NOW.replace(hour=0)) == []
+
+
+async def test_parent_links_latest_row_per_signal(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    """F021: the parent's current link = latest message_links row; unlinked rows are skipped."""
+    sig = await add_signal(db_session, provider_id=7)
+    async with in_transaction(factory, None) as db:
+        first = apply_to_position(None, ENTRY)
+        assert first is not None
+        p1 = await repo.record(
+            db, provider_id=7, row=None, update=first, signal_id=sig.signal_id, at=NOW
+        )
+        p2 = await repo.record(
+            db, provider_id=7, row=None, update=first, signal_id=sig.signal_id, at=NOW
+        )
+        link = MessageLink(
+            signal_id=sig.signal_id,
+            provider_id=7,
+            provider_position_id=p1.provider_position_id,
+            outcome=LinkOutcome.NEW_POSITION,
+            method=LinkMethod.CODE,
+            confidence=Decimal(1),
+        )
+        db.add(link)
+        await db.flush()
+        db.add(
+            MessageLink(
+                signal_id=sig.signal_id,
+                provider_id=7,
+                provider_position_id=p2.provider_position_id,
+                outcome=LinkOutcome.LINKED,
+                method=LinkMethod.USER_CORRECTION,
+                supersedes_link_id=link.id,
+            )
+        )
+    async with factory() as db:
+        assert await repo.parent_links(db, sig.message_id) == (
+            ParentLink(7, p2.provider_position_id),
+        )
+        assert await repo.parent_links(db, 999) == ()

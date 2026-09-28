@@ -7,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
+from app.interpret.models import MessageLink, Signal
+from app.ledger.correlation import ParentLink
 from app.ledger.models import PositionStatus, ProviderPosition, ProviderPositionEvent
 from app.ledger.positions import PositionUpdate
 
@@ -23,6 +25,25 @@ async def recent_underlyings(db: AsyncSession, provider_id: int, since: datetime
         .order_by(col(ProviderPosition.underlying))
     )
     return list(rows.all())
+
+
+async def parent_links(db: AsyncSession, parent_message_id: int) -> tuple[ParentLink, ...]:
+    """Current links (latest `message_links` row per signal) of a message's signals, any
+    author and any event of that message; only rows that point at a position."""
+    latest = (
+        select(MessageLink)
+        .join(Signal, col(Signal.signal_id) == col(MessageLink.signal_id))
+        .where(col(Signal.message_id) == parent_message_id)
+        .order_by(col(MessageLink.signal_id), col(MessageLink.id).desc())
+        .distinct(col(MessageLink.signal_id))
+        .subquery()
+    )
+    rows = await db.execute(
+        select(latest.c.provider_id, latest.c.provider_position_id).where(
+            latest.c.provider_position_id.is_not(None)
+        )
+    )
+    return tuple(ParentLink(provider_id, position_id) for provider_id, position_id in rows.all())
 
 
 async def lock_open_book(db: AsyncSession, provider_id: int) -> list[ProviderPosition]:
