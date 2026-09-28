@@ -516,6 +516,8 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 | R-DB | **SQLModel + SQLAlchemy 2 async + Alembic + psycopg 3** (amends TRD §3 asyncpg + numbered SQL). psycopg 3 is also LangGraph's Postgres driver → one driver | F001–F005 |
 | R-PG | **PostgreSQL 17** locally and in managed prod (amends TRD §3's 16) | F002, F064 |
 | OD-11 | **Approval graph per card** (thread `card:<card_id>`); the message graph ends at `apply → notify` (amends TRD §2.1/§5.1 shape; keeps LangGraph interrupt + checkpointer) | F035, F036 |
+| OD-28 | (2026-09-29) **Shadow mode simulates fills**: `SimulatedBroker` fills marketable orders at the live quote so lots, exits and stops are exercised; it never calls a broker | F028 |
+| R-INTERP | (2026-09-29) Until the model interpreters land (F035), production has **no interpreter**: every message becomes a raw review card + `parser_degraded` alert; the fixture interpreter is dev/test only | F026 |
 
 ### 10.1a Context-only decision-log entries
 C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple channels), C6 (= C14, approval for every order action — F036), C7 (no prediction), C10 (options; revised by C55 stocks), C3 (trusted providers), C9 (grouping per provider/company — realised as per-provider sequencing, C88), C27 (loss rule dropped), C68/C70 (non-goals: prediction, spreads, short selling, extended hours, multi-user, images) produce no feature. Any feature that would touch a non-goal must stop and ask.
@@ -563,7 +565,6 @@ C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple chan
 | OD-25 | Price tick source for limit rounding | F010, F023 | `MarketData.tick_size()` from the data source; unknown → review |
 | OD-26 | How "X% commons" is extracted (no Appendix A role for position %) | F023, F033 | Not actionable until a Jev role/LLM field is agreed; card = review |
 | OD-27 | Kill switch scope: "pauses new cards and entries" | F024, F047 | Entry/add cards disabled; exit/stop cards still created |
-| OD-28 | Shadow mode fills | F028 | `SimulatedBroker` fills at quote so exit paths are exercised; never calls a broker |
 | OD-29 | Validity/staleness clock for off-hours held messages (C59 vs C90) | F039 | Clock starts at 9:30 ET release |
 | OD-30 | Bracket maintenance after partial TP fills (native OCO vs system-managed) | F042 | System resizes stop within the approved bracket intent |
 | OD-31 | Flatten scope vs foreign positions | F047 | Tracked lots only; foreign excluded (C47 read-only) |

@@ -1,0 +1,81 @@
+"""Order and order-event queries. No decisions."""
+
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
+
+from app.execution.invariants import PROTECTIVE, WorkingSells
+from app.execution.models import (
+    OPEN_ORDER_STATUSES,
+    Order,
+    OrderEvent,
+    OrderEventSource,
+    OrderStatus,
+    Side,
+)
+
+
+async def by_client_id(db: AsyncSession, client_order_id: str) -> Order | None:
+    order: Order | None = await db.scalar(
+        select(Order).where(col(Order.client_order_id) == client_order_id)
+    )
+    return order
+
+
+async def insert_intent(db: AsyncSession, values: dict[str, Any]) -> Order | None:
+    """Insert `status='intent'` + its `submit` event. None = the client id exists (re-run)."""
+    order_id = await db.scalar(
+        pg_insert(Order).values(**values).on_conflict_do_nothing().returning(col(Order.order_id))
+    )
+    if order_id is None:
+        return None
+    db.add(OrderEvent(order_id=order_id, status=OrderStatus.INTENT, source=OrderEventSource.SUBMIT))
+    await db.flush()
+    return await db.get(Order, order_id)
+
+
+async def working_sells(db: AsyncSession, lot_id: uuid.UUID) -> WorkingSells:
+    remaining = func.coalesce(func.sum(col(Order.qty) - col(Order.filled_qty)), 0)
+    rows = await db.execute(
+        select(col(Order.kind), remaining)
+        .where(
+            col(Order.lot_id) == lot_id,
+            col(Order.side) == Side.SELL,
+            col(Order.status).in_(OPEN_ORDER_STATUSES),
+        )
+        .group_by(col(Order.kind))
+    )
+    by_kind = {kind: int(qty) for kind, qty in rows.all()}
+    return WorkingSells(
+        exits=sum(q for k, q in by_kind.items() if k not in PROTECTIVE),
+        protective=sum(q for k, q in by_kind.items() if k in PROTECTIVE),
+    )
+
+
+async def set_status(
+    db: AsyncSession,
+    order: Order,
+    status: OrderStatus,
+    source: OrderEventSource,
+    *,
+    broker_order_id: str | None = None,
+    filled_qty: int | None = None,
+    payload: dict[str, Any] | None = None,
+) -> Order:
+    order.status = status
+    order.updated_at = datetime.now(UTC)
+    if broker_order_id is not None:
+        order.broker_order_id = broker_order_id
+    if filled_qty is not None:
+        order.filled_qty = filled_qty
+    db.add(order)
+    db.add(
+        OrderEvent(order_id=order.order_id, status=status, source=source, broker_payload=payload)
+    )
+    await db.flush()
+    return order

@@ -36,6 +36,7 @@ class AlertKind(StrEnum):
     AUTH_ANOMALY = "auth_anomaly"  # e.g. passkey sign-count regression (F009)
     MESSAGE_API = "message_api"  # unmappable webhook payload, history unavailable (F011, F014)
     TIMER_FAILED = "timer_failed"  # a timer handler raised (F027)
+    ORDER_FAILED = "order_failed"  # broker rejected / unavailable / timeout-not-found (F028)
 
 
 class Alert(SQLModel, table=True):

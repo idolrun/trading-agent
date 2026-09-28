@@ -367,7 +367,7 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 
 | Table | Class | Columns (key ones) | Constraints / indexes | Source |
 |---|---|---|---|---|
-| `alerts` | audit | `alert_id uuid PK`, `severity CHECK IN ('info','warning','urgent')`, `kind text` (feed_silence, parser_degraded, poison, reconcile_mismatch, catch_up, late_correction, message_deleted, risk_limit, exit_floor, provider_disabled, market_data, invariant_block, note_hidden, system_flag, auth_anomaly, message_api, timer_failed), `message text`, `card_id/lot_id/order_id NULL`, `message_id NULL`, `details jsonb`, `dedupe_key text NULL UNIQUE`, `created_at` | idx `(created_at DESC)` | PRD §14, FR-26 |
+| `alerts` | audit | `alert_id uuid PK`, `severity CHECK IN ('info','warning','urgent')`, `kind text` (feed_silence, parser_degraded, poison, reconcile_mismatch, catch_up, late_correction, message_deleted, risk_limit, exit_floor, provider_disabled, market_data, invariant_block, note_hidden, system_flag, auth_anomaly, message_api, timer_failed, order_failed), `message text`, `card_id/lot_id/order_id NULL`, `message_id NULL`, `details jsonb`, `dedupe_key text NULL UNIQUE`, `created_at` | idx `(created_at DESC)` | PRD §14, FR-26 |
 | `alert_acks` | audit | `alert_id PK FK`, `session_id FK`, `acked_at` | | derived (X5) |
 | `config` | current | `id smallint PK CHECK (id=1)`, `version integer`, `document jsonb` (Pydantic `RuntimeConfig`), `updated_at` | | PRD §18 |
 | `config_changes` | audit | `id identity`, `version integer UNIQUE`, `document jsonb`, `diff jsonb`, `session_id NULL`, `actor CHECK IN ('user','cli','system')`, `reason text`, `at` | | PRD §14 |
@@ -458,6 +458,7 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 | `0007_alert_kind_message_api` | F011 | `alerts.kind` gains `message_api` |
 | `0008_event_seq_bigint` | F011 | `event_seq` → bigint on every table carrying the message event key |
 | `0009_alert_kind_timer_failed` | F027 | `alerts.kind` gains `timer_failed` |
+| `0010_alert_kind_order_failed` | F028 | `alerts.kind` gains `order_failed` |
 | later | owning feature | only additive changes, each updating this document |
 
 ## 12. Implementation notes (decisions made while implementing F002–F005)
@@ -492,3 +493,4 @@ Recorded here per the rule at the top of this document. None changes a column's 
 | 25 | `alerts.kind` `message_api` (migration `0007`, F011/F014) | Unmappable webhook payload (urgent, deduped per payload hash) and history outages. F011 doc named it `ingest_contract`; one kind covers both Message API problems. | No existing kind fit. |
 | 26 | `event_seq` is `bigint` (migration `0008`, F011) | On `message_events`, `inbox`, `stage_timings`, `model_calls`, `signals`, `eval_labels`, `timers`. | §3.1 said `integer` but the provisional edit sequence (epoch ms, C-EVSEQ) is ~1.8e12 — found by the F011 edit test. |
 | 27 | `alerts.kind` `timer_failed` (migration `0009`, F027) | A timer handler raised; retried once after 5 s, then alert only. | No existing kind fit. |
+| 28 | `alerts.kind` `order_failed` (migration `0010`, F028) | Broker rejected the order, broker unavailable, or a timed-out submit the broker does not know (intent voided, never resubmitted). | No existing kind fit. |

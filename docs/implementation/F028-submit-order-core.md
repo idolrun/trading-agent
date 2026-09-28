@@ -69,3 +69,11 @@ AC-3 invariants (1)(2) proven by unit + property tests; FR-22 timeout behaviour 
 
 ## Open decisions touched
 OD-28.
+
+## Implementation notes (2026-09-29)
+- `OrderService.submit_order(intent, Approved | Auto)` / `cancel_order` in `execution/submit.py`; brokers per mode: shadow → `SimulatedBroker` (OD-28 confirmed: fills marketable limit/market orders at the quote; stops rest), paper/live → the injected `BrokerClient`. Wired as `app.state.orders`.
+- Order of checks: existing client id → return it (AC-7, no broker call); entries → `FlagService.entries_allowed` (`EntriesBlocked`); sells → fresh `broker.positions()` read **before** the transaction; T5a locks the lot, sums working sells, runs the pure invariants, inserts `intent` + `order_events(submit)`, commits.
+- Invariant codes: `buy_only_for_entries`, `entry_must_buy`, `no_open_lot`, `instrument_mismatch`, `other_providers_lot` (intent's provider position ≠ lot's — AC-3 cross-provider), `sell_exceeds_lot` (qty + working exits), `protective_exceeds_lot` (working stops/TPs + qty), `broker_position_short` (broker qty < sell qty or unreadable). Violation → `invariant_block` alert, no row.
+- Broker failures raise the new alert kind **`order_failed`** (migration `0010`, database-schema.md #28): rejected / unavailable → `rejected`; timeout → `unknown` → `get_by_client_id` adopts or voids (`rejected`), never resubmits.
+- Fills are not written here (F040 consumes broker events); `filled_qty` is copied from the broker's answer.
+- The hypothesis property checks what `submit_order` guarantees at acceptance; a stop still working after an exit fills is F043's reduce step (FR-20(3)).

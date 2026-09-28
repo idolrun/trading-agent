@@ -20,9 +20,11 @@ from app.auth.rate_limit import SlidingWindowLimiter
 from app.auth.service import AuthService
 from app.broker.fake import FakeBroker
 from app.broker.port import BrokerClient, BrokerEvents
+from app.broker.simulated import SimulatedBroker
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.dispatcher.service import Dispatcher
+from app.execution.submit import OrderService
 from app.ingest.feed_health import FeedHealthMonitor
 from app.ingest.gaps import GapDetector
 from app.interpret.interpreter import FixtureInterpreter, Interpreter, UnconfiguredInterpreter
@@ -78,6 +80,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.broker = broker
     app.state.broker_events = broker_events
     app.state.marketdata = marketdata
+    # Every order goes through here (TRD §1.5); shadow mode never touches `broker`.
+    app.state.orders = OrderService(
+        session_factory,
+        broker=broker,
+        simulated=SimulatedBroker(marketdata, app.state.clock),
+        flags=app.state.flags,
+        alerts=app.state.alerts,
+        config=config_service,
+    )
 
     feed_health = FeedHealthMonitor(
         session_factory,
