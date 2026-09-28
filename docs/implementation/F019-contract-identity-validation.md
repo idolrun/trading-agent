@@ -56,3 +56,11 @@ AC-14 and AC-17 proven at validation level; no check ever modifies a field value
 
 ## Open decisions touched
 OD-12.
+
+## Implementation notes (2026-09-28)
+- `ValidationService.validate(signal, envelope, *, config, now, aliases=None)`: config and time are passed in (the caller owns the config snapshot). Market data is fetched with no DB transaction open; `optionable_symbols` cached 24 h, `expiries` 1 h (`TtlCache`); chains/quotes are always live.
+- Only option entries/adds and stock entries get contract checks; exits/stops return `ok` with the normalized signal (contract comes from the linked position, F021/F023).
+- Review reasons: `contract_incomplete` + `missing:<field>`, `expiry_unresolved`, `underlying_missing` (+ `suggested_underlying` when exactly one recently traded underlying is within ±P%), `not_optionable`, `contract_not_in_chain`, `price_off_quote`, `price_scale_ambiguous`, `market_data_unavailable`, `config_incomplete:identity_price_tolerance_pct`. Stock entry without price → `not_actionable` / `no_entry_price`.
+- Any market-data exception → `review` + `market_data` warning alert (deduped per hour). If any suggestion candidate cannot be priced, no suggestion is made (it might have been the match).
+- Adjacent strike rule: warn when a neighbouring listed strike's mid is within `adjacent_strike_ratio` × the named contract's distance to the stated price; fields never change.
+- `app/ledger/repo.py` created here with `recent_underlyings` (F020 extends it).
