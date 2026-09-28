@@ -2,29 +2,19 @@
 
 import asyncio
 import json
-import socket
 from collections.abc import AsyncIterator
 
 import httpx
 import pytest
-import uvicorn
 
 from app.db import notify
-from tests.integration.api.conftest import ORIGIN, UA, Api
+from tests.integration.api.conftest import ORIGIN, UA, Api, next_event, serve
 
 
 @pytest.fixture
 async def served(signed_in: Api) -> AsyncIterator[str]:
-    """The same running app on a real socket (ASGITransport buffers streaming bodies)."""
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    server = uvicorn.Server(uvicorn.Config(signed_in.app, lifespan="off", log_level="warning"))
-    task = asyncio.create_task(server.serve(sockets=[sock]))
-    while not server.started:  # noqa: ASYNC110 — uvicorn exposes a flag, not an event
-        await asyncio.sleep(0.01)
-    yield f"http://127.0.0.1:{sock.getsockname()[1]}"
-    server.should_exit = True
-    await task
+    async with serve(signed_in.app) as url:
+        yield url
 
 
 async def test_events_require_a_session(api: Api) -> None:
@@ -45,12 +35,7 @@ async def test_committed_card_event_is_streamed(signed_in: Api, served: str) -> 
         async with signed_in.app.state.session_factory() as db:
             await notify(db, "cards", json.dumps({"type": "card.created", "id": "c-1"}))
             await db.commit()
-        lines = response.aiter_lines()
-        async with asyncio.timeout(1):
-            while await anext(lines) != "event: card.created":
-                pass
-            data = await anext(lines)
-        assert data.startswith("data: ") and json.loads(data[6:]) == {"id": "c-1"}
+        assert await next_event(response, "card.created") == {"id": "c-1"}
 
 
 async def test_push_subscription_lifecycle(signed_in: Api) -> None:

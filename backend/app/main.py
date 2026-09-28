@@ -13,10 +13,17 @@ from sqlalchemy import make_url, text
 from app.alerts.service import AlertService
 from app.api.errors import ApiError, api_error_handler, validation_error_handler
 from app.api.origin_check import origin_check
+from app.api.routes import alerts as alerts_routes
 from app.api.routes import auth as auth_routes
+from app.api.routes import cards as cards_routes
 from app.api.routes import config as config_routes
 from app.api.routes import events as events_routes
+from app.api.routes import feed as feed_routes
+from app.api.routes import health as health_routes
 from app.api.routes import ingest as ingest_routes
+from app.api.routes import lots as lots_routes
+from app.api.routes import orders as orders_routes
+from app.api.routes import positions as positions_routes
 from app.api.routes import push as push_routes
 from app.auth.rate_limit import SlidingWindowLimiter
 from app.auth.service import AuthService
@@ -197,6 +204,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_routes.router, prefix="/api/v1")
     app.include_router(config_routes.router, prefix="/api/v1")
     app.include_router(events_routes.router, prefix="/api/v1")
+    for read in (feed_routes, cards_routes, positions_routes, lots_routes, orders_routes):
+        app.include_router(read.router, prefix="/api/v1")
+    app.include_router(alerts_routes.router, prefix="/api/v1")
+    app.include_router(health_routes.router, prefix="/api/v1")
     app.include_router(push_routes.router, prefix="/api/v1")
     app.include_router(ingest_routes.router)
 
