@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from datetime import timedelta
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -11,10 +12,15 @@ from sqlalchemy import make_url, text
 
 from app.alerts.service import AlertService
 from app.api.errors import ApiError, api_error_handler, validation_error_handler
+from app.api.origin_check import origin_check
+from app.api.routes import auth as auth_routes
 from app.api.routes import config as config_routes
+from app.auth.rate_limit import SlidingWindowLimiter
+from app.auth.service import AuthService
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.logging import configure_logging
+from app.markettime import SystemClock
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 
@@ -48,6 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.config_service = config_service
     app.state.alerts = AlertService(session_factory)
     app.state.flags = FlagService(session_factory, app.state.alerts)
+    app.state.auth = AuthService(session_factory, settings, app.state.clock, app.state.alerts)
     try:
         yield
     finally:
@@ -59,9 +66,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Trading Agent", lifespan=lifespan)
-    app.state.settings = settings or get_settings()
+    settings = settings or get_settings()
+    app.state.settings = settings
+    app.state.clock = SystemClock()
+    app.state.auth_limiter = SlidingWindowLimiter(
+        settings.auth_rate_limit_per_min, timedelta(minutes=1), app.state.clock
+    )
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.middleware("http")(origin_check(settings.dashboard_origin))
+    app.include_router(auth_routes.router, prefix="/api/v1")
     app.include_router(config_routes.router, prefix="/api/v1")
 
     @app.get("/health")

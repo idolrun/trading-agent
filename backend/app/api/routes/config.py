@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.deps import ConfigServiceDep, SessionIdDep
+from app.api.deps import ConfigServiceDep, SessionDep
 from app.api.errors import ApiError
 from app.api.schemas.config import ConfigResponse, UpdateConfigRequest
 from app.runtime_config.models import Actor
@@ -10,7 +10,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 
 @router.get("")
-async def get_config(service: ConfigServiceDep, _session_id: SessionIdDep) -> ConfigResponse:
+async def get_config(service: ConfigServiceDep, _ctx: SessionDep) -> ConfigResponse:
     snapshot = service.snapshot()
     if snapshot is None:
         raise ApiError("runtime config has not been initialized", "not_found", 404)
@@ -19,7 +19,7 @@ async def get_config(service: ConfigServiceDep, _session_id: SessionIdDep) -> Co
 
 @router.put("")
 async def put_config(
-    body: UpdateConfigRequest, service: ConfigServiceDep, session_id: SessionIdDep
+    body: UpdateConfigRequest, service: ConfigServiceDep, ctx: SessionDep
 ) -> ConfigResponse:
     try:
         snapshot = await service.update(
@@ -27,7 +27,7 @@ async def put_config(
             expected_version=body.expected_version,
             actor=Actor.USER,
             reason=body.reason,
-            session_id=session_id,
+            session_id=ctx.session_id,
         )
     except VersionConflict:
         raise ApiError(

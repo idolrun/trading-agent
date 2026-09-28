@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     database_url: PostgresDsn  # runtime role trading_app
     database_owner_url: PostgresDsn  # migrations / graph setup, role trading_owner
     db_pool_size: int = 10
+    # Passkey auth (F009). The dashboard origin is also the WebAuthn origin; rp_id its host.
+    rp_id: str = "localhost"
+    rp_name: str = "Trading Agent"
+    dashboard_origin: str = "http://localhost:3000"
+    session_idle_minutes: int = 60
+    session_absolute_hours: int = 12  # covers one US session (19:15-01:45 local)
+    step_up_window_s: int = 120
+    auth_rate_limit_per_min: int = 10
     # Integration tests only (tests/integration/conftest.py).
     test_database_url: PostgresDsn | None = None
     test_database_owner_url: PostgresDsn | None = None

@@ -69,3 +69,12 @@ AC-10 backend part: passkey-only; step-up dependency works; every attempt audite
 
 ## Open decisions touched
 OD-23 (meaning of "device-bound").
+
+## Implementation notes (2026-09-28)
+- Extra file `app/auth/service.py` (`AuthService`): orchestration of challenge store + WebAuthn + repo + audit, so routes stay thin. Challenge store lives in `webauthn_service.py`.
+- OD-23 proposal implemented (session bound to credential + exact User-Agent; change revokes) — still pending confirmation.
+- Rate limit (10/min per peer IP) applies to the POST login/register/step-up endpoints, not to `GET /auth/session` or logout. Peer IP is the direct client; the reverse-proxy header is F064's job.
+- `enroll` takes no `--label`; the label is given at registration (`register/options`).
+- Sign-count regression is detected from py_webauthn's error text (it has no dedicated exception); raises urgent `auth_anomaly` alert (migration `0006`).
+- Origin middleware returns 403 `forbidden` (new error code, README §1.2).
+- Tests use a software authenticator (`tests/webauthn_authenticator.py`, ES256, attestation `none`); API tests live in `tests/integration/api/` (need DB + lifespan). F006 config routes now require a session; the dev placeholder is gone.

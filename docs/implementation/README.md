@@ -72,7 +72,7 @@ File rule for every module: `models.py` = SQLModel tables only; `repo.py` = quer
 ### 1.2 API conventions
 - JSON API under `/api/v1`, session-cookie auth (`require_session`), except `POST /ingest*` (HMAC) and `GET /health` (public liveness).
 - Response schemas extend `CamelModel` (Pydantic `alias_generator=to_camel`, `populate_by_name`, `serialize_by_alias`) → camelCase JSON matching the existing frontend types. **Discord IDs are serialized as strings.**
-- Errors: `{"message": str, "code": str}` (matches `frontend/lib/api/client.ts`). Codes: `not_found` 404, `conflict` 409, `invalid` 422, `unauthorized` 401, `step_up_required` 403, `rate_limited` 429, `unavailable` 503.
+- Errors: `{"message": str, "code": str}` (matches `frontend/lib/api/client.ts`). Codes: `not_found` 404, `conflict` 409, `invalid` 422, `unauthorized` 401, `step_up_required` 403, `forbidden` 403 (Origin check), `rate_limited` 429, `unavailable` 503.
 - OpenAPI is the contract; the frontend generates types from it (F052).
 
 ### 1.3 Endpoint catalog
