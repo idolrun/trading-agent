@@ -93,6 +93,7 @@ File rule for every module: `models.py` = SQLModel tables only; `repo.py` = quer
 docker compose up -d postgres            # from repo root
 cd backend && uv sync
 uv run alembic upgrade head
+uv run python -m app.graph.checkpointer setup   # LangGraph tables, as owner (F035)
 uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy app
 uv run fastapi dev app/main.py

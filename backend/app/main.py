@@ -34,9 +34,15 @@ from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.dispatcher.service import Dispatcher
 from app.execution.submit import OrderService
+from app.graph.checkpointer import open_pool, saver_and_store
+from app.graph.message_graph import GraphDeps
+from app.graph.processor import GraphProcessor
 from app.ingest.feed_health import FeedHealthMonitor
 from app.ingest.gaps import GapDetector
-from app.interpret.interpreter import FixtureInterpreter, Interpreter, UnconfiguredInterpreter
+from app.interpret.interpreter import FixtureInterpreter, Interpreter
+from app.interpret.jev.client import JevInterpreter
+from app.interpret.llm_extract.agent import LlmInterpreter
+from app.interpret.note import NoteWriter
 from app.llm.chain import LlmChain
 from app.llm.registry import alert_missing_keys
 from app.logging import configure_logging
@@ -47,7 +53,8 @@ from app.messageapi.fake import FakeMessageHistory
 from app.messageapi.port import MessageHistory
 from app.notify.bus import EventBus
 from app.notify.push import PushService
-from app.pipeline.processor import PipelineProcessor, RawReviewPoisonHandler
+from app.pipeline.plan import Planner
+from app.pipeline.processor import RawReviewPoisonHandler
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -152,22 +159,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         asyncio.create_task(app.state.bus.run(libpq_dsn(str(settings.database_url))), name="bus"),
     ]
     dispatcher = None
+    graph_deps: GraphDeps | None = None
+    graph_pool = None
     if settings.background_enabled:
-        processor = PipelineProcessor(
-            session_factory,
+
+        def runtime() -> RuntimeConfig:
+            return config_service.get() or RuntimeConfig()
+
+        graph_pool = open_pool(libpq_dsn(str(settings.database_url)))
+        await graph_pool.open()
+        checkpointer, store = saver_and_store(graph_pool)
+        graph_deps = GraphDeps(
+            sessions=session_factory,
             config=config_service,
-            interpreter=_interpreter(settings),
-            validation=ValidationService(
-                session_factory,
-                marketdata=marketdata,
-                alerts=app.state.alerts,
-                clock=app.state.clock,
-            ),
-            marketdata=marketdata,
-            flags=app.state.flags,
-            alerts=app.state.alerts,
             clock=app.state.clock,
+            planner=Planner(
+                session_factory,
+                validation=ValidationService(
+                    session_factory,
+                    marketdata=marketdata,
+                    alerts=app.state.alerts,
+                    clock=app.state.clock,
+                ),
+                marketdata=marketdata,
+                flags=app.state.flags,
+            ),
+            flags=app.state.flags,
+            llm=LlmInterpreter(app.state.llm, marketdata, app.state.alerts),
+            jev=JevInterpreter(session_factory, settings, runtime, app.state.clock),
+            notes=NoteWriter(session_factory, app.state.llm, app.state.alerts, runtime),
+            store=store,
+            fixture=_fixture(settings),
         )
+        processor = GraphProcessor(graph_deps, checkpointer)
         dispatcher = Dispatcher(
             session_factory,
             config=config_service,
@@ -191,18 +215,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if dispatcher is not None:
             await dispatcher.stop()
+        if graph_deps is not None:
+            for note in graph_deps.background:
+                note.cancel()
+        if graph_pool is not None:
+            await graph_pool.close()
         for task in background:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)
         await engine.dispose()
 
 
-def _interpreter(settings: Settings) -> Interpreter:
-    """Fixtures in dev/tests only; production has no interpreter until F035, so every message
-    becomes a raw review card + parser alert (nothing is silently dropped)."""
+def _fixture(settings: Settings) -> Interpreter | None:
+    """Dev/demo/tests only: recorded interpretations replace Jev + LLM. Never in production."""
     if settings.environment != "production" and settings.interpretation_fixtures_dir:
         return FixtureInterpreter(settings.interpretation_fixtures_dir)
-    return UnconfiguredInterpreter()
+    return None
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

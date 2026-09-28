@@ -43,4 +43,5 @@ def downgrade() -> None:
         "REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM trading_app"
     )
     op.execute("REVOKE USAGE ON SCHEMA public, langgraph FROM trading_app")
-    op.execute("DROP SCHEMA langgraph")
+    # CASCADE: LangGraph's own tables live here (created by `setup()`, not Alembic, F035).
+    op.execute("DROP SCHEMA langgraph CASCADE")

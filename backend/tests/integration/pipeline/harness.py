@@ -10,18 +10,26 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.alerts.service import AlertService
+from app.config import get_settings
 from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
+from app.graph.message_graph import GraphDeps
+from app.graph.processor import GraphProcessor
 from app.inbox import repo as inbox
 from app.inbox.envelope import Envelope
 from app.ingest.adapter import to_envelope
-from app.interpret.interpreter import FixtureInterpreter, Interpreter
+from app.interpret.interpreter import FixtureInterpreter
+from app.interpret.jev.client import JevInterpreter
+from app.interpret.llm_extract.agent import LlmInterpreter
+from app.interpret.note import NoteWriter
 from app.interpret.signal import F, LinkHint, LiteralSpan, ParsedSignal, ParsedSignals, SignalFields
+from app.llm.chain import LlmChain
 from app.marketdata.fake import FakeMarketData
 from app.markettime import FixedClock
 from app.pipeline.apply import position_id_for, signal_id_for
-from app.pipeline.processor import PipelineProcessor
+from app.pipeline.plan import Planner
 from app.runtime_config.models import Actor
+from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.validate.service import ValidationService
@@ -79,7 +87,7 @@ class Harness:
     @classmethod
     async def create(cls, factory: Factory, fixtures: Path, **overrides: Any) -> "Harness":
         clock = FixedClock(T0 + timedelta(seconds=5))
-        config = ConfigService(factory)
+        config = ConfigService(factory, allow_ungated_models=True)
         await config.update(
             CONFIG.model_copy(update={"channels": [CHANNEL], **overrides}),
             expected_version=0,
@@ -95,19 +103,43 @@ class Harness:
             clock,
         )
 
-    def processor(self, interpreter: Interpreter | None = None) -> PipelineProcessor:
-        return PipelineProcessor(
+    def processor(
+        self,
+        *,
+        fixture: bool = True,
+        llm: LlmInterpreter | None = None,
+        jev: JevInterpreter | None = None,
+        notes: NoteWriter | None = None,
+        checkpointer: Any = None,
+    ) -> GraphProcessor:
+        """The message graph. `fixture=True`: recorded interpretations replace Jev + LLM.
+        Otherwise Jev (if given) and the LLM (default: an unconfigured chain -> exhausted)."""
+        flags = FlagService(self.factory, self.alerts)
+        chain = LlmChain(
             self.factory,
-            config=self.config,
-            interpreter=interpreter or FixtureInterpreter(self.fixtures),
-            validation=ValidationService(
-                self.factory, marketdata=self.md, alerts=self.alerts, clock=self.clock
-            ),
-            marketdata=self.md,
-            flags=FlagService(self.factory, self.alerts),
-            alerts=self.alerts,
-            clock=self.clock,
+            get_settings(),
+            lambda: (self.config.get() or RuntimeConfig()).llm,
+            self.clock,
         )
+        deps = GraphDeps(
+            sessions=self.factory,
+            config=self.config,
+            clock=self.clock,
+            planner=Planner(
+                self.factory,
+                validation=ValidationService(
+                    self.factory, marketdata=self.md, alerts=self.alerts, clock=self.clock
+                ),
+                marketdata=self.md,
+                flags=flags,
+            ),
+            flags=flags,
+            llm=llm or LlmInterpreter(chain, self.md, self.alerts),
+            jev=jev,
+            notes=notes,
+            fixture=FixtureInterpreter(self.fixtures) if fixture else None,
+        )
+        return GraphProcessor(deps, checkpointer)
 
     async def message(
         self,
@@ -133,9 +165,9 @@ class Harness:
         *,
         stale: bool = False,
         attempt: int = 1,
-        interpreter: Interpreter | None = None,
+        processor: GraphProcessor | None = None,
     ) -> None:
-        await self.processor(interpreter).process(
+        await (processor or self.processor()).process(
             ProcessingContext(
                 envelope=env,
                 attempt=attempt,

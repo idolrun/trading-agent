@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from alembic import command
 from psycopg import errors
@@ -5,7 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.integration.conftest import alembic_config
+from app.graph import checkpointer as graph_checkpointer
+from tests.integration.conftest import _url, alembic_config
 
 
 async def test_app_role_connects(db_session: AsyncSession) -> None:
@@ -30,3 +33,5 @@ def test_migrations_down_and_up() -> None:
     cfg = alembic_config()
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
+    owner_dsn = _url("test_database_owner_url").replace("postgresql+psycopg://", "postgresql://")
+    asyncio.run(graph_checkpointer.setup(owner_dsn))  # the schema was dropped with its tables

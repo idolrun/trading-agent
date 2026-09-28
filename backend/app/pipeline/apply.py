@@ -75,6 +75,7 @@ class ApplyInput:
     interpreter: Interpreter
     book_version: dict[uuid.UUID, datetime]  # position id -> updated_at the plan was built on
     outcomes: list[SignalOutcome]
+    model_call_id: int | None = None  # the Jev call / LLM attempt that produced the signals
 
 
 @dataclass
@@ -108,7 +109,7 @@ async def apply_event(db: AsyncSession, inp: ApplyInput) -> ApplyOutcome:
         db, env.key, InboxStatus.STALE if stale else InboxStatus.DONE, late=inp.ctx.late
     )
     if result.created and result.card_ids:
-        await _stage(db, env.key, inp.ctx.attempt)
+        await record_stage(db, env.key, inp.ctx.attempt, Stage.CARD)
     return result
 
 
@@ -209,6 +210,7 @@ async def _insert_signal(db: AsyncSession, inp: ApplyInput, o: SignalOutcome) ->
             instrument=o.parsed.instrument,
             fields=o.parsed.fields.model_dump(mode="json", exclude_defaults=True),
             interpreter=inp.interpreter,
+            model_call_id=inp.model_call_id,
             stale=ctx.stale,
             late=ctx.late,
             schema_version=1,
@@ -219,7 +221,8 @@ async def _insert_signal(db: AsyncSession, inp: ApplyInput, o: SignalOutcome) ->
     return inserted is not None
 
 
-async def _stage(db: AsyncSession, key: EventKey, attempt: int) -> None:
+async def record_stage(db: AsyncSession, key: EventKey, attempt: int, stage: Stage) -> None:
+    """Per-stage timestamp (PRD §12); idempotent per (event, attempt, stage)."""
     await db.execute(
         pg_insert(StageTiming)
         .values(
@@ -227,7 +230,7 @@ async def _stage(db: AsyncSession, key: EventKey, attempt: int) -> None:
             event_type=key.event_type,
             event_seq=key.event_seq,
             attempt=attempt,
-            stage=Stage.CARD,
+            stage=stage,
         )
         .on_conflict_do_nothing()
     )

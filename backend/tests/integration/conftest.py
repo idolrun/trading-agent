@@ -5,6 +5,7 @@ after each test (not rolled back): features rely on commits (NOTIFY, advisory lo
 connections).
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -15,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
+from app.graph import checkpointer as graph_checkpointer
 
 # Structural rows seeded by migrations survive truncation (flags are reset instead).
 KEEP_TABLES = {"alembic_version", "system_flags"}
+GRAPH_TABLES = ("checkpoints", "checkpoint_blobs", "checkpoint_writes", "store")
 
 
 def _url(name: str) -> str:
@@ -36,6 +39,8 @@ def alembic_config() -> Config:
 @pytest.fixture(scope="session")
 def owner_engine() -> Iterator[Engine]:
     command.upgrade(alembic_config(), "head")
+    owner_dsn = _url("test_database_owner_url").replace("postgresql+psycopg://", "postgresql://")
+    asyncio.run(graph_checkpointer.setup(owner_dsn))  # F035, as the owner role
     engine = create_engine(_url("test_database_owner_url"), poolclass=NullPool)
     yield engine
     engine.dispose()
@@ -51,6 +56,8 @@ def _clean_tables(owner_engine: Engine) -> Iterator[None]:
         truncate = [t for t in tables if t not in KEEP_TABLES]
         if truncate:
             conn.execute(text(f"TRUNCATE {', '.join(truncate)} RESTART IDENTITY CASCADE"))
+        # LangGraph data (schema langgraph); its *_migrations tables must survive.
+        conn.execute(text(f"TRUNCATE {', '.join(f'langgraph.{t}' for t in GRAPH_TABLES)}"))
         if "system_flags" in tables:
             conn.execute(text("UPDATE system_flags SET active = false, reason = NULL"))
 

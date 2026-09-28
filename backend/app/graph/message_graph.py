@@ -1,0 +1,317 @@
+"""The message graph (TRD §2.1, F035): one run per message event, under the provider slot.
+
+    load_context -> find_candidates -> fixture_interpret (dev/tests) -> decide_apply
+                                    -> jev_interpret -> route:
+                                         feed_only | assemble -> decide_apply
+                                         slow_path -> llm_extract -> decide_apply
+    llm_extract (exhausted / rejected) | decide_apply (span mismatch) -> raw_review
+    decide_apply | raw_review -> notify -> END
+
+Nodes are thin adapters over the existing services. Side effects: only `decide_apply` /
+`raw_review` (one DB transaction each) and `notify` (post-commit). Models are side-effect free
+apart from their `model_calls` audit rows. The graph ends at notify; approvals are F036.
+"""
+
+import asyncio
+import logging
+import uuid
+from dataclasses import dataclass, field
+from typing import Any
+
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.store.base import BaseStore
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col
+
+from app.cards.models import Card, CardAction, CardState
+from app.db import in_transaction
+from app.dispatcher.types import ProcessingContext
+from app.graph.state import MessageState
+from app.inbox import repo as inbox
+from app.inbox.models import EventType, InboxStatus, Stage
+from app.interpret import context_repo
+from app.interpret.candidates import Candidates, find_candidates
+from app.interpret.context import ProviderContext, load_context
+from app.interpret.interpreter import Interpreter, InterpreterUnavailable
+from app.interpret.jev.client import JevInterpreter
+from app.interpret.llm_extract.agent import LlmInterpreter
+from app.interpret.models import Interpreter as InterpreterKind
+from app.interpret.note import NoteWriter
+from app.interpret.route import route
+from app.interpret.signal import ParsedSignals
+from app.interpret.spans import verify_literal_spans
+from app.ledger import repo as ledger
+from app.ledger.positions import state_of
+from app.llm.usage import CallRef
+from app.markettime import Clock
+from app.pipeline.apply import ApplyInput, apply_event, apply_raw_review, record_stage
+from app.pipeline.plan import Planner
+from app.runtime_config.models import Actor
+from app.runtime_config.schema import RuntimeConfig
+from app.runtime_config.service import ConfigService
+from app.system.flags import FlagService
+from app.system.models import FlagName
+
+logger = logging.getLogger(__name__)
+PROFILE_KEYS = ("lexicon", "habits", "aliases")  # store namespace ("provider", author_id)
+
+
+@dataclass
+class GraphDeps:
+    sessions: async_sessionmaker[AsyncSession]
+    config: ConfigService
+    clock: Clock
+    planner: Planner
+    flags: FlagService
+    llm: LlmInterpreter
+    jev: JevInterpreter | None = None
+    notes: NoteWriter | None = None
+    store: BaseStore | None = None
+    fixture: Interpreter | None = None  # dev/demo/tests only: replaces Jev + LLM
+    background: set[asyncio.Task[Any]] = field(default_factory=set)
+
+    def cfg(self) -> RuntimeConfig:
+        return self.config.get() or RuntimeConfig()
+
+
+def build_message_graph(
+    deps: GraphDeps, checkpointer: Any = None
+) -> CompiledStateGraph[Any, Any, Any, Any]:
+    n = _Nodes(deps)
+    g = StateGraph(MessageState)
+    for name, fn in (
+        ("load_context", n.load_context),
+        ("find_candidates", n.find_candidates),
+        ("fixture_interpret", n.fixture_interpret),
+        ("jev_interpret", n.jev_interpret),
+        ("llm_extract", n.llm_extract),
+        ("decide_apply", n.decide_apply),
+        ("raw_review", n.raw_review),
+        ("notify", n.notify),
+    ):
+        g.add_node(name, fn)
+    g.add_edge(START, "load_context")
+    g.add_conditional_edges("load_context", lambda s: END if s["skip"] else "find_candidates")
+    g.add_conditional_edges(
+        "find_candidates",
+        lambda _s: "fixture_interpret" if deps.fixture is not None else "jev_interpret",
+    )
+    g.add_conditional_edges("fixture_interpret", _raw_review_or("decide_apply"))
+    g.add_conditional_edges(
+        "jev_interpret", lambda s: "llm_extract" if s["route"] == "slow_path" else "decide_apply"
+    )
+    g.add_conditional_edges("llm_extract", _raw_review_or("decide_apply"))
+    g.add_conditional_edges("decide_apply", _raw_review_or("notify"))  # span mismatch
+    g.add_edge("raw_review", "notify")
+    g.add_edge("notify", END)
+    return g.compile(checkpointer=checkpointer)
+
+
+def _raw_review_or(next_node: str) -> Any:
+    return lambda s: "raw_review" if s["raw_reason"] else next_node
+
+
+class _Nodes:
+    def __init__(self, deps: GraphDeps) -> None:
+        self.d = deps
+
+    async def load_context(self, state: MessageState) -> dict[str, Any]:
+        ctx = _processing(state)
+        env = ctx.envelope
+        if env.key.event_type != EventType.CREATE:
+            # ponytail: edits/deletes stay feed-only until corrections land (F038)
+            async with in_transaction(self.d.sessions, None) as db:
+                await inbox.mark(db, env.key, InboxStatus.DONE, late=ctx.late)
+            return {"skip": True}
+        cfg = self.d.cfg()
+        profile = await self._profile(env.provider_id)
+        async with in_transaction(self.d.sessions, None) as db:
+            context = await load_context(
+                db,
+                env,
+                recent_n=cfg.context_recent_messages or 0,
+                now=self.d.clock.now(),
+                profile=profile,
+            )
+            lots = await ledger.open_lots(db)
+            await record_stage(db, env.key, ctx.attempt, Stage.CONTEXT)
+        return {
+            "context": context.model_dump(mode="json"),
+            "lot_ids": [str(lot.lot_id) for lot in lots],
+        }
+
+    async def find_candidates(self, state: MessageState) -> dict[str, Any]:
+        text = _processing(state).envelope.text or ""
+        return {"candidates": find_candidates(text).model_dump(mode="json")}
+
+    async def fixture_interpret(self, state: MessageState) -> dict[str, Any]:
+        assert self.d.fixture is not None  # noqa: S101 — edge only taken when injected
+        try:
+            parsed = await self.d.fixture.interpret(_context(state), _candidates(state))
+        except InterpreterUnavailable:
+            return {"raw_reason": "parser_degraded"}
+        kind = "none" if parsed.interpreter == "stub" else parsed.interpreter
+        return {"route": "fixture", "parsed": parsed.model_dump(mode="json"), "interpreter": kind}
+
+    async def jev_interpret(self, state: MessageState) -> dict[str, Any]:
+        ctx = _processing(state)
+        result = None
+        if self.d.jev is not None:
+            result = await self.d.jev.interpret(
+                _context(state),
+                _candidates(state),
+                ref=_ref(ctx),
+                lot_ids=frozenset(state["lot_ids"]),
+            )
+            await self._stage(ctx, Stage.JEV)
+        decision = route(result, self.d.cfg())
+        return {
+            "route": decision.path,
+            "hints": decision.hints,
+            "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
+            "interpreter": "jev",
+            "model_call_id": result.model_call_id if result else None,
+        }
+
+    async def llm_extract(self, state: MessageState) -> dict[str, Any]:
+        ctx = _processing(state)
+        deadline = self.d.cfg().llm.roles.extract.deadline_ms
+        try:
+            async with asyncio.timeout(None if deadline is None else deadline / 1000):
+                result = await self.d.llm.extract(
+                    _context(state),
+                    _candidates(state),
+                    ref=_ref(ctx),
+                    hints=state["hints"],
+                    lot_ids=frozenset(state["lot_ids"]),
+                )
+        except TimeoutError:
+            result = None
+        await self._stage(ctx, Stage.LLM)
+        if result is None or result.status == "exhausted":  # FR-9
+            await self.d.flags.set(
+                FlagName.PARSER_DEGRADED,
+                True,
+                "LLM chain exhausted or timed out: messages become raw review cards",
+                Actor.SYSTEM,
+            )
+            return {"raw_reason": "parser_degraded"}
+        if result.status == "content_rejected":  # no answer shopping (TRD §4.8 rule 3)
+            return {"raw_reason": f"llm_content_rejected:{result.reason or ''}"[:200]}
+        await self.d.flags.set(FlagName.PARSER_DEGRADED, False, "LLM answered again", Actor.SYSTEM)
+        assert result.value is not None  # noqa: S101 — status ok
+        return {
+            "parsed": result.value.model_dump(mode="json"),
+            "interpreter": "llm",
+            "model_call_id": result.last.model_call_id if result.last else None,
+        }
+
+    async def decide_apply(self, state: MessageState) -> dict[str, Any]:
+        """validate -> link -> decide (pure, pre-tx) then the one apply transaction. Kept in
+        one node so decided outcomes never pass through the checkpoint."""
+        ctx = _processing(state)
+        env = ctx.envelope
+        parsed = (
+            ParsedSignals.model_validate(state["parsed"])
+            if state["parsed"] is not None
+            else ParsedSignals(signals=[], interpreter="none")
+        )
+        if verify_literal_spans(parsed, env.text or ""):  # AC-11, every interpreter
+            return {"raw_reason": "literal_span_mismatch"}
+        cfg = self.d.cfg()
+        async with self.d.sessions() as db:
+            rows = await context_repo.open_book(db, env.provider_id)
+            parents = await ledger.parent_links(db, env.reply_to_id) if env.reply_to_id else ()
+        book = {r.provider_position_id: state_of(r) for r in rows}
+        version = {r.provider_position_id: r.updated_at for r in rows}
+        outcomes = await self.d.planner.plan(ctx, parsed, cfg, book, parents, self.d.clock.now())
+        await self._stage(ctx, Stage.VALIDATED)
+        async with in_transaction(self.d.sessions, None) as db:
+            result = await apply_event(
+                db,
+                ApplyInput(
+                    ctx,
+                    InterpreterKind(state["interpreter"] or "none"),
+                    version,
+                    outcomes,
+                    model_call_id=state["model_call_id"],
+                ),
+            )
+        return {"card_ids": [str(c) for c in result.card_ids]}
+
+    async def raw_review(self, state: MessageState) -> dict[str, Any]:
+        ctx = _processing(state)
+        async with in_transaction(self.d.sessions, None) as db:
+            card_id = await apply_raw_review(
+                db, ctx, state["raw_reason"] or "raw_review", mark=InboxStatus.DONE
+            )
+        return {"card_ids": [str(card_id)] if card_id else []}
+
+    async def notify(self, state: MessageState) -> dict[str, Any]:
+        """Post-commit. SSE/push already flow from the apply transaction's NOTIFY (F029);
+        here: the advisory note for each new pending card, off the critical path (F034).
+        F036 adds starting the approval graphs."""
+        if self.d.notes is None or not state["card_ids"]:
+            return {}
+        ids = [uuid.UUID(c) for c in state["card_ids"]]
+        async with self.d.sessions() as db:
+            pending = await db.scalars(
+                select(col(Card.card_id)).where(
+                    col(Card.card_id).in_(ids),
+                    col(Card.state) == CardState.PENDING,
+                    col(Card.action) != CardAction.REVIEW,
+                )
+            )
+            targets = list(pending.all())
+        for card_id in targets:
+            task = asyncio.create_task(self._note(card_id), name=f"note:{card_id}")
+            self.d.background.add(task)
+            task.add_done_callback(self.d.background.discard)
+        return {}
+
+    async def _note(self, card_id: uuid.UUID) -> None:
+        assert self.d.notes is not None  # noqa: S101
+        try:
+            await self.d.notes.write(card_id)
+        except Exception:
+            logger.exception("advisory note failed", extra={"card_id": str(card_id)})
+
+    async def _profile(self, author_id: int) -> dict[str, list[str]]:
+        """Long-term provider profile (TRD §5.3). Written only by manual ops (F047)."""
+        if self.d.store is None:
+            return {}
+        profile: dict[str, list[str]] = {}
+        for key in PROFILE_KEYS:
+            item = await self.d.store.aget(("provider", str(author_id)), key)
+            if item is not None and isinstance(item.value.get("items"), list):
+                profile[key] = [str(v) for v in item.value["items"]]
+        return profile
+
+    async def _stage(self, ctx: ProcessingContext, stage: Stage) -> None:
+        async with in_transaction(self.d.sessions, None) as db:
+            await record_stage(db, ctx.envelope.key, ctx.attempt, stage)
+
+
+def _processing(state: MessageState) -> ProcessingContext:
+    return ProcessingContext.model_validate(state["processing"])
+
+
+def _context(state: MessageState) -> ProviderContext:
+    return ProviderContext.model_validate(state["context"])
+
+
+def _candidates(state: MessageState) -> Candidates:
+    return Candidates.model_validate(state["candidates"])
+
+
+def _ref(ctx: ProcessingContext) -> CallRef:
+    key = ctx.envelope.key
+    return CallRef(message_id=key.message_id, event_type=key.event_type, event_seq=key.event_seq)
+
+
+def thread_id(ctx: ProcessingContext) -> str:
+    """Attempt-scoped: a crash re-run starts fresh from load_context (TRD §9)."""
+    key = ctx.envelope.key
+    return f"msg:{key.message_id}:{key.event_type}:{key.event_seq}:{ctx.attempt}"

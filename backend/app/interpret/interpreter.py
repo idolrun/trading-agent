@@ -28,10 +28,3 @@ class FixtureInterpreter:
     async def interpret(self, ctx: ProviderContext, candidates: Candidates) -> ParsedSignals:
         path = self._dir / f"{ctx.message.id}.json"
         return ParsedSignals.model_validate_json(path.read_text())
-
-
-class UnconfiguredInterpreter:
-    """Production until the model interpreters land (F035): every message -> raw review."""
-
-    async def interpret(self, ctx: ProviderContext, candidates: Candidates) -> ParsedSignals:
-        raise InterpreterUnavailable("no interpreter configured")

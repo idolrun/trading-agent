@@ -17,11 +17,11 @@ from app.db import create_session_factory, in_transaction
 from app.inbox.envelope import Envelope
 from app.inbox.models import InboxItem
 from app.instruments import OptionContract
-from app.interpret.interpreter import UnconfiguredInterpreter
 from app.interpret.models import MessageLink, Signal
 from app.ledger import repo as ledger
 from app.ledger.lots import apply_fill
 from app.ledger.models import ProviderPosition, ProviderPositionEvent
+from app.system.models import FlagName, SystemFlag
 from app.timers.models import Timer
 from tests.integration.conftest import _url
 from tests.integration.pipeline.harness import (
@@ -206,13 +206,16 @@ async def test_literal_span_mismatch_gives_raw_review(h: Harness, db_session: As
     assert await count(db_session, ProviderPosition) == 0
 
 
-async def test_no_interpreter_gives_raw_review_and_alert(
+async def test_no_interpreter_gives_raw_review_and_parser_degraded(
     h: Harness, db_session: AsyncSession
 ) -> None:
+    """Production before any model is configured: Jev off, empty LLM chain -> FR-9."""
     env = await h.message("Bought GOOGL 357.5C 10/2 @ 0.71", None, author=PROVIDER_A)
-    await h.process(env, interpreter=UnconfiguredInterpreter())
+    await h.process(env, processor=h.processor(fixture=False))
     card = (await db_session.scalars(select(Card))).one()
     assert card.proposal["review_reasons"] == ["parser_degraded"]
+    flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
+    assert flag is not None and flag.active
     alert = (await db_session.scalars(select(Alert))).one()
-    assert (alert.kind, alert.card_id) == ("parser_degraded", card.card_id)
+    assert alert.kind == "system_flag"
     assert (await db_session.scalars(select(InboxItem.status))).one() == "done"
