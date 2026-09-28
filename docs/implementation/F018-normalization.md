@@ -43,3 +43,10 @@ AC-17 symbol part; FR-12 examples pass; no digit changes.
 
 ## Open decisions touched
 OD-22.
+
+## Implementation notes (2026-09-28)
+- Two pure phases (no I/O): `identify(signal, now, config, aliases)` (symbol map → aliases, expiry resolution, contract completeness for option entries/adds) and `scale_prices(norm, mid, tolerance_pct)`; `normalize()` composes them when the caller already has the quote. F019's service fetches the quote between the phases.
+- Every price is a `Price(raw, value, scale)`; `value` is `raw` or `raw/100`, nothing else (property-tested). `scale=None` = undecided.
+- Scale rule: `/con` → per_contract; stocks → as_is. For options the entry price (or low/high) is the anchor: the reading whose ratio to the live mid is closer to 1 (exact Decimal comparison; a tie → `price_scale_ambiguous`), and it must be within `identity_price_tolerance_pct` (else `price_off_quote`); all premium levels in the signal (TPs, premium stops) follow the anchor's scale; underlying-basis stops are never scaled. Without an anchor each level is matched to the mid on its own. Unknown instrument (exits before linking) or no quote without an anchor → left undecided for F021/F023.
+- Missing strike/right/expiry on an option entry/add → `NeedsReview(reasons=["contract_incomplete"], missing=[…])`. A missing underlying is *not* flagged here: F019 turns it into a review card with the proximity suggestion.
+- Unset tolerance → `NeedsReview(["config_incomplete:identity_price_tolerance_pct"])`; no quote with an entry price → `market_data_unavailable`.
