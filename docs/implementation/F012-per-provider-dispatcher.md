@@ -71,3 +71,10 @@ Catch-up mode (F013), re-linking late events (F037), model semaphores (F031), mu
 
 ## Implementation steps
 1. Types + pure classify. 2. Worker loop with claim/mark. 3. LISTEN wake-up + idle exit. 4. Poison path. 5. Heartbeat. 6. Startup reset. 7. StubProcessor. 8. Tests.
+
+## Implementation notes (2026-09-28)
+- Shared `app.db.listen_forever(dsn, channel, on_notify, on_connect)` now backs both the inbox and config listeners; `on_connect` re-discovers waiting providers after every (re)connect so a missed NOTIFY cannot strand events.
+- No config row → `RuntimeConfig()` defaults: `channels=[]`, so every event is skipped as `channel_not_configured` (visible, never silently dropped). Skip precedence: channel before muted author.
+- Retry is immediate and re-picks the same (earliest) event, preserving order; after `poison_retry_limit` attempts the row is `failed` and `AlertPoisonHandler` raises a `poison` alert (deduped per event). The raw review card is F026.
+- `StubProcessor` records calls and marks `done`/`stale` (with `late`); fixture-driven interpretation arrives with the F026 pipeline processor. The app runs the stub (with a heartbeat task) when `Settings.dispatcher_enabled` (API tests switch it off).
+- Heartbeat: `app/system/heartbeat.py` (`beat`, `last_beat`, `run_heartbeat` every 5 s); `/health` use is F049.

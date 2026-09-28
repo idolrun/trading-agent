@@ -1,14 +1,12 @@
 """Runtime config use cases: cached read, audited update, LISTEN-driven cache refresh."""
 
-import asyncio
 import logging
 import uuid
 from typing import Any
 
-import psycopg
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db import transaction
+from app.db import listen_forever, transaction
 from app.runtime_config import repo
 from app.runtime_config.models import Actor
 from app.runtime_config.schema import RuntimeConfig
@@ -69,18 +67,11 @@ class ConfigService:
     async def listen(self) -> None:
         """Reload on every `NOTIFY config`; reconnects forever. Run as a background task."""
         assert self._listen_dsn is not None  # noqa: S101 — constructed with a DSN by lifespan
-        while True:
-            try:
-                async with await psycopg.AsyncConnection.connect(
-                    self._listen_dsn, autocommit=True
-                ) as conn:
-                    await conn.execute("LISTEN config")
-                    await self.load()  # catch changes made while not listening
-                    async for _ in conn.notifies():
-                        await self.load()
-            except Exception:
-                logger.exception("config listener failed; reconnecting")
-                await asyncio.sleep(1)
+
+        async def reload(_payload: str) -> None:
+            await self.load()
+
+        await listen_forever(self._listen_dsn, "config", reload, self.load)
 
 
 def _diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:

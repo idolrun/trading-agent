@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from fastapi import FastAPI
@@ -22,12 +22,15 @@ from app.broker.fake import FakeBroker
 from app.broker.port import BrokerClient, BrokerEvents
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
+from app.dispatcher.service import AlertPoisonHandler, Dispatcher
+from app.dispatcher.stub import StubProcessor
 from app.logging import configure_logging
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
 from app.markettime import SystemClock
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
+from app.system.heartbeat import run_heartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +71,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.broker = broker
     app.state.broker_events = broker_events
     app.state.marketdata = marketdata
+
+    background = [config_listener]
+    dispatcher = None
+    if settings.dispatcher_enabled:
+        # Stub interpretation until the pipeline processor (F026) / message graph (F035).
+        dispatcher = Dispatcher(
+            session_factory,
+            config=config_service,
+            processor=StubProcessor(session_factory),
+            poison=AlertPoisonHandler(app.state.alerts),
+            clock=app.state.clock,
+            listen_dsn=libpq_dsn(str(settings.database_url)),
+        )
+        await dispatcher.start()
+        background.append(
+            asyncio.create_task(run_heartbeat(session_factory, app.state.clock), name="heartbeat")
+        )
+    app.state.dispatcher = dispatcher
     try:
         yield
     finally:
-        config_listener.cancel()
-        with suppress(asyncio.CancelledError):
-            await config_listener
+        if dispatcher is not None:
+            await dispatcher.stop()
+        for task in background:
+            task.cancel()
+        await asyncio.gather(*background, return_exceptions=True)
         await engine.dispose()
 
 

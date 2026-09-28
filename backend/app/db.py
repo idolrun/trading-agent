@@ -1,11 +1,15 @@
 """Engine, sessions, transaction helper and shared column helpers. No queries here."""
 
-from collections.abc import AsyncIterator, Iterable
+import asyncio
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
+import psycopg
 from fastapi import Request
+from psycopg import sql
 from sqlalchemy import (
     ARRAY,
     BigInteger,
@@ -31,6 +35,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlmodel import AutoString, Field, SQLModel
 
 from app.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
@@ -71,6 +77,28 @@ async def in_transaction(
         return
     async with factory() as session, transaction(session):
         yield session
+
+
+async def listen_forever(
+    dsn: str,
+    channel: str,
+    on_notify: Callable[[str], Awaitable[None]],
+    on_connect: Callable[[], Awaitable[None]],
+) -> None:
+    """`LISTEN channel` on a dedicated connection; reconnects forever (run as a task).
+
+    `on_connect` runs after every (re)connect, once listening, to catch anything missed.
+    """
+    while True:
+        try:
+            async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
+                await conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(channel)))
+                await on_connect()
+                async for message in conn.notifies():
+                    await on_notify(message.payload)
+        except Exception:
+            logger.exception("listener failed; reconnecting", extra={"channel": channel})
+            await asyncio.sleep(1)
 
 
 async def notify(db: AsyncSession, channel: str, payload: str) -> None:
