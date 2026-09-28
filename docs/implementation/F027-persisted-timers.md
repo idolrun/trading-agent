@@ -37,3 +37,10 @@ Exactly-once firing under races and restarts.
 
 ## Implementation steps
 1. Repo. 2. Service + registry. 3. Scheduler loop + NOTIFY. 4. Tests.
+
+## Implementation notes (2026-09-29)
+- One `timers/service.py` (`TimerService`: `schedule`, `cancel`, `register`, `run_due`, `run`) instead of a separate `scheduler.py`; queries in `timers/repo.py` (`schedule` — also used by F026 inside the apply tx —, `claim_due`, `next_due`, `cancel`).
+- Claim = `UPDATE … SET status='fired' WHERE timer_id = (earliest due … FOR UPDATE SKIP LOCKED) AND status='scheduled' RETURNING`, committed before the handler runs → exactly once across racing schedulers and restarts. Due time comes from the injected `Clock`.
+- Only kinds with a registered handler are claimed, so `card_expiry` rows written by F026 wait (and fire as overdue) until F036 registers the expiry handler.
+- Handler failure → alert kind **`timer_failed`** (new, migration `0009`, database-schema.md #27) + one reschedule at +5 s with dedupe key `<key>:retry`; a failing retry only alerts.
+- Loop wakes on `NOTIFY timers` (sent by `schedule`) or after `min(next due, 1 s)`; started in the lifespan (`app.state.timers`).

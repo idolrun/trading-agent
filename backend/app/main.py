@@ -36,6 +36,7 @@ from app.pipeline.processor import PipelineProcessor, RawReviewPoisonHandler
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.system.heartbeat import run_heartbeat
+from app.timers.service import TimerService
 from app.validate.service import ValidationService
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     feed_health.on_recovered.append(backfill_on_recovery)
 
+    # Handlers are registered by their owners (card expiry: F036); unregistered kinds wait.
+    app.state.timers = TimerService(
+        session_factory,
+        alerts=app.state.alerts,
+        clock=app.state.clock,
+        listen_dsn=libpq_dsn(str(settings.database_url)),
+    )
     background = [config_listener]
     dispatcher = None
     if settings.background_enabled:
@@ -132,6 +140,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             asyncio.create_task(run_heartbeat(session_factory, app.state.clock), name="heartbeat")
         )
         background.append(asyncio.create_task(feed_health.run(), name="feed-health"))
+        background.append(asyncio.create_task(app.state.timers.run(), name="timers"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
     app.state.dispatcher = dispatcher
     try:
