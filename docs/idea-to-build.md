@@ -1,0 +1,16 @@
+i want to creating a trading agent that will use the input provided or the signal that is given to the trading agent from messaging application. The basic flow of the agent I want to create is that the system will get the input signal from the messages or the messages channel from mulitple user and for multiple company. Based on that signal it should decide to buy, sell, or hold the stock.  
+  
+The message that comes is not very clear or is a vague message. The system should make a decision to buy or sell the stock based on the user's stock by parsing the message and converting it in structure output. Suppose I have a stock of Apple at 100 and if I get a signal to sell the stock, then the agent should be able to decide or interpret the signal and then act on the signal. It will have a certain rule threshold, like if loss if more then 50 do not sell and so on.
+  
+Trading basically means you may buy or sell the stock  the profit or the loss (to reduce future loss) based on the the signal give and the the user portfolio. Sometimes you just sell the stock to minimize the loss even if you are selling at a loss. All the agents should strictly follow the messaging app signal and the constraint said.  
+  
+There are technically two phases:
+
+1.  Interpret the message or the signal, what the signal is trying to say, with the context of the user's trading history or the user's portfolio: what stock they have, how much stock they have, at what price they bought the stock, and when they bought it. Based on that overall signal and the portfolio, the signal should be interpreted to sell or buy the stock.
+2.  The agent or the system should be connected to that trading site in order to buy and sell the stock on it.
+
+The agent's interpretation of the signal may not be 100% true, like how a human would interpret it based on the context of broken message short message, term, and signal in mulitple messages, so it should be human in the loop. Before buying and selling it should always ask, "Should I buy or should I not?" Based on the human feedback, buy or sell, it should proceed further.  
+  
+The first phase is very critical: based on the portfolio and the signal, the system should interpret the signal, have the context of the portfolio, and then decide what is best: to sell or to hold the stock. This is the overall flow. There is nothing like prediction. Everything is based on the signal from the app. The signal can come from multiple sources, from multiple people, and sometimes the signal can be contained in the messaging app. The signal can be connected to other messages as reference . There are two messages and they might both be connected to each other.  
+  
+To handle basic signal errors sometimes the signal might say "Apple stock 112" but because of the typing mistake it was originally 115. The signal or the message in another message might be from 115. In the messaging app or the messaging system, multiple people give signals of multiple signal  should be queued based on the company and the person. The context and the previous and current messages can be compared or should act as the same.

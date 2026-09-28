@@ -1,0 +1,277 @@
+docs/data/
+# ============================================
+
+# OS / Editor
+
+# ============================================
+
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# ============================================
+
+# Environment Variables / Secrets
+
+# ============================================
+
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# ============================================
+
+# Docker
+
+# ============================================
+
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Docker local volumes / data
+
+docker-data/
+.docker/
+
+# ============================================
+
+# Node.js / Next.js / React
+
+# ============================================
+
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Next.js
+
+.next/
+out/
+.vercel/
+
+# Next.js build/cache
+
+.next/cache/
+
+# React / frontend build
+
+dist/
+build/
+
+# TypeScript
+
+*.tsbuildinfo
+
+# ============================================
+
+# Python / FastAPI
+
+# ============================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python builds
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Python virtual environments
+
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+
+# Coverage
+
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# ============================================
+
+# uv
+
+# ============================================
+
+# uv virtual environment
+
+.venv/
+
+# uv cache
+
+.uv/
+
+# ============================================
+
+# Jupyter
+
+# ============================================
+
+.ipynb_checkpoints/
+
+# ============================================
+
+# FastAPI / Application Runtime
+
+# ============================================
+
+*.log
+logs/
+
+# Local runtime files
+
+tmp/
+temp/
+
+# PID files
+
+*.pid
+
+# ============================================
+
+# LangChain / LangGraph
+
+# ============================================
+
+# Local LangGraph / LangChain generated data
+
+.langgraph/
+.langchain/
+
+# Local agent/checkpoint data
+
+checkpoints/
+.agent/
+.agents/
+
+# LangSmith local/config files
+
+.langsmith/
+
+# ============================================
+
+# Databases / Local Storage
+
+# ============================================
+
+*.db
+*.sqlite
+*.sqlite3
+
+# PostgreSQL local data
+
+postgres-data/
+
+# Redis local data
+
+redis-data/
+
+# Other local storage
+
+data/
+storage/
+
+# ============================================
+
+# Test / Development
+
+# ============================================
+
+.pytest_cache/
+.tox/
+.nox/
+
+# Test reports
+
+test-results/
+playwright-report/
+blob-report/
+
+# Playwright
+
+playwright/.cache/
+
+# ============================================
+
+# Coverage / Reports
+
+# ============================================
+
+coverage/
+.nyc_output/
+
+# ============================================
+
+# Generated Files
+
+# ============================================
+
+*.generated.*
+generated/
+.cache/
+.cache-loader/
+
+# ============================================
+
+# Secrets / Credentials
+
+# ============================================
+
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+credentials.json
+service-account.json
+secrets.json
+
+# ============================================
+
+# Local IDE / Tool State
+
+# ============================================
+
+.cursor/
+.history/
+.direnv/
+
+# ============================================
+
+# Misc
+
+# ============================================
+
+*.bak
+*.tmp
+*.temp
+.DS_Store
+
