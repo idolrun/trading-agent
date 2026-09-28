@@ -45,6 +45,7 @@ class ProposedAction(_Frozen):
     card_type: CardType
     qty: int | None = None  # None = the user enters it (C26, C52, C82)
     limit_price: Decimal | None = None  # entries/adds only; exits start at the mid (C25)
+    signal_price: Decimal | None = None  # entries/adds: stated price or top of range (C22 band)
     stop: StopProposal | None = None
     tp_legs: list[TpLeg] = []
     labels: list[str] = []

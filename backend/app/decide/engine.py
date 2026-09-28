@@ -13,7 +13,7 @@ from app.decide.types import BreakevenOptions, DecisionInputs, ProposedAction, S
 from app.interpret.models import LinkOutcome, MsgType
 from app.interpret.signal import F, SignalFields
 from app.ledger.positions import OPENING
-from app.validate.normalize import NormalizedSignal, premium_prices
+from app.validate.normalize import NormalizedSignal, Price, premium_prices
 
 # Feed only (OD-18: conditional, tp_hit_notice); corrections are handled by F038.
 FEED_ONLY = frozenset(
@@ -77,7 +77,7 @@ def _propose(i: DecisionInputs) -> list[ProposedAction]:
                 action=action,
                 card_type=CardType.REVIEW,
                 review_reasons=[f"link_{outcome}"],
-                missing_fields=["position"],
+                missing_fields=["chosen_position_id"],
                 candidate_position_ids=list(i.link.candidate_position_ids) if i.link else [],
                 valid_until=valid_until,
             )
@@ -137,7 +137,13 @@ def _body(
     if card.action in SIZED:
         qty, limit, sizing_reasons, disabled = _size(i, norm, option)
         reasons += sizing_reasons
-        update |= {"qty": qty, "limit_price": limit, "disabled_reason": disabled}
+        price = _signal_price(norm)
+        update |= {
+            "qty": qty,
+            "limit_price": limit,
+            "signal_price": price.value if price else None,
+            "disabled_reason": disabled,
+        }
         if norm.stop_level is not None:  # bracket at entry (C50)
             update["stop"] = _stop(norm.stop_basis, norm.stop_level.value, norm, option)
         update["tp_legs"] = rules.tp_legs([p.value for p in norm.tp_levels], qty)
@@ -180,7 +186,7 @@ def _size(
 ) -> tuple[int | None, Decimal | None, list[str], str | None]:
     """(qty, limit, review reasons, disabled reason). Config gaps leave qty blank: F024
     disables the card as "config incomplete"."""
-    price = norm.entry_price or norm.entry_price_high or norm.entry_price_low  # top of range
+    price = _signal_price(norm)
     if price is None:
         return None, None, ["missing:entry_price"], None
     tiers = i.config.option_tiers if option else i.config.stock_tiers
@@ -197,6 +203,10 @@ def _size(
     if qty == 0:
         return None, limit, [], TIER_CANNOT_BUY  # never rounded up (7.4)
     return qty, limit, [], None
+
+
+def _signal_price(norm: NormalizedSignal) -> Price | None:
+    return norm.entry_price or norm.entry_price_high or norm.entry_price_low  # top of range
 
 
 def _stop(

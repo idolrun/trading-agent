@@ -60,3 +60,11 @@ AC-4 building blocks: timeout, price band, supersession each produce `invalidate
 
 ## Open decisions touched
 OD-14.
+
+## Implementation notes (2026-09-29)
+- No `proposal.py`: the stored proposal **is** F023's `ProposedAction` (`decide/types.py`), which gained `signal_price` (stated price / top of range) for the C22 price band. The approval/review completeness check lives in `validity.approval_blockers(proposal, edits, lot_qty)`.
+- `state.check_transition(from, to, reason)` enforces the table above (reasons included); `repo.transition` calls it on a locked row, writes one `card_events` row, and bumps `version` when a new proposal is supplied (edit / review completion).
+- `check_entry(proposal, quote, now, chase_pct)` → `TIMEOUT` past `valid_until` (strictly after), `PRICE_BAND` when `ask > signal_price × (1 + X%)`; no quote = not checkable here (caller routes to review, OD-12). `check_exit(proposal, position_closed, now)` → `TIMEOUT`, or `SUPERSEDED` for trim/exit cards on a closed position; never price.
+- Supersession set: trim, full_exit, stock_exit, stop_set/move/cancel, correction → invalidates pending entry/add cards (`repo.pending_on_position`, `FOR UPDATE`). Soft exit and tp_set do not supersede.
+- `repo.insert` sets `card_id = uuid5(CARD_NAMESPACE, dedupe_key)` and uses `ON CONFLICT DO NOTHING`; a re-run returns False and writes no event.
+- Approval blockers: disabled → never; each `missing_fields` item must be in the edits; entry/add/trim/exit need `qty ≥ 1`, sells also `qty ≤ lot`; breakeven stop needs a chosen `stop_level`. F023's ambiguous-link missing field is now `chosen_position_id` (the F036 edit key).
