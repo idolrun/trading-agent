@@ -93,7 +93,7 @@ class Dispatcher:
     def busy(self) -> bool:
         return any(not task.done() for task in self._workers.values())
 
-    async def _on_notify(self, payload: str) -> None:
+    async def _on_notify(self, _channel: str, payload: str) -> None:
         self.wake(int(payload))
 
     async def _worker(self, provider_id: int) -> None:

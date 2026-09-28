@@ -68,7 +68,7 @@ class ConfigService:
         """Reload on every `NOTIFY config`; reconnects forever. Run as a background task."""
         assert self._listen_dsn is not None  # noqa: S101 — constructed with a DSN by lifespan
 
-        async def reload(_payload: str) -> None:
+        async def reload(_channel: str, _payload: str) -> None:
             await self.load()
 
         await listen_forever(self._listen_dsn, "config", reload, self.load)

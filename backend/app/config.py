@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Broker / market data adapters (F010). Only fakes until F051 (OD-3, OD-4).
     broker_adapter: Literal["fake"] = "fake"
     marketdata_adapter: Literal["fake"] = "fake"
+    # Web Push (F029). Unset -> push disabled (SSE still works).
+    vapid_private_key: SecretStr | None = None
+    vapid_public_key: str | None = None
+    vapid_subject: str | None = None  # "mailto:you@example.com"
+
     # Dev/demo/tests only: ParsedSignals per message id (F026). Ignored in production.
     interpretation_fixtures_dir: Path | None = None
     # Integration tests only (tests/integration/conftest.py).

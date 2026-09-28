@@ -105,7 +105,7 @@ class TimerService:
         except TimeoutError:
             pass
 
-    async def _on_notify(self, _payload: str) -> None:
+    async def _on_notify(self, _channel: str, _payload: str) -> None:
         self._wake.set()
 
     async def _on_connect(self) -> None:

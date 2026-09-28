@@ -15,7 +15,9 @@ from app.api.errors import ApiError, api_error_handler, validation_error_handler
 from app.api.origin_check import origin_check
 from app.api.routes import auth as auth_routes
 from app.api.routes import config as config_routes
+from app.api.routes import events as events_routes
 from app.api.routes import ingest as ingest_routes
+from app.api.routes import push as push_routes
 from app.auth.rate_limit import SlidingWindowLimiter
 from app.auth.service import AuthService
 from app.broker.fake import FakeBroker
@@ -34,6 +36,8 @@ from app.marketdata.port import MarketData
 from app.markettime import SystemClock
 from app.messageapi.fake import FakeMessageHistory
 from app.messageapi.port import MessageHistory
+from app.notify.bus import EventBus
+from app.notify.push import PushService
 from app.pipeline.processor import PipelineProcessor, RawReviewPoisonHandler
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -120,7 +124,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         clock=app.state.clock,
         listen_dsn=libpq_dsn(str(settings.database_url)),
     )
-    background = [config_listener]
+    app.state.bus = EventBus()
+    background = [
+        config_listener,
+        asyncio.create_task(app.state.bus.run(libpq_dsn(str(settings.database_url))), name="bus"),
+    ]
     dispatcher = None
     if settings.background_enabled:
         processor = PipelineProcessor(
@@ -152,6 +160,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         background.append(asyncio.create_task(feed_health.run(), name="feed-health"))
         background.append(asyncio.create_task(app.state.timers.run(), name="timers"))
+        push = PushService(session_factory, app.state.bus, settings)
+        background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
     app.state.dispatcher = dispatcher
     try:
@@ -186,6 +196,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.middleware("http")(origin_check(settings.dashboard_origin))
     app.include_router(auth_routes.router, prefix="/api/v1")
     app.include_router(config_routes.router, prefix="/api/v1")
+    app.include_router(events_routes.router, prefix="/api/v1")
+    app.include_router(push_routes.router, prefix="/api/v1")
     app.include_router(ingest_routes.router)
 
     @app.get("/health")

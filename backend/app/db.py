@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -81,23 +81,24 @@ async def in_transaction(
 
 async def listen_forever(
     dsn: str,
-    channel: str,
-    on_notify: Callable[[str], Awaitable[None]],
+    channels: str | Sequence[str],
+    on_notify: Callable[[str, str], Awaitable[None]],
     on_connect: Callable[[], Awaitable[None]],
 ) -> None:
-    """`LISTEN channel` on a dedicated connection; reconnects forever (run as a task).
-
-    `on_connect` runs after every (re)connect, once listening, to catch anything missed.
-    """
+    """`LISTEN` on one or more channels over a dedicated connection; reconnects forever (run
+    as a task). `on_notify(channel, payload)`; `on_connect` runs after every (re)connect, once
+    listening, to catch anything missed."""
+    names = [channels] if isinstance(channels, str) else list(channels)
     while True:
         try:
             async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn:
-                await conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(channel)))
+                for name in names:
+                    await conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(name)))
                 await on_connect()
                 async for message in conn.notifies():
-                    await on_notify(message.payload)
+                    await on_notify(message.channel, message.payload)
         except Exception:
-            logger.exception("listener failed; reconnecting", extra={"channel": channel})
+            logger.exception("listener failed; reconnecting", extra={"channels": names})
             await asyncio.sleep(1)
 
 

@@ -58,3 +58,11 @@ FR-26 push matrix proven; SSE delivers within the test's 1 s budget.
 
 ## Implementation steps
 1. `uv add pywebpush`. 2. Bus. 3. SSE route. 4. Push service + rules. 5. Subscription routes. 6. Hooks. 7. Tests.
+
+## Implementation notes (2026-09-29)
+- `db.listen_forever` now takes one or more channels and calls `on_notify(channel, payload)` (dispatcher, config and timers callers updated). `EventBus` (`notify/bus.py`) LISTENs on the eight channels over one connection; payload `{"type","id"}` JSON (F026 onward), legacy bare-id payloads on `alerts`/`flags` map to `alert.created` / `flag.changed`. After every (re)connect it publishes `resync` (events during a disconnect are not replayed; clients refetch). Queue bound 1,000 → the subscriber's stream ends.
+- The bus runs in the lifespan even with `background_enabled=false` (SSE is part of serving the API); `PushService` runs only with background work.
+- **No `notify/hooks.py`:** `PushService` is itself a bus subscriber, so every NOTIFY source (cards now; orders/fills/alerts from F040+) gets the same push matrix (`should_push`) without per-feature hooks. It also writes `stage_timings(pushed)` for `card.created`. Auto orders push on `order.created` (reprice excluded).
+- Push is enabled only when `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` are set; `GET /push/vapid-public-key` → 503 `unavailable` otherwise. `pywebpush` added (and listed as untyped for mypy); sends run in `asyncio.to_thread`; 404/410 → `revoked_at`.
+- `POST /push/subscriptions` is an upsert on `endpoint` (re-subscribe refreshes keys and un-revokes). `DELETE` **revokes** (sets `revoked_at`) because the runtime role has no DELETE grant; 404 if unknown or already revoked.
+- SSE test serves the running app with uvicorn on a real socket (`httpx.ASGITransport` buffers streamed bodies).
