@@ -9,12 +9,14 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import make_url, text
 
+from app.alerts.service import AlertService
 from app.api.errors import ApiError, api_error_handler, validation_error_handler
 from app.api.routes import config as config_routes
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.logging import configure_logging
 from app.runtime_config.service import ConfigService
+from app.system.flags import FlagService
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.config_service = config_service
+    app.state.alerts = AlertService(session_factory)
+    app.state.flags = FlagService(session_factory, app.state.alerts)
     try:
         yield
     finally:

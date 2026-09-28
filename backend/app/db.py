@@ -16,6 +16,7 @@ from sqlalchemy import (
     SmallInteger,
     false,
     func,
+    select,
     text,
     true,
 )
@@ -58,6 +59,23 @@ async def transaction(session: AsyncSession) -> AsyncIterator[AsyncSession]:
     """Commit on success, roll back on error."""
     async with session.begin():
         yield session
+
+
+@asynccontextmanager
+async def in_transaction(
+    factory: async_sessionmaker[AsyncSession], db: AsyncSession | None
+) -> AsyncIterator[AsyncSession]:
+    """Join the caller's transaction when given one, else run in a new one."""
+    if db is not None:
+        yield db
+        return
+    async with factory() as session, transaction(session):
+        yield session
+
+
+async def notify(db: AsyncSession, channel: str, payload: str) -> None:
+    """`NOTIFY channel, payload`; delivered to listeners when the transaction commits."""
+    await db.execute(select(func.pg_notify(channel, payload)))
 
 
 # --- Table-definition helpers shared by every `models.py` (database-schema.md §1) ---

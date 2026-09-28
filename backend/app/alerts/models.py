@@ -32,6 +32,7 @@ class AlertKind(StrEnum):
     MARKET_DATA = "market_data"
     INVARIANT_BLOCK = "invariant_block"
     NOTE_HIDDEN = "note_hidden"
+    SYSTEM_FLAG = "system_flag"  # a safety flag was set or cleared (F008)
 
 
 class Alert(SQLModel, table=True):

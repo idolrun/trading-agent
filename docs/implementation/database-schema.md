@@ -367,7 +367,7 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 
 | Table | Class | Columns (key ones) | Constraints / indexes | Source |
 |---|---|---|---|---|
-| `alerts` | audit | `alert_id uuid PK`, `severity CHECK IN ('info','warning','urgent')`, `kind text` (feed_silence, parser_degraded, poison, reconcile_mismatch, catch_up, late_correction, message_deleted, risk_limit, exit_floor, provider_disabled, market_data, invariant_block, note_hidden), `message text`, `card_id/lot_id/order_id NULL`, `message_id NULL`, `details jsonb`, `dedupe_key text NULL UNIQUE`, `created_at` | idx `(created_at DESC)` | PRD §14, FR-26 |
+| `alerts` | audit | `alert_id uuid PK`, `severity CHECK IN ('info','warning','urgent')`, `kind text` (feed_silence, parser_degraded, poison, reconcile_mismatch, catch_up, late_correction, message_deleted, risk_limit, exit_floor, provider_disabled, market_data, invariant_block, note_hidden, system_flag), `message text`, `card_id/lot_id/order_id NULL`, `message_id NULL`, `details jsonb`, `dedupe_key text NULL UNIQUE`, `created_at` | idx `(created_at DESC)` | PRD §14, FR-26 |
 | `alert_acks` | audit | `alert_id PK FK`, `session_id FK`, `acked_at` | | derived (X5) |
 | `config` | current | `id smallint PK CHECK (id=1)`, `version integer`, `document jsonb` (Pydantic `RuntimeConfig`), `updated_at` | | PRD §18 |
 | `config_changes` | audit | `id identity`, `version integer UNIQUE`, `document jsonb`, `diff jsonb`, `session_id NULL`, `actor CHECK IN ('user','cli','system')`, `reason text`, `at` | | PRD §14 |
@@ -453,6 +453,7 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 | `0002_ingestion_interpretation` | F003 | §3 |
 | `0003_platform` | F004 | §5 (before trading state: `approvals` → `auth_sessions`, `provider_position_events` → `manual_corrections`) |
 | `0004_trading_state` | F005 | §4, plus FK `model_calls.card_id → cards` |
+| `0005_alert_kind_system_flag` | F008 | `alerts.kind` gains `system_flag` |
 | later | owning feature | only additive changes, each updating this document |
 
 ## 12. Implementation notes (decisions made while implementing F002–F005)
@@ -482,3 +483,4 @@ Recorded here per the rule at the top of this document. None changes a column's 
 | 20 | §4 abbreviated nullability | `lot_events.qty_before/avg_before/avg_after` nullable (an `open` has no "before"); `card_events.detail`, `stop_events.detail` = `jsonb NOT NULL DEFAULT '{}'`; `stops.candle_close` default false; `provider_positions.opened_at` default now(). | Values not always known. |
 | 21 | `stop_events` index | `(stop_id, id)`, same as the other `*_events` tables. | History lookup per stop. |
 | 22 | `provider_position_events` cause | CHECK `num_nonnulls(signal_id, manual_correction_id) = 1`. | "Exactly one of" in §4.2. |
+| 23 | `alerts.kind` `system_flag` (migration `0005`, F008) | Every system-flag transition raises one alert of this kind (details: flag, active, reason, actor). | Kill switch and entries-blocked had no alert kind; one uniform kind for all flags. |

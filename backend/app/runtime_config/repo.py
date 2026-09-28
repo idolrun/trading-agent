@@ -3,12 +3,13 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.dml import ReturningInsert, ReturningUpdate
 from sqlmodel import col
 
+from app.db import notify
 from app.runtime_config.models import Actor, ConfigChange, ConfigRow
 
 
@@ -59,5 +60,5 @@ async def save(
             session_id=session_id,
         )
     )
-    await session.execute(select(func.pg_notify("config", str(version))))
+    await notify(session, "config", str(version))
     return version

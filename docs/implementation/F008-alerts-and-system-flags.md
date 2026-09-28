@@ -47,3 +47,10 @@ Flags and alerts are durable, audited, idempotent, and readable within the same 
 
 ## Implementation steps
 1. Repo + service for alerts. 2. `FlagService`. 3. NOTIFY emission. 4. Tests.
+
+## Implementation notes (2026-09-28)
+- Alert references are explicit keyword args (`card_id`, `lot_id`, `order_id`, `message_id`) instead of a `refs` mapping; the caller's DB session is passed as `db=` (not `session=`, which elsewhere means the auth session).
+- New alert kind `system_flag` (migration `0005`): every flag transition raises one. Severity on activation: kill_switch / entries_blocked / feed_degraded urgent, parser_degraded / catch_up warning; clearing is info.
+- `FlagService.set` returns whether anything changed; setting the current value records nothing.
+- Shared helpers added to `app/db.py`: `in_transaction(factory, db)` (join or open a transaction) and `notify(db, channel, payload)`.
+- List queries for alerts are left to F030 (YAGNI now).
