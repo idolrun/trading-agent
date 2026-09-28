@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.0",
+    "exchange-calendars>=4.13.2",
     "fastapi[standard]>=0.141.1",
     "langchain>=1.4.2",
     "langchain-anthropic>=1.7.4",
@@ -43,6 +44,10 @@ strict = true
 python_version = "3.13"
 plugins = ["pydantic.mypy"]
 files = ["app"]
+
+[[tool.mypy.overrides]]
+module = ["exchange_calendars"]
+ignore_missing_imports = true  # ships no type information
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

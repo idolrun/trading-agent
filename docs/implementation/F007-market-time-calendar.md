@@ -60,3 +60,10 @@ All functions timezone-aware (reject naive datetimes with `ValueError`); tests p
 
 ## Open decisions touched
 OD-22.
+
+## Implementation notes (2026-09-28)
+- Extra public helper `sessions_ahead(day, n)` (first session on/after `day`, then n sessions on); `Ndte` uses it.
+- `0dte`/`today` on a non-session day (weekend/holiday) resolve to the next session.
+- OD-22 proposals implemented as written (Ndte = trading sessions; weekday name includes today); still pending user confirmation.
+- The XNYS calendar covers ~20 years back to 1 year ahead of process start; dates outside raise `ValueError`.
+- `exchange_calendars` ships no type info → mypy override in `pyproject.toml`.
