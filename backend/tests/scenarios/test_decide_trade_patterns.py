@@ -1,96 +1,31 @@
 """F023: decide() on TRD §12 real-trade patterns (AC-14, AC-15, AC-16) and the tier rules."""
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from datetime import timedelta
 from typing import Any
 
 from app.cards.models import CardAction, CardType
 from app.decide.engine import TIER_CANNOT_BUY, decide
-from app.decide.types import DecisionInputs, LotView, ProposedAction
+from app.decide.types import DecisionInputs, LotView
 from app.interpret.models import LinkMethod, LinkOutcome
-from app.interpret.signal import F, LinkHint, ParsedSignal, SignalFields
+from app.interpret.signal import F, ParsedSignal, SignalFields
 from app.ledger.correlation import LinkDecision
 from app.ledger.positions import PositionState
-from app.runtime_config.schema import RuntimeConfig
 from app.validate.normalize import NormalizedSignal, Price
 from app.validate.service import ValidationResult
-
-D = Decimal
-POSTED = datetime(2026, 9, 28, 14, 30, tzinfo=UTC)
-EXP = date(2026, 10, 2)
-P_ID = uuid.uuid4()
-LOT = uuid.uuid4()
-PENNY = D("0.01")
-CONFIG = RuntimeConfig(
-    option_tiers={"default": D("1000"), "lotto": D("100")},
-    stock_tiers={"default": D("5000")},
-    entry_chase_pct=D("5"),
-    entry_validity_s=60,
-    exit_card_timeout_s=600,
+from tests.decide_helpers import (
+    CONFIG,
+    EXP,
+    LINKED,
+    LOT,
+    NEW,
+    P_ID,
+    POSTED,
+    D,
+    entry,
+    px,
+    run,
 )
-POSITION = PositionState(
-    instrument="option",
-    underlying="GOOGL",
-    expiry=EXP,
-    strike=D("357.5"),
-    option_right="call",
-    provider_entry_price=D("1.67"),
-)
-LINKED = LinkDecision(LinkOutcome.LINKED, LinkMethod.JEV, D("0.93"), P_ID)
-NEW = LinkDecision(LinkOutcome.NEW_POSITION, LinkMethod.CODE, D(1))
-
-
-def px(v: str) -> Price:
-    return Price(raw=D(v), value=D(v), scale="as_is")
-
-
-def run(
-    msg_type: str,
-    *,
-    link: LinkDecision | None = LINKED,
-    lot_qty: int | None = None,
-    validation: dict[str, Any] | None = None,
-    fields: SignalFields | None = None,
-    field_confidence: dict[str, Decimal] | None = None,
-    tick: Decimal | None = PENNY,
-    **norm: Any,
-) -> list[ProposedAction]:
-    signal = ParsedSignal(
-        msg_type=msg_type,
-        fields=fields or SignalFields(),
-        link_hint=LinkHint(),
-        field_confidence=field_confidence or {},
-    )
-    normalized = NormalizedSignal(
-        msg_type=msg_type, instrument=norm.pop("instrument", "option"), **norm
-    )
-    return decide(
-        DecisionInputs(
-            signal=signal,
-            validation=ValidationResult(
-                **({"status": "ok", "normalized": normalized} | (validation or {}))
-            ),
-            link=link,
-            position=POSITION if link is LINKED else None,
-            lot=None if lot_qty is None else LotView(LOT, lot_qty, D("1.50")),
-            config=CONFIG,
-            tick=tick,
-            posted_at=POSTED,
-        )
-    )
-
-
-def entry(**kw: Any) -> ProposedAction:
-    base: dict[str, Any] = {
-        "underlying": "GOOGL",
-        "expiry": EXP,
-        "strike": D("357.5"),
-        "right": "call",
-        "entry_price": px("1.67"),
-    }
-    [card] = run("entry", link=NEW, **(base | kw))
-    return card
 
 
 def test_option_entry_sized_from_tier() -> None:
@@ -277,3 +212,29 @@ def test_context_field_is_inferred_and_confidence_only_lowers() -> None:
 
 def test_deterministic() -> None:
     assert entry(tp_levels=(px("2.10"),)) == entry(tp_levels=(px("2.10"),))
+
+
+def test_stock_stop_is_broker_held_on_price() -> None:
+    stock = PositionState(instrument="stock", underlying="GOOGL")
+    [card] = decide(
+        DecisionInputs(
+            signal=ParsedSignal(msg_type="stop_set"),
+            validation=ValidationResult(
+                status="ok",
+                normalized=NormalizedSignal(
+                    msg_type="stop_set",
+                    instrument=None,
+                    stop_level=px("170"),
+                    stop_basis="underlying",
+                ),
+            ),
+            link=LINKED,
+            position=stock,
+            lot=LotView(LOT, 10, D("180")),
+            config=CONFIG,
+            tick=None,
+            posted_at=POSTED,
+        )
+    )
+    assert card.stop is not None
+    assert (card.stop.basis, card.stop.held_by) == ("premium", "broker")  # C61

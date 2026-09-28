@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from app.cards.models import CardAction, CardType
-from app.decide import rules
+from app.decide import risk, rules
 from app.decide.types import BreakevenOptions, DecisionInputs, ProposedAction, StopProposal
 from app.interpret.models import LinkOutcome, MsgType
 from app.interpret.signal import F, SignalFields
@@ -44,6 +44,14 @@ TIER_CANNOT_BUY = "tier cannot buy one contract"
 
 
 def decide(i: DecisionInputs) -> list[ProposedAction]:
+    cards = _propose(i)
+    for stage in (risk.apply_staleness, risk.apply_entry_gates, risk.apply_warnings):
+        cards = stage(i, cards)
+    return cards
+
+
+def _propose(i: DecisionInputs) -> list[ProposedAction]:
+    """Sizing, exits, stops/TPs and the card tier (F023)."""
     t = i.signal.msg_type
     v = i.validation
     if (
@@ -120,7 +128,7 @@ def _body(
 ) -> tuple[ProposedAction, list[str]]:
     """Qty, price, stop and legs for a validated signal; returns (card, review reasons)."""
     reasons: list[str] = []
-    option = (i.position.instrument if i.position else norm.instrument) == "option"
+    option = rules.is_option(i)
     if option and any(p.scale is None for p in premium_prices(norm)):
         reasons.append("price_scale_undecided")  # caller must scale against the contract quote
     update: dict[str, object] = {}
@@ -194,11 +202,13 @@ def _size(
 def _stop(
     basis: str | None, level: Decimal | None, norm: NormalizedSignal, option: bool
 ) -> StopProposal:
-    underlying = basis == "underlying"
+    # An option's underlying-price stop is system-held (C49); a stock stop is on the stock's
+    # own price and held at the broker (C61), same as a premium stop (DB: system <=> underlying).
+    underlying = basis == "underlying" and option
     return StopProposal(
         level=level,
         basis="underlying" if underlying else "premium",
-        held_by="system" if underlying and option else "broker",  # C49; stocks: C61
+        held_by="system" if underlying else "broker",
         candle_close=norm.candle_close,
     )
 

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
+from app.execution.models import Fill
 from app.instruments import Instrument as Contract
 from app.instruments import OptionContract, broker_symbol
 from app.interpret.models import MessageLink, Signal
@@ -220,3 +221,25 @@ async def create_foreign_lot(
     """Reconciliation only (F046): a broker position no system lot explains (read-only)."""
     update = LotUpdate(LotChange.ADOPT_FOREIGN, None, qty, None, avg)
     return await record_lot(db, update, instrument=instrument, reason=reason)
+
+
+async def sells_since(
+    db: AsyncSession, since: datetime
+) -> list[tuple[Instrument, int, Decimal | None, Decimal]]:
+    """Lot reductions by fills filled at/after `since`: (instrument, qty sold, avg before,
+    fill price). Input for realized P&L (FR-18)."""
+    rows = await db.execute(
+        select(
+            col(Lot.instrument),
+            col(LotEvent.qty_before) - col(LotEvent.qty_after),
+            col(LotEvent.avg_before),
+            col(Fill.price),
+        )
+        .join(Fill, col(Fill.fill_id) == col(LotEvent.fill_id))
+        .join(Lot, col(Lot.lot_id) == col(LotEvent.lot_id))
+        .where(
+            col(LotEvent.change).in_([LotChange.FILL_REDUCE, LotChange.CLOSE]),
+            col(Fill.filled_at) >= since,
+        )
+    )
+    return [(i, int(q), avg, price) for i, q, avg, price in rows.all()]

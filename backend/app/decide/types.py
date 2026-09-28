@@ -66,6 +66,29 @@ class LotView:
 
 
 @dataclass(frozen=True)
+class FlagsView:
+    kill_switch: bool = False
+    entries_blocked: bool = False
+
+
+@dataclass(frozen=True)
+class OpenLotBrief:
+    underlying: str
+    option_right: str | None  # "call" / "put"; None = stock
+
+
+@dataclass(frozen=True)
+class RiskSnapshot:
+    """Portfolio-wide, foreign lots included (C47). None = unknown: never assumed 0."""
+
+    realized_today: Decimal | None
+    unrealized: Decimal | None
+    open_positions: int
+    exposure: Decimal | None  # cost basis of open lots
+    lots: tuple[OpenLotBrief, ...] = ()
+
+
+@dataclass(frozen=True)
 class DecisionInputs:
     signal: ParsedSignal
     validation: ValidationResult
@@ -75,3 +98,7 @@ class DecisionInputs:
     config: RuntimeConfig
     tick: Decimal | None  # MarketData.tick_size at the signal price (OD-25); entries only
     posted_at: datetime
+    stale: bool = False  # FR-1c: processed after stale_entry_s
+    late: bool = False
+    flags: FlagsView = FlagsView()
+    risk: RiskSnapshot | None = None  # None = could not be built -> entries disabled

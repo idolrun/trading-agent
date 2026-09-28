@@ -52,3 +52,12 @@ AC-19 at decision level; FR-18 limits proven with foreign positions; disabled ca
 
 ## Open decisions touched
 OD-27, OD-3 (PDT).
+
+## Implementation notes (2026-09-29)
+- `DecisionInputs` gained `stale`, `late`, `flags: FlagsView(kill_switch, entries_blocked)` and `risk: RiskSnapshot | None`; `decide()` = F023 `_propose` → `apply_staleness` → `apply_entry_gates` → `apply_warnings` (`decide/risk.py`).
+- Stale entry/add → **no card** (`[]`); the "stale" feed label is the inbox status F026 sets from `ProcessingContext.stale`, so no separate `FeedLabel` type.
+- Gate order: config incomplete → kill switch → entries blocked → risk unknown (no snapshot / quote missing / cost basis or realized avg missing) → daily loss (`-(realized + unrealized) ≥ max`) → open positions → exposure. Gate reasons override F023's "tier cannot buy one contract".
+- **Max open positions applies to `entry` only**: an add grows an existing lot and opens nothing. Exposure is checked only when qty and limit are known (F036 re-runs the gates after an edited qty).
+- Opposite-direction warning (C74) goes on entry/add cards only.
+- `build_risk_snapshot(sessions, marketdata, now)`: reads lots + today's (ET midnight) sell fills in one read-only session, closes it, then fetches quotes. Realized P&L = Σ (fill price − `lot_events.avg_before`) × qty sold × multiplier, via new `ledger.repo.sells_since`.
+- Test fixtures shared through `tests/decide_helpers.py`; tests in `tests/scenarios/test_staleness_and_risk.py` (the doc's `unit/decide/test_risk.py` + `scenarios/test_staleness.py` in one file) and `tests/integration/decide/test_risk_snapshot.py`.

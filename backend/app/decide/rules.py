@@ -2,7 +2,8 @@
 
 from decimal import ROUND_FLOOR, Decimal
 
-from app.decide.types import TpLeg
+from app.decide.types import DecisionInputs, TpLeg
+from app.interpret.models import MsgType
 from app.interpret.signal import ExitFraction
 from app.ledger.lots import OPTION_MULTIPLIER
 
@@ -40,3 +41,11 @@ def tp_legs(levels: list[Decimal], qty: int | None) -> list[TpLeg]:
     n = min(len(levels), qty)
     base, extra = divmod(qty, n)
     return [TpLeg(level=levels[i], qty=base + (1 if i < extra else 0)) for i in range(n)]
+
+
+def is_option(i: DecisionInputs) -> bool:
+    """The card's instrument: the linked position's, else the validated signal's."""
+    if i.position is not None:
+        return i.position.instrument == "option"
+    norm = i.validation.normalized
+    return norm is not None and norm.msg_type != MsgType.STOCK_ENTRY and norm.instrument == "option"

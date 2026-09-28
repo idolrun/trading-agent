@@ -1,0 +1,95 @@
+"""F024: staleness (AC-19), entry gates (FR-18, C75, OD-27) and warnings (C74)."""
+
+from typing import Any
+
+from app.cards.models import CardAction, CardType
+from app.decide.types import FlagsView, OpenLotBrief, ProposedAction, RiskSnapshot
+from tests.decide_helpers import CONFIG, EXP, FLAT, NEW, D, entry, px, run
+
+CONTRACT: dict[str, Any] = {
+    "underlying": "GOOGL",
+    "expiry": EXP,
+    "strike": D("357.5"),
+    "right": "call",
+}
+
+
+def gated(**inputs: Any) -> ProposedAction:
+    return entry(inputs=inputs)
+
+
+def reason(**inputs: Any) -> str | None:
+    card = gated(**inputs)
+    assert (card.card_type == CardType.DISABLED) == (card.disabled_reason is not None)
+    return card.disabled_reason
+
+
+def risk(**kw: Any) -> RiskSnapshot:
+    base: dict[str, Any] = {
+        "realized_today": D(0),
+        "unrealized": D(0),
+        "open_positions": 0,
+        "exposure": D(0),
+    }
+    return RiskSnapshot(**(base | kw))
+
+
+def test_stale_entry_no_card_stale_exit_late() -> None:
+    """AC-19: entry processed 45 s after post -> no card; exit -> card with `late`."""
+    stale = {"stale": True}
+    assert run("entry", link=NEW, inputs=stale, entry_price=px("1.67"), **CONTRACT) == []
+    assert run("entry", lot_qty=2, inputs=stale, entry_price=px("1.67"), **CONTRACT) == []  # add
+    [exit_card] = run("full_exit", lot_qty=2, instrument=None, inputs={"stale": True})
+    assert exit_card.action == CardAction.EXIT and exit_card.labels == ["late"]
+    [late] = run("stop_cancel", lot_qty=2, instrument=None, inputs={"late": True})
+    assert late.labels == ["late"]
+
+
+def test_each_gate_disables_with_its_reason() -> None:
+    assert reason() is None
+    partial = CONFIG.model_copy(update={"max_open_positions": None})
+    assert reason(config=partial) == "config incomplete: max_open_positions"
+    assert reason(flags=FlagsView(kill_switch=True)) == "kill switch active"
+    assert reason(flags=FlagsView(entries_blocked=True)) == (
+        "entries blocked: reconciliation mismatch"
+    )
+    assert reason(risk=None) == "risk unknown: quote missing"
+    assert reason(risk=risk(unrealized=None)) == "risk unknown: quote missing"
+    assert reason(risk=risk(exposure=None)) == "risk unknown: cost basis missing"
+    assert reason(risk=risk(realized_today=D(-1500), unrealized=D(-500))) == (
+        "max daily loss reached"
+    )
+    assert reason(risk=risk(realized_today=D(-1500), unrealized=D(-499))) is None
+    assert reason(risk=risk(open_positions=10)) == "max open positions"
+    # 5 contracts x 1.75 x 100 = 875 on top of 19,200 > 20,000
+    assert reason(risk=risk(exposure=D(19200))) == "max exposure"
+    assert reason(risk=risk(exposure=D(19125))) is None
+
+
+def test_gates_order_and_add_rules() -> None:
+    both = FlagsView(kill_switch=True, entries_blocked=True)
+    assert reason(flags=both) == "kill switch active"  # first failure wins
+    full = {"risk": risk(open_positions=10)}
+    [add] = run("entry", lot_qty=2, inputs=full, entry_price=px("1.67"), **CONTRACT)
+    assert add.action == CardAction.ADD and add.disabled_reason is None  # add opens nothing
+
+
+def test_kill_switch_disables_entries_only() -> None:
+    """OD-27: exits are never missed."""
+    flags = FlagsView(kill_switch=True)
+    [exit_card] = run("full_exit", lot_qty=2, instrument=None, inputs={"flags": flags})
+    assert exit_card.card_type == CardType.NORMAL and exit_card.qty == 2
+
+
+def test_foreign_lot_counts_toward_limits() -> None:
+    """C47: the snapshot includes foreign lots, so their count blocks entries like any lot."""
+    lots = tuple(OpenLotBrief("AAPL", None) for _ in range(10))
+    assert reason(risk=risk(open_positions=10, lots=lots)) == "max open positions"
+
+
+def test_opposite_direction_warning() -> None:
+    puts = risk(lots=(OpenLotBrief("GOOGL", "put"),))
+    assert "opposite_direction:GOOGL" in gated(risk=puts).warnings
+    same = risk(lots=(OpenLotBrief("GOOGL", "call"), OpenLotBrief("META", "put")))
+    assert gated(risk=same).warnings == []
+    assert FLAT.lots == ()
