@@ -23,7 +23,7 @@ def api_settings() -> Settings:
             "database_url": _url("test_database_url"),
             "rp_id": "test",
             "dashboard_origin": ORIGIN,
-            "dispatcher_enabled": False,
+            "background_enabled": False,
         }
     )
 

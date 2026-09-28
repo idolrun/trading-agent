@@ -24,6 +24,7 @@ from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.dispatcher.service import AlertPoisonHandler, Dispatcher
 from app.dispatcher.stub import StubProcessor
+from app.ingest.feed_health import FeedHealthMonitor
 from app.logging import configure_logging
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
@@ -72,9 +73,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.broker_events = broker_events
     app.state.marketdata = marketdata
 
+    feed_health = FeedHealthMonitor(
+        session_factory,
+        config=config_service,
+        flags=app.state.flags,
+        alerts=app.state.alerts,
+        clock=app.state.clock,
+    )
+    app.state.feed_health = feed_health
+
     background = [config_listener]
     dispatcher = None
-    if settings.dispatcher_enabled:
+    if settings.background_enabled:
         # Stub interpretation until the pipeline processor (F026) / message graph (F035).
         dispatcher = Dispatcher(
             session_factory,
@@ -88,6 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         background.append(
             asyncio.create_task(run_heartbeat(session_factory, app.state.clock), name="heartbeat")
         )
+        background.append(asyncio.create_task(feed_health.run(), name="feed-health"))
     app.state.dispatcher = dispatcher
     try:
         yield

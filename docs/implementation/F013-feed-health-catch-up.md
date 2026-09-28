@@ -45,3 +45,11 @@ AC-8 proven with a fixed clock; catch-up flag visible via flags and alert.
 
 ## Open decisions touched
 OD-2 (heartbeat exists?), OD-15.
+
+## Implementation notes (2026-09-28)
+- Pure `evaluate()` returns `feed ∈ {silent, ok, hold, None}`: `hold` = quiet outside regular hours (no change; an active `feed_degraded` stays until a message/heartbeat arrives), `None` = `feed_silence_s` unset. Silence is strictly `> feed_silence_s`.
+- The urgent alert comes from `FlagService.set(feed_degraded)` (kind `system_flag`, F008) — no second `feed_silence` alert, to avoid duplicates. Same for `catch_up`.
+- Unset thresholds raise one `warning` alert per process start (kinds `feed_silence` / `catch_up`) and skip that check.
+- `on_recovered` hooks run when `feed_degraded` clears (F014 registers the gap backfill).
+- `Settings.dispatcher_enabled` renamed `background_enabled`: it gates dispatcher, heartbeat, feed monitor (and the F014 gap task). The monitor object always exists so `/ingest` and `/ingest/heartbeat` can record signals.
+- Heartbeat API tests live in `tests/integration/api/`.

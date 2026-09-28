@@ -70,6 +70,15 @@ async def ingest(
     return IngestResponse(accepted=accepted)
 
 
+@router.post("/ingest/heartbeat", status_code=204)
+async def heartbeat(request: Request, settings: SettingsDep, clock: ClockDep) -> None:
+    """Message API liveness (FR-4): counts as a feed signal like a message."""
+    await signed_body(request, settings, clock)
+    feed_health = getattr(request.app.state, "feed_health", None)
+    if feed_health is not None:
+        feed_health.note_heartbeat(clock.now())
+
+
 async def _contract_alert(alerts: AlertsDep, body: bytes, reason: str) -> None:
     """Best effort (the DB may be what is failing); one alert per distinct payload."""
     try:

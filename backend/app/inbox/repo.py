@@ -1,5 +1,6 @@
 """Inbox transport boundary (TRD §2.4). Callers own the transaction."""
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import ColumnElement, and_, exists, func, select, update
@@ -195,3 +196,21 @@ async def later_applied(db: AsyncSession, provider_id: int, posted_at: datetime)
         )
     )
     return bool(found)
+
+
+@dataclass(frozen=True)
+class Backlog:
+    count: int
+    oldest_posted_at: datetime | None
+
+
+async def backlog(db: AsyncSession) -> Backlog:
+    """Events waiting to be processed (FR-1c catch-up; uses the `received` partial index)."""
+    count, oldest = (
+        await db.execute(
+            select(func.count(), func.min(col(InboxItem.posted_at))).where(
+                col(InboxItem.status) == InboxStatus.RECEIVED
+            )
+        )
+    ).one()
+    return Backlog(count=count, oldest_posted_at=oldest)

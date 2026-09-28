@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     ingest_hmac_secret: SecretStr
     ingest_max_skew_s: int = 300
     # Background services (tests switch them off to drive them by hand).
-    dispatcher_enabled: bool = True
+    background_enabled: bool = True
     # Broker / market data adapters (F010). Only fakes until F051 (OD-3, OD-4).
     broker_adapter: Literal["fake"] = "fake"
     marketdata_adapter: Literal["fake"] = "fake"
