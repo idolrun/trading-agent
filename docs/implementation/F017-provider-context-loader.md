@@ -49,3 +49,9 @@ AC-18 context-isolation clause proven; FR-8 structurally enforced.
 
 ## Implementation steps
 1. Models + forbidden-key test. 2. Queries. 3. Summary renderer. 4. `load_context`. 5. Tests.
+
+## Implementation notes (2026-09-28)
+- `load_context(db, env, *, recent_n, now, profile=None)`: `recent_n` is passed by the caller (F035 reads `config.context_recent_messages`; unset → caller's choice), `now` for `now_et`.
+- Messages are shown with their latest text *as of the current message's post time* (edits before the cut-off overlaid, messages deleted before it dropped); "recent" orders by original post time, oldest first in the list.
+- `CurrentMessage` carries `event_type` and allows `text=None` (delete events).
+- Book summaries: `GOOGL 357.5C exp 2026-10-02, entered 1.67 at 2026-09-28 10:30:00 ET[, trimmed, 50% remaining][, stop 1.5 (premium)][, TPs 2.8/3.5]` — Decimals normalized, times ET.
