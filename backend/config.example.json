@@ -37,7 +37,26 @@
     "enabled": false
   },
   "llm": {
-    "chains": {}
+    "roles": {
+      "extract": {
+        "deadline_ms": 3000,
+        "per_attempt_cap_ms": 2000,
+        "chain": []
+      },
+      "note": {
+        "deadline_ms": 4000,
+        "per_attempt_cap_ms": null,
+        "chain": []
+      },
+      "prelabel": {
+        "deadline_ms": null,
+        "per_attempt_cap_ms": null,
+        "chain": []
+      }
+    },
+    "prices": {},
+    "params": {},
+    "concurrency": {}
   },
   "note_guard_enabled": true,
   "llm_monthly_budget_usd": null

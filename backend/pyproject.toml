@@ -10,6 +10,7 @@ dependencies = [
     "fastapi[standard]>=0.141.1",
     "langchain>=1.4.2",
     "langchain-anthropic>=1.7.4",
+    "langchain-deepseek>=1.1.1",
     "langchain-openai>=1.6.6",
     "langgraph>=1.2.12",
     "psycopg[binary,pool]>=3.3.6",
@@ -55,7 +56,9 @@ ignore_missing_imports = true  # ships no type information
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-m 'not live'"
 markers = [
+    "live: calls real model APIs (needs keys); run with -m live",
     "integration: needs PostgreSQL (docker compose up -d postgres)",
     "graph: LangGraph workflow tests",
     "load: load / fault tests",

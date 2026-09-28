@@ -17,12 +17,15 @@ from app.db import create_engine, create_session_factory
 from app.runtime_config.models import Actor
 from app.runtime_config.repo import VersionConflict
 from app.runtime_config.schema import RuntimeConfig, missing_for_entries
-from app.runtime_config.service import ConfigService
+from app.runtime_config.service import ConfigInvalid, ConfigService
 
 
 async def run(args: argparse.Namespace, new_config: RuntimeConfig | None) -> int:
-    engine = create_engine(get_settings())
-    service = ConfigService(create_session_factory(engine))
+    settings = get_settings()
+    engine = create_engine(settings)
+    service = ConfigService(
+        create_session_factory(engine), allow_ungated_models=settings.ungated_models_allowed
+    )
     try:
         await service.load()
         snapshot = service.snapshot()
@@ -48,6 +51,9 @@ async def run(args: argparse.Namespace, new_config: RuntimeConfig | None) -> int
             )
         except VersionConflict:
             print("config changed concurrently; run again", file=sys.stderr)
+            return 1
+        except ConfigInvalid as exc:
+            print(f"config rejected: {exc}", file=sys.stderr)
             return 1
         print(f"config version {version}; missing for entries: {missing_for_entries(config)}")
         return 0

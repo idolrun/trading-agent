@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db import listen_forever, transaction
+from app.llm.validation import validate_llm_config
 from app.runtime_config import repo
 from app.runtime_config.models import Actor
 from app.runtime_config.schema import RuntimeConfig
@@ -16,12 +17,25 @@ logger = logging.getLogger(__name__)
 Snapshot = tuple[int, RuntimeConfig]
 
 
+class ConfigInvalid(Exception):
+    """Rejected by a cross-table check (e.g. an LLM chain entry without a passing gate run)."""
+
+    def __init__(self, errors: list[str]) -> None:
+        super().__init__("; ".join(errors))
+        self.errors = errors
+
+
 class ConfigService:
     def __init__(
-        self, session_factory: async_sessionmaker[AsyncSession], listen_dsn: str | None = None
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        listen_dsn: str | None = None,
+        *,
+        allow_ungated_models: bool = False,
     ) -> None:
         self._sessions = session_factory
         self._listen_dsn = listen_dsn
+        self._allow_ungated = allow_ungated_models
         self._snapshot: Snapshot | None = None
 
     def get(self) -> RuntimeConfig | None:
@@ -47,9 +61,15 @@ class ConfigService:
         reason: str,
         session_id: uuid.UUID | None = None,
     ) -> Snapshot:
-        """Raises `repo.VersionConflict` when `expected_version` is stale."""
+        """Raises `repo.VersionConflict` when `expected_version` is stale, `ConfigInvalid`
+        when the model registry fails validation (TRD §4.8 rule 5)."""
         document = config.model_dump(mode="json")
         async with self._sessions() as session, transaction(session):
+            errors = await validate_llm_config(
+                config.llm, session, allow_ungated=self._allow_ungated
+            )
+            if errors:
+                raise ConfigInvalid(errors)
             before = await repo.load(session)
             version = await repo.save(
                 session,

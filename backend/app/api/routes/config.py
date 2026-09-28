@@ -5,6 +5,7 @@ from app.api.errors import ApiError
 from app.api.schemas.config import ConfigResponse, UpdateConfigRequest
 from app.runtime_config.models import Actor
 from app.runtime_config.repo import VersionConflict
+from app.runtime_config.service import ConfigInvalid
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -33,4 +34,6 @@ async def put_config(
         raise ApiError(
             "config changed since expectedVersion; reload and retry", "conflict", 409
         ) from None
+    except ConfigInvalid as exc:
+        raise ApiError(str(exc), "invalid", 422) from None
     return ConfigResponse.of(*snapshot)

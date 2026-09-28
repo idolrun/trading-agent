@@ -67,7 +67,7 @@ def test_defaults() -> None:
     assert c.missing_underlying_proximity_pct == Decimal(10)
     assert (c.t_chat, c.t_field, c.t_link) == (Decimal("0.9"), Decimal("0.8"), Decimal("0.8"))
     assert c.jev.enabled is False
-    assert c.llm.chains == {}
+    assert c.llm.roles.extract.chain == [] and c.llm.roles.extract.deadline_ms == 3000
     assert c.note_guard_enabled is True
     assert c.channels == c.muted_authors == []
 

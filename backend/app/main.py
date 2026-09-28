@@ -37,6 +37,8 @@ from app.execution.submit import OrderService
 from app.ingest.feed_health import FeedHealthMonitor
 from app.ingest.gaps import GapDetector
 from app.interpret.interpreter import FixtureInterpreter, Interpreter, UnconfiguredInterpreter
+from app.llm.chain import LlmChain
+from app.llm.registry import alert_missing_keys
 from app.logging import configure_logging
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
@@ -46,6 +48,7 @@ from app.messageapi.port import MessageHistory
 from app.notify.bus import EventBus
 from app.notify.push import PushService
 from app.pipeline.processor import PipelineProcessor, RawReviewPoisonHandler
+from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.system.heartbeat import run_heartbeat
@@ -73,7 +76,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
         raise
     session_factory = create_session_factory(engine)
-    config_service = ConfigService(session_factory, libpq_dsn(str(settings.database_url)))
+    config_service = ConfigService(
+        session_factory,
+        libpq_dsn(str(settings.database_url)),
+        allow_ungated_models=settings.ungated_models_allowed,
+    )
     await config_service.load()
     config_listener = asyncio.create_task(config_service.listen(), name="config-listener")
 
@@ -82,6 +89,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.config_service = config_service
     app.state.alerts = AlertService(session_factory)
     app.state.flags = FlagService(session_factory, app.state.alerts)
+    llm_config = (config_service.get() or RuntimeConfig()).llm
+    await alert_missing_keys(settings, llm_config, app.state.alerts)
+    app.state.llm = LlmChain(
+        session_factory,
+        settings,
+        lambda: (config_service.get() or RuntimeConfig()).llm,
+        app.state.clock,
+    )
     app.state.auth = AuthService(session_factory, settings, app.state.clock, app.state.alerts)
     # Only fakes until F051 (settings.broker_adapter / marketdata_adapter == "fake").
     fake_broker = FakeBroker(app.state.clock)

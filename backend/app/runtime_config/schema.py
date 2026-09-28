@@ -1,8 +1,9 @@
 """`RuntimeConfig`: every tunable PRD §18 names. Money values have no defaults (PRD open item e)."""
 
+import uuid
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -32,10 +33,53 @@ class JevConfig(_Strict):
     enabled: bool = False
 
 
-class LlmConfig(_Strict):
-    """Model registry slot; roles, prices, params and validation are added by F031."""
+LlmProvider = Literal["anthropic", "openai", "deepseek", "openai_compat"]  # Bedrock: OD-7
+NonNegDecimal = Annotated[Decimal, Field(ge=0)]
 
-    chains: dict[str, list[str]] = {}  # role -> ["provider:model", …] fallback order
+
+class ChainEntry(_Strict):
+    provider: LlmProvider
+    model: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)  # e.g. "extract@v1"
+    gate_run: uuid.UUID | None = None  # passing `eval_runs` row (TRD §4.8 rule 5)
+
+    @property
+    def model_key(self) -> str:
+        return f"{self.provider}:{self.model}"
+
+    @property
+    def model_ref(self) -> str:
+        """Matches `eval_runs.model_ref`."""
+        return f"{self.model_key}:{self.prompt}"
+
+
+class RoleConfig(_Strict):
+    deadline_ms: PositiveInt | None = None  # shared by every attempt; None = no deadline
+    per_attempt_cap_ms: PositiveInt | None = None
+    chain: list[ChainEntry] = []  # fallback order; empty = role not configured (OD-7)
+
+
+class LlmRoles(_Strict):
+    extract: RoleConfig = RoleConfig(deadline_ms=3000, per_attempt_cap_ms=2000)
+    note: RoleConfig = RoleConfig(deadline_ms=4000)
+    prelabel: RoleConfig = RoleConfig()
+
+
+class Price(_Strict):
+    """USD per million tokens."""
+
+    input_per_mtok: NonNegDecimal
+    output_per_mtok: NonNegDecimal
+    cached_input_per_mtok: NonNegDecimal
+
+
+class LlmConfig(_Strict):
+    """Model registry (TRD §4.8). Keys of `prices`/`params` are "provider:model"."""
+
+    roles: LlmRoles = LlmRoles()
+    prices: dict[str, Price] = {}
+    params: dict[str, dict[str, Any]] = {}  # passed through to the chat-model constructor
+    concurrency: dict[str, PositiveInt] = {}  # provider -> max in-flight calls (default 4)
 
 
 class RuntimeConfig(_Strict):

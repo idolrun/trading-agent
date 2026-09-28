@@ -42,9 +42,20 @@ class Settings(BaseSettings):
 
     # Dev/demo/tests only: ParsedSignals per message id (F026). Ignored in production.
     interpretation_fixtures_dir: Path | None = None
+    # LLM providers (F031). A missing key disables that provider at startup (TRD §4.8 rule 9).
+    anthropic_api_key: SecretStr | None = None
+    openai_api_key: SecretStr | None = None
+    deepseek_api_key: SecretStr | None = None
+    openai_compat_api_key: SecretStr | None = None  # base_url goes in llm.params
+    # Development only: accept chain entries without a passing gate run (never in production).
+    allow_ungated_models: bool = False
     # Integration tests only (tests/integration/conftest.py).
     test_database_url: PostgresDsn | None = None
     test_database_owner_url: PostgresDsn | None = None
+
+    @property
+    def ungated_models_allowed(self) -> bool:
+        return self.allow_ungated_models and self.environment == "development"
 
 
 @lru_cache
