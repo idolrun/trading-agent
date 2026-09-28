@@ -25,10 +25,13 @@ from app.db import create_engine, create_session_factory
 from app.dispatcher.service import AlertPoisonHandler, Dispatcher
 from app.dispatcher.stub import StubProcessor
 from app.ingest.feed_health import FeedHealthMonitor
+from app.ingest.gaps import GapDetector
 from app.logging import configure_logging
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
 from app.markettime import SystemClock
+from app.messageapi.fake import FakeMessageHistory
+from app.messageapi.port import MessageHistory
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.system.heartbeat import run_heartbeat
@@ -81,6 +84,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         clock=app.state.clock,
     )
     app.state.feed_health = feed_health
+    history: MessageHistory = FakeMessageHistory()  # real client: F050
+    gaps = GapDetector(
+        session_factory,
+        history=history,
+        config=config_service,
+        alerts=app.state.alerts,
+        clock=app.state.clock,
+    )
+    app.state.gaps = gaps
+
+    async def backfill_on_recovery() -> None:
+        await gaps.run_once()
+
+    feed_health.on_recovered.append(backfill_on_recovery)
 
     background = [config_listener]
     dispatcher = None
@@ -99,6 +116,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             asyncio.create_task(run_heartbeat(session_factory, app.state.clock), name="heartbeat")
         )
         background.append(asyncio.create_task(feed_health.run(), name="feed-health"))
+        background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
     app.state.dispatcher = dispatcher
     try:
         yield

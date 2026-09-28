@@ -214,3 +214,19 @@ async def backlog(db: AsyncSession) -> Backlog:
         )
     ).one()
     return Backlog(count=count, oldest_posted_at=oldest)
+
+
+async def last_seen_per_channel(
+    db: AsyncSession, channels: list[int], posted_before: datetime
+) -> dict[int, int]:
+    """Newest create-event message id per channel posted before `posted_before`."""
+    rows = await db.execute(
+        select(col(MessageEvent.channel_id), func.max(col(MessageEvent.message_id)))
+        .where(
+            col(MessageEvent.channel_id).in_(channels),
+            col(MessageEvent.event_type) == EventType.CREATE,
+            col(MessageEvent.posted_at) < posted_before,
+        )
+        .group_by(col(MessageEvent.channel_id))
+    )
+    return {channel: message_id for channel, message_id in rows.all()}

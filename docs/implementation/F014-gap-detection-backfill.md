@@ -52,3 +52,9 @@ AC-21 (fake): every message posted during a simulated outage ends up in `message
 
 ## Open decisions touched
 OD-1, OD-2.
+
+## Implementation notes (2026-09-28)
+- **Deviation — watermark instead of "max seen id".** `max(message_id)` per channel cannot find a gap that lies *before* newer webhook deliveries (webhook delivered 1–3 and 8–10 → max is 10, so 4–7 are never fetched — this doc's own test). `GapDetector` keeps a per-channel in-memory watermark = newest id already verified against history; each run fetches everything after it. On a process's first run the watermark is the newest create event posted before `now − lookback` (8 h, one full session), so a restart re-verifies that window. `inbox.repo.last_seen_per_channel(channels, posted_before)` provides it. ponytail: watermark not persisted; persist it if startup re-verification becomes costly.
+- History unavailable → `message_api` warning alert (deduped per channel per hour), retried next tick. Unmappable history payload → urgent `message_api` alert, skipped.
+- Triggers wired: every 60 s during regular hours (`background_enabled`), and on `feed_degraded` recovery (F013 hook). Startup trigger is F046.
+- App uses `FakeMessageHistory` until F050.
