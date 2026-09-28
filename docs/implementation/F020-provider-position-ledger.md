@@ -53,3 +53,11 @@ Every change has exactly one `provider_position_events` row; stale entries can b
 
 ## Open decisions touched
 OD-13, OD-18.
+
+## Implementation notes (2026-09-28)
+- Result type is `PositionUpdate(change, before, after, add_price)` (`PositionChange` is already the event-kind enum from F005). Input signal is F018's `NormalizedSignal`; states are `PositionState` snapshots (JSON-dumped into `provider_position_events.before/after`).
+- `trim` with `exit_fraction="all"` closes the position (`exit`); `half/third/quarter` multiply `remaining_fraction` (rounded to 4 places); other/unstated fractions mark `trimmed` and keep the last known fraction.
+- `stop_move`/`stop_set` with `breakeven_stop` and no level use `provider_entry_price`; `stop_removed` on any stop message = `stop_cancel`. Default stop basis `premium`.
+- `add` without a linked position, any exit/stop/TP without one, anything on a closed position, a stop/TP without levels, an entry naming a different contract than its linked position, and an incomplete option entry raise `InvalidTransition` (→ review card in F026).
+- Adds are recorded as `add` events with `add_price` in `after`; the position row does not change (no provider average).
+- `repo.record(...)` writes the row change and its one history event together; `repo.lock_open_book` = `FOR UPDATE` on the provider's open/trimmed rows (NOWAIT-tested). `apply_correction` is the F047 write path (`is_corrected=true`).

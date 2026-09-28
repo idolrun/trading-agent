@@ -1,12 +1,14 @@
 """Provider-position and lot queries. No ledger decisions here."""
 
-from datetime import datetime
+import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
-from app.ledger.models import ProviderPosition
+from app.ledger.models import PositionStatus, ProviderPosition, ProviderPositionEvent
+from app.ledger.positions import PositionUpdate
 
 
 async def recent_underlyings(db: AsyncSession, provider_id: int, since: datetime) -> list[str]:
@@ -21,3 +23,69 @@ async def recent_underlyings(db: AsyncSession, provider_id: int, since: datetime
         .order_by(col(ProviderPosition.underlying))
     )
     return list(rows.all())
+
+
+async def lock_open_book(db: AsyncSession, provider_id: int) -> list[ProviderPosition]:
+    """The provider's open/trimmed positions, row-locked for the rest of the transaction
+    (T3/T7, database-schema.md §8). Call only inside the provider slot."""
+    rows = await db.scalars(
+        select(ProviderPosition)
+        .where(
+            col(ProviderPosition.provider_id) == provider_id,
+            col(ProviderPosition.status) != PositionStatus.CLOSED,
+        )
+        .order_by(col(ProviderPosition.opened_at), col(ProviderPosition.provider_position_id))
+        .with_for_update()
+    )
+    return list(rows.all())
+
+
+async def record(
+    db: AsyncSession,
+    *,
+    provider_id: int,
+    row: ProviderPosition | None,
+    update: PositionUpdate,
+    signal_id: uuid.UUID | None = None,
+    manual_correction_id: int | None = None,
+    channel_id: int | None = None,
+    at: datetime | None = None,
+) -> ProviderPosition:
+    """Write one ledger change: insert/update the position and its history event together.
+    Exactly one of `signal_id` / `manual_correction_id` (DB CHECK)."""
+    now = at or datetime.now(UTC)
+    values = update.after.model_dump()
+    values["tp_levels"] = list(values["tp_levels"])
+    if row is None:
+        row = ProviderPosition(
+            provider_id=provider_id,
+            opened_channel_id=channel_id,
+            opened_by_signal_id=signal_id,
+            opened_at=now,
+            updated_at=now,
+            **values,
+        )
+        db.add(row)
+    else:
+        for key, value in values.items():
+            setattr(row, key, value)
+        row.updated_at = now
+        if update.after.status == PositionStatus.CLOSED and row.closed_at is None:
+            row.closed_at = now
+    await db.flush()
+    after = update.after.model_dump(mode="json")
+    if update.add_price is not None:
+        after["add_price"] = str(update.add_price)
+    db.add(
+        ProviderPositionEvent(
+            provider_position_id=row.provider_position_id,
+            change=update.change,
+            signal_id=signal_id,
+            manual_correction_id=manual_correction_id,
+            before=update.before.model_dump(mode="json") if update.before else None,
+            after=after,
+            at=now,
+        )
+    )
+    await db.flush()
+    return row
