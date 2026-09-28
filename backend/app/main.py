@@ -17,9 +17,13 @@ from app.api.routes import auth as auth_routes
 from app.api.routes import config as config_routes
 from app.auth.rate_limit import SlidingWindowLimiter
 from app.auth.service import AuthService
+from app.broker.fake import FakeBroker
+from app.broker.port import BrokerClient, BrokerEvents
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.logging import configure_logging
+from app.marketdata.fake import FakeMarketData
+from app.marketdata.port import MarketData
 from app.markettime import SystemClock
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -55,6 +59,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.alerts = AlertService(session_factory)
     app.state.flags = FlagService(session_factory, app.state.alerts)
     app.state.auth = AuthService(session_factory, settings, app.state.clock, app.state.alerts)
+    # Only fakes until F051 (settings.broker_adapter / marketdata_adapter == "fake").
+    fake_broker = FakeBroker(app.state.clock)
+    broker: BrokerClient = fake_broker
+    broker_events: BrokerEvents = fake_broker
+    marketdata: MarketData = FakeMarketData(app.state.clock)
+    app.state.broker = broker
+    app.state.broker_events = broker_events
+    app.state.marketdata = marketdata
     try:
         yield
     finally:

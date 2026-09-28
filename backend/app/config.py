@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     session_absolute_hours: int = 12  # covers one US session (19:15-01:45 local)
     step_up_window_s: int = 120
     auth_rate_limit_per_min: int = 10
+    # Broker / market data adapters (F010). Only fakes until F051 (OD-3, OD-4).
+    broker_adapter: Literal["fake"] = "fake"
+    marketdata_adapter: Literal["fake"] = "fake"
     # Integration tests only (tests/integration/conftest.py).
     test_database_url: PostgresDsn | None = None
     test_database_owner_url: PostgresDsn | None = None
