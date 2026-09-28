@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import AuthSession, PasskeyCredential
 from app.inbox.models import InboxItem, InboxStatus, MessageEvent
+from app.interpret.models import Signal
 
 T0 = datetime(2026, 9, 28, 14, 30, tzinfo=UTC)
 
@@ -74,3 +75,26 @@ async def add_session(session: AsyncSession) -> uuid.UUID:
     session.add(auth)
     await session.commit()
     return auth.session_id
+
+
+async def add_signal(session: AsyncSession, provider_id: int = 7, message_id: int = 1001) -> Signal:
+    """A message event plus one entry signal from `provider_id`."""
+    await add_message(session, message_id=message_id, provider_id=provider_id)
+    signal = Signal(
+        signal_id=uuid.uuid4(),
+        message_id=message_id,
+        event_type="create",
+        event_seq=0,
+        idx=0,
+        provider_id=provider_id,
+        msg_type="entry",
+        instrument="option",
+        fields={},
+        interpreter="llm",
+        stale=False,
+        late=False,
+        schema_version=1,
+    )
+    session.add(signal)
+    await session.commit()
+    return signal

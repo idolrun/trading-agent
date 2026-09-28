@@ -448,8 +448,8 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 ---
 
 ## 7. Backend Completion Checklist (gate before F052)
-- [ ] Database: all tables in `database-schema.md` exist via Alembic migrations; `alembic upgrade head` and `downgrade -1/upgrade` work on an empty DB; runtime role grants verified by test.
-- [ ] Local Docker environment: `docker compose up -d postgres` + documented commands work on a clean checkout.
+- [x] Database: all tables in `database-schema.md` exist via Alembic migrations; `alembic upgrade head` and `downgrade -1/upgrade` work on an empty DB; runtime role grants verified by test.
+- [x] Local Docker environment: `docker compose up -d postgres` + documented commands work on a clean checkout.
 - [ ] Repositories: every table has only the queries features need; no business decisions in `repo.py`.
 - [ ] Domain rules: `decide`, invariants, validity, pricing, sizing are pure and unit/property tested (hypothesis for no-short/no-oversell).
 - [ ] Services own transactions T1–T8 (`database-schema.md` §7); no transaction spans a model/broker call.

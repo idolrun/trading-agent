@@ -123,6 +123,10 @@ class MessageLink(SQLModel, table=True):
         ForeignKeyConstraint(
             ["signal_id", "provider_id"], ["signals.signal_id", "signals.provider_id"]
         ),
+        ForeignKeyConstraint(
+            ["provider_position_id", "provider_id"],
+            ["provider_positions.provider_position_id", "provider_positions.provider_id"],
+        ),
         check_in("outcome", LinkOutcome),
         check_in("method", LinkMethod),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="confidence_range"),
@@ -137,7 +141,6 @@ class MessageLink(SQLModel, table=True):
     id: int | None = identity_pk()
     signal_id: uuid.UUID
     provider_id: int = bigint()
-    # Composite FK (provider_position_id, provider_id) → provider_positions added in 0004.
     provider_position_id: uuid.UUID | None = None
     outcome: LinkOutcome = choice()
     method: LinkMethod = choice()

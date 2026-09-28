@@ -6,7 +6,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index
+from sqlalchemy import CheckConstraint, Column, ForeignKey, ForeignKeyConstraint, Index, Uuid
 from sqlmodel import Field, SQLModel
 
 from app.db import TIMESTAMPTZ, bigint, check_in, choice, identity_pk, jsonb, smallint
@@ -63,7 +63,10 @@ class ModelCall(SQLModel, table=True):
     message_id: int | None = bigint(nullable=True)
     event_type: EventType | None = choice(default=None, nullable=True)
     event_seq: int | None = None
-    card_id: uuid.UUID | None = None  # FK → cards added in 0004
+    # Note-writer calls. use_alter: breaks the signals -> model_calls -> cards -> signals cycle.
+    card_id: uuid.UUID | None = Field(
+        default=None, sa_column=Column(Uuid, ForeignKey("cards.card_id", use_alter=True))
+    )
     eval_run_id: uuid.UUID | None = Field(default=None, foreign_key="eval_runs.eval_run_id")
     provider: ModelProvider = choice()
     model: str

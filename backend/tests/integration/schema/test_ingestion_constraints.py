@@ -8,9 +8,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.inbox.models import MessageEvent
-from app.interpret.models import MessageLink, Signal
+from app.interpret.models import MessageLink
 from app.llm.models import ModelCall
-from tests.integration.schema.helpers import T0, add_inbox, add_message, expect_error
+from tests.integration.schema.helpers import T0, add_inbox, add_message, add_signal, expect_error
 
 EVENT_SQL = """
     INSERT INTO message_events
@@ -110,30 +110,8 @@ async def test_audit_identity_insert_as_app(db_session: AsyncSession) -> None:
     assert call.id == 1
 
 
-async def _signal(session: AsyncSession, provider_id: int = 7) -> Signal:
-    await add_message(session, provider_id=provider_id)
-    signal = Signal(
-        signal_id=uuid.uuid4(),
-        message_id=1001,
-        event_type="create",
-        event_seq=0,
-        idx=0,
-        provider_id=provider_id,
-        msg_type="entry",
-        instrument="option",
-        fields={},
-        interpreter="llm",
-        stale=False,
-        late=False,
-        schema_version=1,
-    )
-    session.add(signal)
-    await session.commit()
-    return signal
-
-
 async def test_signal_unique_per_event_index(db_session: AsyncSession) -> None:
-    signal = await _signal(db_session)
+    signal = await add_signal(db_session)
     await expect_error(
         db_session,
         errors.UniqueViolation,
@@ -146,7 +124,7 @@ async def test_signal_unique_per_event_index(db_session: AsyncSession) -> None:
 
 
 async def test_message_link_position_iff_linked(db_session: AsyncSession) -> None:
-    signal = await _signal(db_session)
+    signal = await add_signal(db_session)
     sql = """
         INSERT INTO message_links (signal_id, provider_id, outcome, method)
         VALUES (:sid, 7, :outcome, 'jev')
@@ -165,8 +143,8 @@ async def test_message_link_position_iff_linked(db_session: AsyncSession) -> Non
     await db_session.commit()
 
 
-async def test_message_link_cannot_use_other_providers_signal(db_session: AsyncSession) -> None:
-    signal = await _signal(db_session, provider_id=7)
+async def test_message_link_cannot_use_other_providersadd_signal(db_session: AsyncSession) -> None:
+    signal = await add_signal(db_session, provider_id=7)
     await expect_error(
         db_session,
         errors.ForeignKeyViolation,

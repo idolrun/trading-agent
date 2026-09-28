@@ -1,6 +1,6 @@
 # Database Schema — Authoritative Design
 
-**Status:** planning. Implements PRD v0.3 §14 and TRD v0.5 §8, §8.1, §9.
+**Status:** implemented through migration `0004` (F002–F005, milestone M1); later changes are additive. Implements PRD v0.3 §14 and TRD v0.5 §8, §8.1, §9.
 **Engine:** PostgreSQL **17** (confirmed decision; amends TRD §3's 16) for local Docker and for managed HA production.
 **Access:** SQLModel on SQLAlchemy 2 async, driver **psycopg 3**, migrations by **Alembic** (confirmed decision; amends TRD §3's asyncpg + numbered SQL).
 
@@ -475,3 +475,10 @@ Recorded here per the rule at the top of this document. None changes a column's 
 | 13 | §5 nullability not stated in the table | `alerts.details` and `eval_runs.thresholds` = `jsonb NOT NULL DEFAULT '{}'`; `eval_runs.metrics`, `finished_at` NOT NULL (audit row is written once, after the run); `eval_runs.split`, `gate_passed`, `manual_corrections.before/reason`, `config_changes.reason`, `logins.ip/user_agent`, `passkey_credentials.label`, `push_subscriptions.label` nullable. `passkey_credentials.sign_count` default 0; `auth_sessions.last_seen_at` default now(). | Audit tables are insert-only, so values known only at the end must be written then. |
 | 14 | Actor enums | `config_changes.actor` and `system_flag_events.actor` share `('user','cli','system')`. | §5 lists it for config; flags are set by the same actors. |
 | 15 | Structural rows | Migration `0003` inserts the five `system_flags` rows (inactive). Test truncation keeps them and resets `active=false`. | F004. |
+| 16 | Provider consistency beyond `message_links` | `lots` and `cards` also use the composite FK `(provider_position_id, provider_id) → provider_positions`; `lots` adds CHECK `(provider_id IS NULL) = (provider_position_id IS NULL)`. | A lot or card cannot claim another provider's position (AC-18), for free. |
+| 17 | `approvals` shape | CHECK `(decision = 'approve') = (approved_proposal IS NOT NULL)`; `edits` defaults to `'{}'`, `step_up` to false. | §4.7 "NULL on reject", made enforceable. |
+| 18 | Extra sanity checks | `provider_positions.remaining_fraction BETWEEN 0 AND 1` (default 1); `cards.version >= 1` (default 1); `stops.tp_index >= 1`; `lots/orders.instrument IN ('option','stock')`. | Stated semantics. |
+| 19 | FK cycle | `signals → model_calls → cards → signals`: the `model_calls.card_id` FK is declared `use_alter=True` (created by `ALTER TABLE` in `0004`). | Lets SQLAlchemy/Alembic order table creation. |
+| 20 | §4 abbreviated nullability | `lot_events.qty_before/avg_before/avg_after` nullable (an `open` has no "before"); `card_events.detail`, `stop_events.detail` = `jsonb NOT NULL DEFAULT '{}'`; `stops.candle_close` default false; `provider_positions.opened_at` default now(). | Values not always known. |
+| 21 | `stop_events` index | `(stop_id, id)`, same as the other `*_events` tables. | History lookup per stop. |
+| 22 | `provider_position_events` cause | CHECK `num_nonnulls(signal_id, manual_correction_id) = 1`. | "Exactly one of" in §4.2. |

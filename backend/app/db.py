@@ -98,7 +98,7 @@ def now_default() -> Any:
 
 
 def timestamptz(*, nullable: bool = False) -> Any:
-    return Field(default=None, sa_type=TIMESTAMPTZ, nullable=nullable)
+    return Field(default=None if nullable else ..., sa_type=TIMESTAMPTZ, nullable=nullable)
 
 
 def flag(*, default: bool = False) -> Any:
@@ -137,6 +137,13 @@ def array(item_type: Any) -> Any:
         default_factory=list,
         sa_type=ARRAY(item_type),
         sa_column_kwargs={"server_default": text("'{}'")},
+    )
+
+
+def price(*, nullable: bool = True) -> Any:
+    """Per-share price or level: `numeric(12,4)`, Python `Decimal`."""
+    return Field(
+        default=None if nullable else ..., max_digits=12, decimal_places=4, nullable=nullable
     )
 
 
