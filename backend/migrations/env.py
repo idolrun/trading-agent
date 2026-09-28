@@ -7,7 +7,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-from sqlmodel import SQLModel
+from sqlmodel import AutoString, SQLModel
 
 import app.db_models  # noqa: F401 — registers every table on SQLModel.metadata
 from app.config import get_settings
@@ -25,19 +25,29 @@ if not config.get_main_option("sqlalchemy.url"):
 target_metadata = SQLModel.metadata
 
 
+def render_item(type_: str, obj: object, _autogen_context: object) -> str | bool:
+    """Render SQLModel's `str` type as `sa.Text()` so migrations never import sqlmodel."""
+    if type_ == "type" and isinstance(obj, AutoString):
+        return "sa.Text()"
+    return False
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_item=render_item,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, render_item=render_item
+    )
     with context.begin_transaction():
         context.run_migrations()
 

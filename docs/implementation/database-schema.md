@@ -34,7 +34,7 @@ Every feature that touches the database must use the tables exactly as defined h
 - **RPO ≈ 0** (synchronous standby / Multi-AZ): `approvals`, `orders`, `order_events`, `fills`, `lots`, `lot_events`, `provider_positions`, `provider_position_events`, `signals`, `message_links`, `cards`, `card_events`, `stops`, `stop_events`, `timers`.
 - **RPO ≤ 5 min** (PITR): everything else. `message_events`/`inbox` are additionally protected by durable-before-200 plus Message API redelivery/backfill (FR-1d).
 
-### 1.3 Roles (created by `infra/postgres/init/01-roles.sql` locally; by the managed provider's admin in prod)
+### 1.3 Roles (created by `infra/postgres/init/01-roles.sh` locally; by the managed provider's admin in prod)
 | Role | Used by | Grants |
 |---|---|---|
 | `trading_owner` | Alembic, `graph setup` CLI | Owns schemas `public` and `langgraph`. |
@@ -449,8 +449,23 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 ## 11. Migration grouping
 | Migration | Feature | Tables |
 |---|---|---|
-| `0001_roles_and_schemas` | F002 | schema `langgraph`, default privileges |
+| `0001_roles_and_schemas` | F002 | schema `langgraph`, default privileges (in `langgraph` only, §12) |
 | `0002_ingestion_interpretation` | F003 | §3 |
 | `0003_platform` | F004 | §5 (before trading state: `approvals` → `auth_sessions`, `provider_position_events` → `manual_corrections`) |
 | `0004_trading_state` | F005 | §4, plus FK `model_calls.card_id → cards` |
 | later | owning feature | only additive changes, each updating this document |
+
+## 12. Implementation notes (decisions made while implementing F002–F005)
+Recorded here per the rule at the top of this document. None changes a column's meaning.
+
+| # | Topic | Decision | Why |
+|---|---|---|---|
+| 1 | Init script | `infra/postgres/init/01-roles.sh` (not `.sql`) | Needs role passwords from env. |
+| 2 | Default privileges | `ALTER DEFAULT PRIVILEGES FOR ROLE trading_owner` only **in schema `langgraph`** (DML + sequence usage). `public` gets explicit per-table grants in each migration. | LangGraph tables are created later by `setup()`; audit tables in `public` must stay insert-only. |
+| 3 | `text` columns | SQLModel `str` fields are compiled as `TEXT` on PostgreSQL (`@compiles(AutoString)` in `app/db.py`); migrations render `sa.Text()` (`render_item` in `migrations/env.py`) and never import sqlmodel. | Matches §1 convention; keeps migrations self-contained. |
+| 4 | Enumerations | `StrEnum` in each `models.py`; `CHECK (col IN …)` generated from it by `app.db.check_in`. Never a PG `ENUM`. | One source of truth for Python and DB lists. |
+| 5 | Constraint names | Naming convention on `SQLModel.metadata`: `pk_<table>`, `uq_<table>_<cols>`, `fk_<table>_<cols>`, `ck_<table>_<name>`; indexes named explicitly (`ix_<table>_<purpose>`). | Stable names for Alembic downgrades and error mapping. |
+| 6 | Discord ID `> 0` checks | Applied on every Discord ID column that is not already covered by an FK to a checked column. | §1 convention. |
+| 7 | Extra sanity checks | `model_calls.attempt >= 1` (1-based), `model_calls.latency_ms >= 0`. | Stated semantics, made explicit. |
+| 8 | Timestamps | Creation-like columns (`received_at`, `at`, `created_at`) and `updated_at` are `NOT NULL DEFAULT now()`, also defaulted in Python so ORM inserts never send NULL. `updated_at` is set by the application on update (no triggers). Event-time columns (`posted_at`, `started_at`, `due_at` …) have no default. | §1 convention; no hidden trigger logic. |
+| 9 | Identity sequences | `GRANT USAGE ON SEQUENCE <table>_id_seq TO trading_app` for every identity column. | F003 migration rule. |
