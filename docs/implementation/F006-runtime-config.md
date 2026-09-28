@@ -100,3 +100,11 @@ Config contains no secrets (API keys stay in `Settings`/env). Changes audited wi
 
 ## Open decisions touched
 OD-6, OD-15, OD-20 (exit floor definition), OD-21 (cutoff representation), PRD (d), (e).
+
+## Implementation notes (2026-09-28)
+- `missing_for_entries` = **every** unset no-default field (user decision, conservative); no config row counts as all unset.
+- Extra validation: `cutoff_1_min_before_close > cutoff_2_min_before_close`; tiers non-empty with positive values; pct fields in (0, 100]; thresholds in [0, 1]; Discord IDs in `channels`/`muted_authors` are serialized as strings.
+- `jev.timeout_ms` defaults to 300 (OD-8 p95 budget); `llm` holds only `chains` for now — F031 adds prices/params and validation.
+- API tests need the database and lifespan, so they live in `tests/integration/api/test_config_api.py` (not `tests/api/`). CLI is tested in a fresh interpreter (`tests/integration/runtime_config/test_cli.py`).
+- `create_app(settings=None)` accepts injected settings (tests); `app.db.create_session_factory` imports `app.db_models` so every process registers all tables before an ORM flush.
+- Auth placeholder `require_session` (`app/api/deps.py`) until F009.

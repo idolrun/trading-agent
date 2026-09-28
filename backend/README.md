@@ -31,3 +31,18 @@ docker compose down                # keeps data; `down -v` wipes the volume
   start with an empty volume — changing passwords later needs `docker compose down -v`.
 - Port 5432 taken by another project? Set `POSTGRES_PORT` and the port in the four URLs in `.env`.
 - New migration: `uv run alembic revision --autogenerate --rev-id 000N -m "..."`, then hand-review.
+
+## Runtime config (F006)
+
+Trading tunables live in the database (`config` + audited `config_changes`), not in env vars.
+Money values have no defaults: until every one is set, entry cards are disabled ("config
+incomplete"). Start from `config.example.json` (defaults filled, money fields `null`).
+
+```bash
+uv run python -m app.runtime_config.cli show
+uv run python -m app.runtime_config.cli set --file config.json --reason "initial tiers"
+```
+
+API: `GET /api/v1/config`, `PUT /api/v1/config` with `{expectedVersion, document, reason}`
+(409 on a stale version). Until passkey auth (F009) these routes are open in
+development/test and closed (401) in production.

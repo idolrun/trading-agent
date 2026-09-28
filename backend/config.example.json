@@ -1,0 +1,44 @@
+{
+  "trading_mode": "shadow",
+  "channels": [],
+  "muted_authors": [],
+  "feed_silence_s": null,
+  "stale_entry_s": 30,
+  "catch_up_backlog_n": null,
+  "poison_retry_limit": 3,
+  "context_recent_messages": null,
+  "option_tiers": null,
+  "stock_tiers": null,
+  "entry_chase_pct": null,
+  "entry_validity_s": null,
+  "entry_cancel_after_s": null,
+  "exit_card_timeout_s": null,
+  "exit_reprice_interval_s": null,
+  "exit_reprice_step_pct": null,
+  "exit_floor_pct": null,
+  "cutoff_1_min_before_close": null,
+  "cutoff_2_min_before_close": null,
+  "max_daily_loss_usd": null,
+  "max_open_positions": null,
+  "max_total_exposure_usd": null,
+  "identity_price_tolerance_pct": null,
+  "adjacent_strike_ratio": null,
+  "symbol_map": {
+    "SPX": "SPXW"
+  },
+  "missing_underlying_proximity_pct": "10",
+  "missing_underlying_lookback_days": null,
+  "t_chat": "0.9",
+  "t_field": "0.8",
+  "t_link": "0.8",
+  "jev": {
+    "model": null,
+    "timeout_ms": 300,
+    "enabled": false
+  },
+  "llm": {
+    "chains": {}
+  },
+  "note_guard_enabled": true,
+  "llm_monthly_budget_usd": null
+}

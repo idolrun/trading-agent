@@ -39,6 +39,10 @@ def create_engine(settings: Settings) -> AsyncEngine:
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    # The ORM resolves every FK target at flush time, so all tables must be registered
+    # in any process that writes through a session (app, CLIs, workers).
+    import app.db_models  # noqa: F401 — deferred: models import this module
+
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
