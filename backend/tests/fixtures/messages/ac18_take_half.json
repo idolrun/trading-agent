@@ -1,0 +1,74 @@
+[
+ {
+  "label": "A1",
+  "payload": {
+   "type": "message.create",
+   "message": {
+    "id": "1554138110361600000",
+    "channel_id": "900000000000000003",
+    "author": {
+     "id": "700000000000000001"
+    },
+    "content": "Bought GOOGL 357.5C @ 1.67",
+    "timestamp": "2026-09-28T14:30:00+00:00",
+    "edited_timestamp": null,
+    "reply_to_id": null,
+    "mentions": []
+   }
+  }
+ },
+ {
+  "label": "B2",
+  "payload": {
+   "type": "message.create",
+   "message": {
+    "id": "1554138152304640000",
+    "channel_id": "900000000000000003",
+    "author": {
+     "id": "800000000000000002"
+    },
+    "content": "Bought TSLA 400C @ 2.10",
+    "timestamp": "2026-09-28T14:30:10+00:00",
+    "edited_timestamp": null,
+    "reply_to_id": null,
+    "mentions": []
+   }
+  }
+ },
+ {
+  "label": "A3",
+  "payload": {
+   "type": "message.create",
+   "message": {
+    "id": "1554138194247680000",
+    "channel_id": "900000000000000003",
+    "author": {
+     "id": "700000000000000001"
+    },
+    "content": "Take half off @ 2.10",
+    "timestamp": "2026-09-28T14:30:20+00:00",
+    "edited_timestamp": null,
+    "reply_to_id": null,
+    "mentions": []
+   }
+  }
+ },
+ {
+  "label": "B4",
+  "payload": {
+   "type": "message.create",
+   "message": {
+    "id": "1554138236190720000",
+    "channel_id": "900000000000000003",
+    "author": {
+     "id": "800000000000000002"
+    },
+    "content": "Stop 1.50",
+    "timestamp": "2026-09-28T14:30:30+00:00",
+    "edited_timestamp": null,
+    "reply_to_id": null,
+    "mentions": []
+   }
+  }
+ }
+]

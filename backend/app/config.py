@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import PostgresDsn
+from pydantic import PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     session_absolute_hours: int = 12  # covers one US session (19:15-01:45 local)
     step_up_window_s: int = 120
     auth_rate_limit_per_min: int = 10
+    # Message API webhook (F011). HMAC-SHA256 over "<timestamp>.<raw body>".
+    ingest_hmac_secret: SecretStr
+    ingest_max_skew_s: int = 300
+    # Background services (tests switch them off to drive them by hand).
+    dispatcher_enabled: bool = True
     # Broker / market data adapters (F010). Only fakes until F051 (OD-3, OD-4).
     broker_adapter: Literal["fake"] = "fake"
     marketdata_adapter: Literal["fake"] = "fake"

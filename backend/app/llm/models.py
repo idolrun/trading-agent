@@ -62,7 +62,7 @@ class ModelCall(SQLModel, table=True):
     id: int | None = identity_pk()
     message_id: int | None = bigint(nullable=True)
     event_type: EventType | None = choice(default=None, nullable=True)
-    event_seq: int | None = None
+    event_seq: int | None = bigint(nullable=True)
     # Note-writer calls. use_alter: breaks the signals -> model_calls -> cards -> signals cycle.
     card_id: uuid.UUID | None = Field(
         default=None, sa_column=Column(Uuid, ForeignKey("cards.card_id", use_alter=True))

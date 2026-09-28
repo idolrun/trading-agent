@@ -3,10 +3,13 @@
 from typing import Annotated
 
 from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.alerts.service import AlertService
 from app.api.errors import ApiError
 from app.auth.service import AuthContext, AuthService, Client
 from app.config import Settings
+from app.markettime import Clock
 from app.runtime_config.service import ConfigService
 
 SESSION_COOKIE = "session"
@@ -20,6 +23,21 @@ def get_app_settings(request: Request) -> Settings:
 def get_config_service(request: Request) -> ConfigService:
     service: ConfigService = request.app.state.config_service
     return service
+
+
+def get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
+    factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+    return factory
+
+
+def get_alerts(request: Request) -> AlertService:
+    alerts: AlertService = request.app.state.alerts
+    return alerts
+
+
+def get_clock(request: Request) -> Clock:
+    clock: Clock = request.app.state.clock
+    return clock
 
 
 def get_auth(request: Request) -> AuthService:
@@ -63,5 +81,8 @@ async def rate_limit(request: Request, auth: AuthDep, client: ClientDep) -> None
 
 
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
+SessionFactoryDep = Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)]
+AlertsDep = Annotated[AlertService, Depends(get_alerts)]
+ClockDep = Annotated[Clock, Depends(get_clock)]
 ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
 StepUpDep = Annotated[AuthContext, Depends(require_step_up)]

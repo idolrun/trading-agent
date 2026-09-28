@@ -43,7 +43,7 @@ class Timer(SQLModel, table=True):
     order_id: uuid.UUID | None = Field(default=None, foreign_key="orders.order_id")
     message_id: int | None = bigint(nullable=True)
     event_type: EventType | None = choice(default=None, nullable=True)
-    event_seq: int | None = None
+    event_seq: int | None = bigint(nullable=True)
     dedupe_key: str = Field(unique=True)
     status: TimerStatus = choice()
     fired_at: datetime | None = timestamptz(nullable=True)

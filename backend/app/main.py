@@ -15,6 +15,7 @@ from app.api.errors import ApiError, api_error_handler, validation_error_handler
 from app.api.origin_check import origin_check
 from app.api.routes import auth as auth_routes
 from app.api.routes import config as config_routes
+from app.api.routes import ingest as ingest_routes
 from app.auth.rate_limit import SlidingWindowLimiter
 from app.auth.service import AuthService
 from app.broker.fake import FakeBroker
@@ -89,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.middleware("http")(origin_check(settings.dashboard_origin))
     app.include_router(auth_routes.router, prefix="/api/v1")
     app.include_router(config_routes.router, prefix="/api/v1")
+    app.include_router(ingest_routes.router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

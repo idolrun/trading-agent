@@ -101,7 +101,7 @@ class Signal(SQLModel, table=True):
     signal_id: uuid.UUID = Field(primary_key=True)
     message_id: int = bigint()
     event_type: EventType = choice()
-    event_seq: int
+    event_seq: int = bigint()
     idx: int = smallint()
     provider_id: int = bigint()
     msg_type: MsgType = choice()

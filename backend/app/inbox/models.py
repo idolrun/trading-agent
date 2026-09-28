@@ -73,7 +73,7 @@ class MessageEvent(SQLModel, table=True):
 
     message_id: int = Field(sa_type=BigInteger, primary_key=True)
     event_type: EventType = choice(primary_key=True)
-    event_seq: int = Field(primary_key=True)
+    event_seq: int = Field(sa_type=BigInteger, primary_key=True)
     provider_id: int = bigint()
     channel_id: int = bigint()
     posted_at: datetime = Field(sa_type=TIMESTAMPTZ)
@@ -113,7 +113,7 @@ class InboxItem(SQLModel, table=True):
 
     message_id: int = Field(sa_type=BigInteger, primary_key=True)
     event_type: EventType = choice(primary_key=True)
-    event_seq: int = Field(primary_key=True)
+    event_seq: int = Field(sa_type=BigInteger, primary_key=True)
     provider_id: int = bigint()
     posted_at: datetime = Field(sa_type=TIMESTAMPTZ)
     status: InboxStatus = choice()
@@ -139,7 +139,7 @@ class StageTiming(SQLModel, table=True):
 
     message_id: int = Field(sa_type=BigInteger, primary_key=True)
     event_type: EventType = choice(primary_key=True)
-    event_seq: int = Field(primary_key=True)
+    event_seq: int = Field(sa_type=BigInteger, primary_key=True)
     attempt: int = Field(sa_type=SmallInteger, primary_key=True)
     stage: Stage = choice(primary_key=True)
     at: datetime = now_default()

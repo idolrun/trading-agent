@@ -34,6 +34,7 @@ class AlertKind(StrEnum):
     NOTE_HIDDEN = "note_hidden"
     SYSTEM_FLAG = "system_flag"  # a safety flag was set or cleared (F008)
     AUTH_ANOMALY = "auth_anomaly"  # e.g. passkey sign-count regression (F009)
+    MESSAGE_API = "message_api"  # unmappable webhook payload, history unavailable (F011, F014)
 
 
 class Alert(SQLModel, table=True):

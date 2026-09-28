@@ -61,3 +61,10 @@ The dashboard registers with the token (`/api/v1/auth/register/*`), then signs i
 12 h absolute, bound to the browser's User-Agent. State-changing `/api/*` calls must carry
 `Origin: DASHBOARD_ORIGIN`. Manual entry / flatten need a fresh step-up (`/auth/step-up/*`,
 120 s, single use).
+
+## Message ingest (F011)
+
+`POST /ingest` takes the (provisional) Message API payload, signed with
+`X-Timestamp: <unix s>` and `X-Signature: hex(HMAC-SHA256(INGEST_HMAC_SECRET, "<ts>.<raw body>"))`
+(±300 s). 200 `{"accepted": true|false}` only after commit (false = duplicate); 401 bad
+signature; 422 unmappable payload (+ alert); 503 when the database is unavailable.

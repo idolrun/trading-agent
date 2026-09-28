@@ -80,3 +80,12 @@ HMAC over raw bytes before parsing; timestamp window blocks replay; no auth cook
 
 ## Open decisions touched
 OD-1, OD-2, OD-24, C-EVSEQ.
+
+## Implementation notes (2026-09-28)
+- `accept`/`claim`/`mark` join the caller's transaction (repo rule: callers own transactions); the route wraps `accept` in T1 via `app.db.in_transaction`. Extra repo helpers for F012: `claim`, `reset_in_flight`, `providers_waiting`, `later_applied`.
+- `next_for_provider` returns only `received` events (the dispatcher resets `processing` at startup); it still uses the partial index.
+- Delete time: payload `deleted_timestamp` if present, else receive time (provisional, OD-2).
+- `event_seq` widened to bigint (migration `0008`): epoch-ms edit sequence overflowed `integer`.
+- Contract alert kind is `message_api` (migration `0007`), deduped per payload hash so redeliveries do not storm.
+- DB-down 503 is tested by pointing the app's session factory at a dead port (disposing an engine just reconnects). API tests live in `tests/integration/api/`.
+- AC-18 payloads: `tests/fixtures/messages/ac18_take_half.json`; helpers in `tests/messages.py`.

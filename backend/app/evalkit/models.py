@@ -44,7 +44,7 @@ class EvalLabel(SQLModel, table=True):
     label_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     message_id: int = bigint()
     event_type: EventType = choice()
-    event_seq: int
+    event_seq: int = bigint()
     label: dict[str, Any] = jsonb()
     trading_day: date
     split: Split = choice()
