@@ -129,7 +129,7 @@ Everything outside the graph stays plain async code: ingest, market-data streams
 | `broker`, `marketdata` | Thin adapters. | §15 |
 | `timers` | Persisted deadlines (card expiry, cutoffs, off-hours release). | 7.6, 7.7 |
 | `reconcile` | Startup and periodic broker reconciliation. | §11 |
-| `web` | Dashboard, SSE, Web Push, passkeys, manual ops, labeling screen. | FR-25–27 |
+| `web` | Dashboard, SSE, Web Push, password auth, manual ops, labeling screen. | FR-25–27 |
 | `evalkit` | Replay runner and gate metrics. | §17 |
 
 ### 2.3 Latency budget (p95 ≤ 5 s)
@@ -244,7 +244,7 @@ Without either, a Postgres outage loses messages (PRD FR-1d, C91).
 | Long-term memory | LangGraph store: `PostgresStore` (same Postgres) | Provider profiles (§5.3). |
 | Web | FastAPI + Jinja + HTMX + SSE, PWA | |
 | Push | Web Push (VAPID), `pywebpush` | iOS needs the PWA added to the Home Screen. |
-| Auth | WebAuthn passkeys (`webauthn`) | |
+| Auth | Email + password (stdlib scrypt), allowlist `users` table | |
 | Database | PostgreSQL 16, `asyncpg`, numbered SQL migrations | LangGraph checkpoint/store tables live beside the domain tables. |
 | Time | `zoneinfo` + `exchange_calendars` (XNYS) | |
 | Tests | `pytest`, `hypothesis` | |
@@ -613,7 +613,7 @@ channel_id ── metadata; not a scope key (see §14: position scope)
 - **Known gap:** system-held underlying stops do not fire while the process is down. The external uptime monitor pages the phone.
 
 ## 10. Security
-- Passkey-only login, with step-up for manual entry and flatten. Server-side sessions; `SameSite=Strict` cookies.
+- Email + password login for allowlisted users (no self-registration), with password step-up for manual entry and flatten; append-only audit log. Server-side sessions; `SameSite=Strict` cookies.
 - `/ingest`: HMAC + timestamp window.
 - API keys (TypeSafe, Anthropic, OpenAI, DeepSeek, AWS if used, broker) live in a root-only env file and are redacted from logs.
 - Only provider-side text and context leave the system (FR-8). This is enforced by the Jev state builder's types and by the LLM scope-guard middleware, which is the same for every provider.
@@ -714,7 +714,7 @@ Dashboard health page, all as SQL over the tables above:
 | 0. Spikes (1 week) | Message API + export + **delivery semantics and backfill API**; broker paper spike; SPX data; **Jev bench** (latency p50/p95, Appendix A accuracy on 100 labeled messages, billing, rate limits); **LLM bench** (latency, schema validity, and field accuracy on the same labeled set for each candidate Claude / OpenAI / DeepSeek model); managed Postgres provisioned | §22 blockers resolved; Jev meets ≤ 300 ms p95 or the design falls back to Claude-first |
 | 1. Ingest + inbox + sequencing | Webhook, `inbox`, gap detector, dispatcher (per-provider workers, staleness, poison), heartbeat, feed health | Exactly-once receipt; sequencing tests (§12) pass; load tests 1–2, 4 and 6 pass with stub interpretation |
 | 2. Interpret + eval | Candidates, Jev node, routing, `llm` registry + LLM agent + middleware, labeling screen, replay harness | **Replay gate** |
-| 3. Graph + ledgers + decide + cards + dashboard | Full graph with `apply` transaction, `message_links`, interrupt approval, checkpointer, store, SSE/push, passkeys; load tests 3 and 5 | **Shadow gate** (20 days) |
+| 3. Graph + ledgers + decide + cards + dashboard | Full graph with `apply` transaction, `message_links`, interrupt approval, checkpointer, store, SSE/push, password auth; load tests 3 and 5 | **Shadow gate** (20 days) |
 | 4. Execution | `submit_order()`, brackets, re-pricing, stops, EOD, reconciliation | **Paper gate** (10 days) |
 | 5. Live | Minimum sizes | **Live gate** (10 days) |
 

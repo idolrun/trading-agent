@@ -27,7 +27,6 @@ from tests.decide_helpers import CONFIG
 from tests.integration.api.conftest import ORIGIN, UA, Api, api_settings, next_event, serve
 from tests.integration.pipeline.harness import MARKET, T0, option_entry
 from tests.messages import CHANNEL, PROVIDER_A, create, signed
-from tests.webauthn_authenticator import SoftAuthenticator
 
 
 @pytest.fixture
@@ -45,9 +44,8 @@ async def live(owner_engine: object, tmp_path: Path) -> AsyncIterator[tuple[Api,
             headers={"Origin": ORIGIN, "User-Agent": UA},
         ) as client,
     ):
-        api = Api(app, client, SoftAuthenticator("test", ORIGIN))
-        await api.enroll()
-        await api.login()
+        api = Api(app, client)
+        await api.sign_in()
         await app.state.config_service.update(
             CONFIG.model_copy(update={"channels": [CHANNEL]}),
             expected_version=0,

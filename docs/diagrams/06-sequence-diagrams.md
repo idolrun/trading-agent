@@ -276,7 +276,7 @@ sequenceDiagram
     participant B as Broker
     participant T as timers
 
-    U->>W: approve card C (passkey session)
+    U->>W: approve card C (signed-in session)
     W->>DB: card still pending? (row lock)
     alt card expired / invalidated
         W--)U: 'card no longer valid'

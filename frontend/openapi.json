@@ -202,18 +202,130 @@
         "title": "ApprovalOut",
         "type": "object"
       },
-      "AssertionRequest": {
+      "AuditAction": {
+        "enum": [
+          "user_created",
+          "user_deactivated",
+          "user_reactivated",
+          "password_reset",
+          "password_changed",
+          "login_success",
+          "login_failed",
+          "logout",
+          "step_up_success",
+          "step_up_failure",
+          "rate_limited",
+          "trade_approved",
+          "trade_rejected",
+          "card_edited",
+          "order_created",
+          "order_cancelled",
+          "lot_adjusted",
+          "kill_switch"
+        ],
+        "title": "AuditAction",
+        "type": "string"
+      },
+      "AuditEntry": {
         "properties": {
-          "credential": {
+          "action": {
+            "$ref": "#/components/schemas/AuditAction"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "details": {
             "additionalProperties": true,
-            "title": "Credential",
+            "title": "Details",
             "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceid"
+          },
+          "resourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcetype"
+          },
+          "userEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Useremail"
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userid"
           }
         },
         "required": [
-          "credential"
+          "id",
+          "at",
+          "userId",
+          "userEmail",
+          "action",
+          "resourceType",
+          "resourceId",
+          "ip",
+          "requestId",
+          "details"
         ],
-        "title": "AssertionRequest",
+        "title": "AuditEntry",
         "type": "object"
       },
       "BreakevenOut": {
@@ -770,6 +882,28 @@
         "title": "ChainEntry",
         "type": "object"
       },
+      "ChangePasswordRequest": {
+        "properties": {
+          "currentPassword": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Currentpassword",
+            "type": "string"
+          },
+          "newPassword": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Newpassword",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "title": "ChangePasswordRequest",
+        "type": "object"
+      },
       "ConfigChangeOut": {
         "properties": {
           "actor": {
@@ -984,6 +1118,20 @@
           "right"
         ],
         "title": "ContractOut",
+        "type": "object"
+      },
+      "CreateUserRequest": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "CreateUserRequest",
         "type": "object"
       },
       "DecisionRequest": {
@@ -2413,6 +2561,28 @@
         "title": "LlmStats",
         "type": "object"
       },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
       "LotDetail": {
         "properties": {
           "avgPrice": {
@@ -3151,6 +3321,34 @@
         "title": "Page[AlertOut]",
         "type": "object"
       },
+      "Page_AuditEntry_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "title": "Page[AuditEntry]",
+        "type": "object"
+      },
       "Page_CardOut_": {
         "properties": {
           "items": {
@@ -3373,6 +3571,21 @@
           "nextCursor"
         ],
         "title": "Page[QueueItem]",
+        "type": "object"
+      },
+      "PasswordRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "PasswordRequest",
         "type": "object"
       },
       "PositionDetail": {
@@ -4120,60 +4333,6 @@
         "title": "ReconciliationStats",
         "type": "object"
       },
-      "RegisterOptionsRequest": {
-        "properties": {
-          "enrollmentToken": {
-            "minLength": 1,
-            "title": "Enrollmenttoken",
-            "type": "string"
-          },
-          "label": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Label",
-            "type": "string"
-          }
-        },
-        "required": [
-          "enrollmentToken",
-          "label"
-        ],
-        "title": "RegisterOptionsRequest",
-        "type": "object"
-      },
-      "RegisterVerifyRequest": {
-        "properties": {
-          "credential": {
-            "additionalProperties": true,
-            "title": "Credential",
-            "type": "object"
-          },
-          "enrollmentToken": {
-            "minLength": 1,
-            "title": "Enrollmenttoken",
-            "type": "string"
-          }
-        },
-        "required": [
-          "enrollmentToken",
-          "credential"
-        ],
-        "title": "RegisterVerifyRequest",
-        "type": "object"
-      },
-      "RegisterVerifyResponse": {
-        "properties": {
-          "credentialId": {
-            "title": "Credentialid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "credentialId"
-        ],
-        "title": "RegisterVerifyResponse",
-        "type": "object"
-      },
       "RelinkOut": {
         "properties": {
           "cardIds": {
@@ -4717,10 +4876,19 @@
       },
       "SessionResponse": {
         "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
           "expiresAt": {
             "format": "date-time",
             "title": "Expiresat",
             "type": "string"
+          },
+          "mustChangePassword": {
+            "default": false,
+            "title": "Mustchangepassword",
+            "type": "boolean"
           },
           "stepUpUntil": {
             "anyOf": [
@@ -4736,6 +4904,7 @@
           }
         },
         "required": [
+          "email",
           "expiresAt"
         ],
         "title": "SessionResponse",
@@ -5138,6 +5307,78 @@
         "title": "UpdateConfigRequest",
         "type": "object"
       },
+      "UserOut": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "isActive": {
+            "title": "Isactive",
+            "type": "boolean"
+          },
+          "lastLoginAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastloginat"
+          },
+          "mustChangePassword": {
+            "title": "Mustchangepassword",
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "userId": {
+            "format": "uuid",
+            "title": "Userid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "email",
+          "isActive",
+          "mustChangePassword",
+          "createdAt",
+          "updatedAt",
+          "lastLoginAt"
+        ],
+        "title": "UserOut",
+        "type": "object"
+      },
+      "UserWithPassword": {
+        "description": "The temporary password is returned once and never stored (only its hash).",
+        "properties": {
+          "temporaryPassword": {
+            "title": "Temporarypassword",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user",
+          "temporaryPassword"
+        ],
+        "title": "UserWithPassword",
+        "type": "object"
+      },
       "VapidKeyResponse": {
         "properties": {
           "publicKey": {
@@ -5295,17 +5536,78 @@
         ]
       }
     },
-    "/api/v1/auth/login/options": {
-      "post": {
-        "operationId": "login_options_api_v1_auth_login_options_post",
+    "/api/v1/audit": {
+      "get": {
+        "operationId": "audit_log_api_v1_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AuditAction"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Login Options Api V1 Auth Login Options Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/Page_AuditEntry_"
                 }
               }
             },
@@ -5322,20 +5624,54 @@
             "description": "Client Error"
           }
         },
-        "summary": "Login Options",
+        "summary": "Audit Log",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "operationId": "change_password_api_v1_auth_change_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Change Password",
         "tags": [
           "auth"
         ]
       }
     },
-    "/api/v1/auth/login/verify": {
+    "/api/v1/auth/login": {
       "post": {
-        "operationId": "login_verify_api_v1_auth_login_verify_post",
+        "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AssertionRequest"
+                "$ref": "#/components/schemas/LoginRequest"
               }
             }
           },
@@ -5363,7 +5699,7 @@
             "description": "Client Error"
           }
         },
-        "summary": "Login Verify",
+        "summary": "Login",
         "tags": [
           "auth"
         ]
@@ -5388,90 +5724,6 @@
           }
         },
         "summary": "Logout",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/register/options": {
-      "post": {
-        "operationId": "register_options_api_v1_auth_register_options_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterOptionsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Register Options Api V1 Auth Register Options Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Client Error"
-          }
-        },
-        "summary": "Register Options",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/register/verify": {
-      "post": {
-        "operationId": "register_verify_api_v1_auth_register_verify_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterVerifyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegisterVerifyResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Client Error"
-          }
-        },
-        "summary": "Register Verify",
         "tags": [
           "auth"
         ]
@@ -5508,47 +5760,14 @@
         ]
       }
     },
-    "/api/v1/auth/step-up/options": {
+    "/api/v1/auth/step-up": {
       "post": {
-        "operationId": "step_up_options_api_v1_auth_step_up_options_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Step Up Options Api V1 Auth Step Up Options Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Client Error"
-          }
-        },
-        "summary": "Step Up Options",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/step-up/verify": {
-      "post": {
-        "operationId": "step_up_verify_api_v1_auth_step_up_verify_post",
+        "operationId": "step_up_api_v1_auth_step_up_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AssertionRequest"
+                "$ref": "#/components/schemas/PasswordRequest"
               }
             }
           },
@@ -5576,7 +5795,7 @@
             "description": "Client Error"
           }
         },
-        "summary": "Step Up Verify",
+        "summary": "Step Up",
         "tags": [
           "auth"
         ]
@@ -7393,6 +7612,209 @@
         "summary": "Vapid Public Key",
         "tags": [
           "push"
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "operationId": "list_users_api_v1_users_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserOut"
+                  },
+                  "title": "Response List Users Api V1 Users Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "List Users",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "operationId": "create_user_api_v1_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithPassword"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Create User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/deactivate": {
+      "post": {
+        "operationId": "deactivate_user_api_v1_users__user_id__deactivate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Deactivate User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/reactivate": {
+      "post": {
+        "operationId": "reactivate_user_api_v1_users__user_id__reactivate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Reactivate User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/reset-password": {
+      "post": {
+        "operationId": "reset_password_api_v1_users__user_id__reset_password_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWithPassword"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Reset Password",
+        "tags": [
+          "users"
         ]
       }
     },

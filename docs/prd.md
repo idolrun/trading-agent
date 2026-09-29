@@ -166,8 +166,8 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 
 ### 7.9 Manual operations [C40, C42, C77]
 - Manual exit of a tracked lot. Manual stop add/move/cancel.
-- Manual entry of any contract. Requires a fresh passkey confirmation (step-up).
-- Kill switch: pauses new cards and entries. The optional "flatten" asks which to close (options / stocks / all) and requires a fresh passkey confirmation.
+- Manual entry of any contract. Requires a fresh password confirmation (step-up).
+- Kill switch: pauses new cards and entries. The optional "flatten" asks which to close (options / stocks / all) and requires a fresh password confirmation.
 - Manual orders pass every check that signal orders pass.
 - Provider-position correction: the user can add, edit, or close provider positions. Every correction is audited and fed into evaluation data [C73].
 
@@ -305,9 +305,9 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 - Retention: all audit data is kept for 7 years [C63].
 
 ## 13. Security, privacy, authentication and authorization [C39, C42]
-- Publicly reachable dashboard. Passkey-only authentication. No password. Recovery only via the server console.
+- Publicly reachable dashboard. Email + password authentication against an allowlist of users; no self-registration (users are added from the console or by a signed-in user; temporary passwords must be changed at first login). Recovery via the server console.
 - Short, device-bound sessions. Login audit log. Rate limiting.
-- Step-up passkey confirmation for manual entry and flatten.
+- Step-up password confirmation for manual entry and flatten.
 - Single user; no roles.
 - Broker keys and LLM keys live in secret storage, never in code or logs.
 - Message text may be sent to cloud LLM providers [C36]. User holdings and money data are never sent to the LLM (FR-8).
@@ -398,7 +398,7 @@ Every record below is persisted with a timestamp, and the whole audit trail is i
 | Daily realized P&L | p5 ≈ −$2.3k, p10 ≈ −$1.3k, worst day ≈ −$28.1k |
 
 - Tier amounts must buy at least one contract at typical premiums (see §7.4).
-- Operator runbooks are required for recovery, reconciliation mismatches, passkey recovery, and the kill switch.
+- Operator runbooks are required for recovery, reconciliation mismatches, password recovery, and the kill switch.
 
 ## 19. Cost
 - LLM monthly ceiling: to be decided by the user. Spend is tracked from day one [C44].
@@ -420,7 +420,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 - Approving every action plus unanswered-means-expire means exits can be missed. Mitigations: end-of-day forced close, and pre-approved stops.
 - System-held underlying stops give no protection during a system outage [C49].
 - Stock stop-market orders fill below the stop on gap-downs [C61].
-- A public dashboard that allows manual entry has a high attack surface. Mitigated by passkey-only login, step-up confirmation, and identical order checks [C42].
+- A public dashboard that allows manual entry has a high attack surface. Mitigated by allowlisted email + password login, step-up confirmation, and identical order checks [C42].
 - Parsing every author produces false cards. Mitigated by showing the author, muting, and the recall/precision gates [C54, C57].
 - Errors in the provider ledger spread to follow-ups. Mitigated by user correction and evaluation [C73].
 - The full-session approval workload (19:15–01:45 local): 50–150 cards per day at the user's current activity (§12). This makes one-tap approval on the phone essential.
@@ -455,7 +455,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 - AC-7. Killing the process mid-order and restarting produces no duplicate order. Lots reconcile against the broker, and a mismatch blocks entries.
 - AC-8. Feed silence longer than N s during market hours raises an alert and the "degraded" state.
 - AC-9. An LLM outage falls back to the second provider, then to a raw review card. No message is lost.
-- AC-10. No password login path exists. Manual entry and flatten require step-up confirmation.
+- AC-10 (revised 2026-09-29). Only allowlisted active users can sign in with email + password; there is no self-registration; temporary passwords must be changed at first login. Manual entry and flatten require step-up (password) confirmation. Security-sensitive and user-initiated trading actions are recorded in an append-only audit log.
 - AC-11. A literal span that is not present in the source text is always rejected.
 - AC-12. All stage gates in §17 are passed in order before real money is used.
 - AC-13. The advisory note can never change a card's fields or actions. A note containing a number not present in the validated fields or source messages is hidden (if the note guard is confirmed).
@@ -476,7 +476,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 ---
 
 ## Appendix A — Decision log
-C1 single user, own money · C2 Discord, multiple channels · C3 trusted providers · C4 US market · C5 every trading day, open to close · C6/C14 approval required for every order action · C7 no prediction · C8 messages cross-reference; corrections happen · C9 grouped per provider and company · C10 options (revised by C55) · C11 user's message API · C12 broker not chosen; account not decided · C13 push delivery · C15 tier sizing · C16 late correction = alert only · C17 web dashboard · C18 unanswered = expire · C19 expiration management (cutoff 1 card, cutoff 2 automatic close) · C20 overnight holds allowed · C21 desktop + phone push · C22 asymmetric approval validity · C23 risk limits · C24 separate lots per provider · C25 re-pricing exit with floor · C26 trim quantity entered by user · C27 loss rule dropped · C28 broker-held premium stops · C29 breakeven shows both prices · C30 prose conditions ignored · C31 provenance tiers · C32 one-click inferred cards · C33 non-actionable messages in feed · C34 staged go-live · C35 order invariants · C36 cloud LLM OK · C37 hosting TBD · C38 p95 ≤ 5 s · C39 public + passkey · C40 manual ops + kill switch · C41 feed health alert · C42 hardening · C43 medium scale · C44 cost ceiling deferred · C45 second LLM provider fallback · C46 recovery policy · C47 foreign positions read-only · C48 edit = correction · C49 system-held underlying stops · C50 bracket at entry · C51 fraction pre-fill · C52 soft exit card · C53 UTC+5:45, full session · C54 all authors parsed · C55 stocks (long) in MVP · C56 equal TP split · C57 author shown + mute · C58 push events · C59 off-hours messages → card at open · C60 no-price stock entry not actionable · C61 stock stop-market GTC at broker · C62 adds join same lot · C63 7-year retention · C64 LLM pre-label + user correct · C65 history export prerequisite · C66 stage gates · C67 dev/test split · C68 non-goals · C69 config tuned in shadow/paper · C70 spreads/short = future; ext-hours/multi-user out · C71 LLM context scope · C72 two ledgers · C73 provider ledger editable · C74 opposite-direction warning · C75 disabled card for limit-blocked entry · C76 stock sizing % of equity else tier · C77 flatten scope chosen at trigger · C78 no auto-correction + adjacent-strike warning · C79 missing underlying → review card.
+C1 single user, own money · C2 Discord, multiple channels · C3 trusted providers · C4 US market · C5 every trading day, open to close · C6/C14 approval required for every order action · C7 no prediction · C8 messages cross-reference; corrections happen · C9 grouped per provider and company · C10 options (revised by C55) · C11 user's message API · C12 broker not chosen; account not decided · C13 push delivery · C15 tier sizing · C16 late correction = alert only · C17 web dashboard · C18 unanswered = expire · C19 expiration management (cutoff 1 card, cutoff 2 automatic close) · C20 overnight holds allowed · C21 desktop + phone push · C22 asymmetric approval validity · C23 risk limits · C24 separate lots per provider · C25 re-pricing exit with floor · C26 trim quantity entered by user · C27 loss rule dropped · C28 broker-held premium stops · C29 breakeven shows both prices · C30 prose conditions ignored · C31 provenance tiers · C32 one-click inferred cards · C33 non-actionable messages in feed · C34 staged go-live · C35 order invariants · C36 cloud LLM OK · C37 hosting TBD · C38 p95 ≤ 5 s · C39 public + email/password allowlist · C40 manual ops + kill switch · C41 feed health alert · C42 hardening · C43 medium scale · C44 cost ceiling deferred · C45 second LLM provider fallback · C46 recovery policy · C47 foreign positions read-only · C48 edit = correction · C49 system-held underlying stops · C50 bracket at entry · C51 fraction pre-fill · C52 soft exit card · C53 UTC+5:45, full session · C54 all authors parsed · C55 stocks (long) in MVP · C56 equal TP split · C57 author shown + mute · C58 push events · C59 off-hours messages → card at open · C60 no-price stock entry not actionable · C61 stock stop-market GTC at broker · C62 adds join same lot · C63 7-year retention · C64 LLM pre-label + user correct · C65 history export prerequisite · C66 stage gates · C67 dev/test split · C68 non-goals · C69 config tuned in shadow/paper · C70 spreads/short = future; ext-hours/multi-user out · C71 LLM context scope · C72 two ledgers · C73 provider ledger editable · C74 opposite-direction warning · C75 disabled card for limit-blocked entry · C76 stock sizing % of equity else tier · C77 flatten scope chosen at trigger · C78 no auto-correction + adjacent-strike warning · C79 missing underlying → review card.
 · C80 LLM interprets only + advisory free-text note (provider-only context) · C81 chain + quote identity check with wide tolerance; scale normalization by quote.
 · C82 fraction rounding to 0 → blank qty + "lot too small to trim" label · C83 TP legs = min(levels, qty), assigned from TP1, editable · C84 missing-underlying suggestion by live-price proximity, never a fixed strike threshold · C85 configurable symbol map, "SPX" → SPXW · C86 no ticker whitelist; validate against optionable list + live chain · C87 trade-history exports kept out of git and model context; only aggregates in docs.
 · C88 per-provider ordered processing by post time; providers in parallel; approvals never block a provider · C89 out-of-order arrival → "late" flag + re-check → review card · C90 validity clocks start at post time; stale entries get no card, late exits still carded; catch-up mode · C91 message API must redeliver ≥ 10 min or offer backfill; gap detection · C92 no silent drops; poison → raw review card + alert · C93 RPO ≈ 0 for approvals/orders/fills/ledger, RTO ≤ 5 min; DB HA off the app host · C94 no Kafka/Redis; PostgreSQL is sole source of truth and queue; adopt only on measured triggers.

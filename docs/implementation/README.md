@@ -21,7 +21,7 @@ Message API ─webhook─▶ ingest ─▶ inbox (Postgres) ─NOTIFY─▶ disp
                                    ▼
           await_approval (interrupt) → revalidate (C22) → submit_order() (FR-20 invariants) → broker
                                    execution loops (plain async): fills → lots, re-pricing, stops, EOD, reconcile
-Next.js dashboard ◀── JSON API + SSE (FastAPI) ── passkey sessions, step-up for manual entry / flatten
+Next.js dashboard ◀── JSON API + SSE (FastAPI) ── user sessions, password step-up for manual entry / flatten
 ```
 
 - **Authoritative state:** PostgreSQL domain tables + broker reconciliation. LangGraph checkpoints hold only "where a run paused".
@@ -46,7 +46,7 @@ backend/
     markettime.py                XNYS calendar, ET clock, snowflake time, relative dates
     system/                      system_flags, heartbeat
     alerts/                      alert creation / ack
-    auth/                        passkeys, sessions, step-up, enrolment CLI
+    auth/                        users, sessions, step-up, audit log, user CLI
     inbox/ ingest/ dispatcher/   transport boundary, webhook, sequencing, feed health, gap backfill
     interpret/                   signal contract, spans, candidates, context, jev/, llm_extract/, note, route
     llm/                         model registry, capability table, fallback chain, breaker, usage/cost
@@ -138,7 +138,7 @@ cd frontend && pnpm dev                  # after F052
 | [F006](F006-runtime-config.md) | Runtime config & audit | F004 | PRD §18, C69 |
 | [F007](F007-market-time-calendar.md) | Market time & exchange calendar | F001 | FR-15, PRD §12 Time |
 | [F008](F008-alerts-and-system-flags.md) | Alerts & system flags | F004 | FR-26, TRD §9 |
-| [F009](F009-passkey-auth.md) | Passkey auth & sessions | F004 | PRD §13, AC-10 |
+| [F009](F009-password-auth.md) | Password auth, users & sessions (revised from passkeys) | F004 | PRD §13 |
 | [F010](F010-broker-marketdata-ports.md) | Broker & market-data ports + fakes | F001 | TRD §2.2, §7 |
 | [F011](F011-ingest-webhook-inbox.md) | Ingest webhook & inbox | F003, F007 | FR-1, FR-1d, FR-3 |
 | [F012](F012-per-provider-dispatcher.md) | Per-provider dispatcher | F011, F008, F006 | FR-1a, FR-1c, FR-1e, FR-2 |
@@ -182,7 +182,7 @@ cd frontend && pnpm dev                  # after F052
 | [F050](F050-message-api-adapter.md) | Real Message API adapter (**blocked**) | F011, F014 | §15, OD-1/2 |
 | [F051](F051-broker-marketdata-adapters.md) | Real broker & market-data adapters (**blocked**) | F010, F040 | §15, OD-3/4/16 |
 | [F052](F052-frontend-foundation.md) | Frontend foundation & contract | Backend gate | FR-25 |
-| [F053](F053-frontend-auth.md) | Passkey login & step-up UI | F052 | PRD §13 |
+| [F053](F053-frontend-auth.md) | Password login, user management & step-up UI | F052 | PRD §13 |
 | [F054](F054-frontend-live-updates-push.md) | Live updates & push (PWA) | F053 | FR-26, C21 |
 | [F055](F055-frontend-card-inbox.md) | Card inbox & approval | F054 | G3, 7.1–7.5 |
 | [F056](F056-frontend-message-feed.md) | Message feed | F054 | FR-10, FR-1c |
@@ -211,7 +211,7 @@ flowchart TD
     F006[F006 Runtime config]
     F007[F007 Market time]
     F008[F008 Alerts and flags]
-    F009[F009 Passkey auth]
+    F009[F009 Password auth]
     F010[F010 Broker and MD ports]
   end
   F004 --> F006
@@ -456,14 +456,14 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 - [x] Services own transactions T1–T8 (`database-schema.md` §7); no transaction spans a model/broker call.
   - Proven by `tests/unit/test_transaction_boundaries.py` (AST scan: no broker/model/quote call inside a session or transaction block). T1 (`inbox.accept`), the push-subscription writes and the label PUT open their transaction in the route (thin adapters, no rules there); the rest live in services.
 - [x] API contracts: every endpoint in §1.3 exists, typed request/response models, error mapping, OpenAPI exported (`uv run python -m app.api.export_openapi > openapi.json`) and committed.
-  - `frontend/openapi.json` is the snapshot (`tests/api/test_openapi_snapshot.py`); every 4xx is declared as `ErrorBody {message, code}`. The WebAuthn `*/options` responses and `/events` (SSE) are deliberately untyped.
+  - `frontend/openapi.json` is the snapshot (`tests/api/test_openapi_snapshot.py`); every 4xx is declared as `ErrorBody {message, code}`. `/events` (SSE) is deliberately untyped.
 - [x] LangChain: LLM registry, fallback chain, middleware guardrails, structured output, `model_calls` with cost — tests from TRD §12 "LLM provider tests" green.
   - Only the first table row (the same 50 messages on each provider:model, accuracy per model) is `live` (`tests/live/test_llm_providers.py`, 5 synthetic messages, needs keys; excluded from default runs). Its 50-message labeled corpus and per-model accuracy come from the F048 replay once labels exist.
 - [ ] Jev fast path wired; routing thresholds configurable; OD-8 bench result recorded (go or LLM-only).
   - Wired (`app/main.py`, `route`) and `t_chat`/`t_field`/`t_link` + `jev` are runtime config, tested. **Missing: the OD-8 bench result** — `tests/live/test_jev_bench.py` needs TypeSafe access; nothing is recorded yet. Until then the LLM-only path is the go-live default.
 - [x] LangGraph: message graph + approval graph with `AsyncPostgresSaver`; interrupt/resume tests for every resume value; crash-mid-node tests.
 - [x] Validation + error handling: no silent drops (FR-1e), raw review cards, alerts for every degraded state.
-- [x] Authentication: passkey-only, step-up, rate limiting, `logins` audit, no password path (AC-10).
+- [x] Authentication (revised 2026-09-29): email + password for allowlisted users, no public registration, forced change of temporary passwords, password step-up, rate limiting, append-only `audit_log`. Replaces the original passkey-only AC-10.
 - [x] Observability: stage timings, `/health` heartbeat, health metrics endpoint.
 - [x] Scenario tests from TRD §12 tables (real-trade patterns, sequencing/context) all green.
 - [x] AC coverage (§9): every backend-provable AC has a passing test.
@@ -496,7 +496,7 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 | AC-7 kill mid-order, no duplicate | F028, F036, F046, F063 |
 | AC-8 feed silence | F013 |
 | AC-9 LLM outage fallback | F031, F032, F035 |
-| AC-10 no password; step-up | F009, F047, F053 |
+| AC-10 (revised) allowlisted email + password; step-up; audit | F009, F047, F053 |
 | AC-11 literal spans | F015, F032, F033 |
 | AC-12 stage gates | F048, F064 |
 | AC-13 note cannot change card | F034 |
@@ -537,11 +537,11 @@ C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple chan
 ### 10.2 Conflicts found (PRD/TRD vs repo/each other) — proposed smallest resolution
 | # | Conflict | Impact | Proposed resolution |
 |---|---|---|---|
-| X1 | TRD §3 web = FastAPI + Jinja + HTMX + SSE; repo already has a Next.js 16 App Router frontend and the request mandates Next.js | Two UI stacks otherwise | Next.js frontend + FastAPI JSON API. Same-origin through Next `rewrites` so passkey cookies stay `SameSite=Strict` and WebAuthn RP ID = dashboard origin. **TRD §3 needs amendment.** |
+| X1 | TRD §3 web = FastAPI + Jinja + HTMX + SSE; repo already has a Next.js 16 App Router frontend and the request mandates Next.js | Two UI stacks otherwise | Next.js frontend + FastAPI JSON API. Same-origin through Next `rewrites` so session cookies stay `SameSite=Strict` and the API origin is the dashboard origin. **TRD §3 needs amendment.** |
 | X2 | TRD Python 3.12 vs repo `.python-version` 3.13 | none functionally | Python 3.13 |
 | X3 | TRD §6 card states lack `disabled`; diagram 07 and frontend have it | API/UI mismatch | `disabled` is a terminal card state (+ `card_type='disabled'`), as in diagram 07. Fix TRD §6 text. |
 | X4 | `frontend/features/cards/decision.ts` + mock `_store.ts` re-implement approval rules | duplicated business rules | Deleted in F052; backend is sole owner. |
-| X5 | TRD §8 lacks tables for passkeys, sessions, enrolment tokens, push subscriptions, system flags, alert acks, row history | features cannot persist required state | Added as "derived necessity" tables in `database-schema.md` §4–§5, each citing the forcing PRD/TRD clause. |
+| X5 | TRD §8 lacks tables for users, sessions, audit log, push subscriptions, system flags, alert acks, row history | features cannot persist required state | Added as "derived necessity" tables in `database-schema.md` §4–§5, each citing the forcing PRD/TRD clause. |
 | X6 | TRD "Jev primary" vs building LLM path first | order only | LLM path first (fallback design, OD-8 independent); Jev primary at go-live if bench passes. |
 | X7 | TRD §8 puts stage timestamps on `message_events` (append-only table) | append-only violated | `stage_timings` audit rows instead. |
 
@@ -612,10 +612,9 @@ C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple chan
 | LangGraph | 1.2.12 | `from langgraph.types import interrupt, Command`; node re-runs from its start on resume (side effects before `interrupt` must be idempotent); `thread_id` in config; `from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver` + `setup()`; `from langgraph.store.postgres.aio import AsyncPostgresStore` | docs.langchain.com/oss/python/langgraph (interrupts, add-memory) |
 | langgraph-checkpoint-postgres | 3.1.2 | psycopg 3 based | PyPI |
 | typesafe-sdk (Jev) | 0.7.2 | `AsyncTypeSafeClient().system_one(state=…, questions={id: Choice/Score/Noul})`; `response.choices[id].choice` etc.; `TypeSafeAPIError(status, request_id)`; `max_retries`, `timeout` configurable; model via constructor param. **Probability/confidence field names not in the docs page — verify in S4** | docs.typesafe.ai/sdk/python |
-| webauthn (py_webauthn) | 3.0.1 | registration/authentication options + verification | PyPI |
 | pywebpush | 2.5.0 | VAPID Web Push | PyPI |
 | exchange-calendars | 4.13.2 | `XNYS` sessions, half days | PyPI |
 | pytest / pytest-asyncio / hypothesis | 9.1.1 / 1.4.0 / 6.168.3 | async tests, property tests | PyPI |
 | uv | current | `uv add`, `uv add --dev`, `uv sync`, `uv run`, `uv lock` | docs.astral.sh/uv |
 | Next.js | 16.3.6 (installed) | App Router; **`middleware` renamed `proxy.ts` in 16**; `rewrites` in `next.config.ts` for external destinations; read `frontend/node_modules/next/dist/docs/` before coding (frontend/AGENTS.md) | bundled docs |
-| openapi-typescript / Playwright / @simplewebauthn/browser | 7.13.0 / 1.63.0 / 14.0.0 | contract types, E2E, passkey browser helpers | npm |
+| openapi-typescript / Playwright | 7.13.0 / 1.63.0 | contract types, E2E | npm |

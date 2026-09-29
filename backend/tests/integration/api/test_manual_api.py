@@ -42,7 +42,6 @@ from tests.integration.pipeline.harness import (
     option_entry,
 )
 from tests.messages import CHANNEL, PROVIDER_A, PROVIDER_B
-from tests.webauthn_authenticator import SoftAuthenticator
 
 GOOGL = OptionContract(
     underlying="GOOGL", expiry=date(2026, 10, 2), strike=Decimal("357.5"), right="call"
@@ -81,9 +80,8 @@ async def m(owner_engine: object) -> AsyncIterator[Api]:
             headers={"Origin": ORIGIN, "User-Agent": UA},
         ) as client,
     ):
-        api = Api(app, client, SoftAuthenticator("test", ORIGIN))
-        await api.enroll()
-        await api.login()
+        api = Api(app, client)
+        await api.sign_in()
         for path in sorted(MARKET.glob("*.json")):
             app.state.marketdata.load(MarketFixture.model_validate_json(path.read_text()))
         await app.state.config_service.update(
@@ -96,12 +94,7 @@ async def m(owner_engine: object) -> AsyncIterator[Api]:
 
 
 async def step_up(api: Api) -> None:
-    options = await api.client.post("/api/v1/auth/step-up/options")
-    r = await api.client.post(
-        "/api/v1/auth/step-up/verify",
-        json={"credential": api.authenticator.get(options.json())},
-    )
-    assert r.status_code == 200, r.text
+    await api.step_up()
 
 
 async def post(api: Api, path: str, body: dict[str, Any], *, up: bool = False) -> Any:
@@ -265,6 +258,13 @@ async def test_kill_switch_toggle_blocks_entries_but_not_exits(m: Api) -> None:
     assert exit_.status_code == 200 and len(await orders(m, OrderKind.EXIT)) == 1  # OD-27
     off = await post(m, "/kill-switch", {"active": False, "reason": "all clear"})
     assert off.json() == {"active": False}
+    audit = (await m.client.get("/api/v1/audit")).json()["items"]
+    assert [a["action"] for a in audit if a["action"] in {"kill_switch", "order_created"}] == [
+        "kill_switch",
+        "order_created",
+        "kill_switch",
+    ]
+    assert audit[0]["details"] == {"active": False, "reason": "all clear"}
 
 
 # --- manual exit and stops ---------------------------------------------------------------
@@ -525,7 +525,10 @@ async def test_relink_writes_a_user_correction_link_and_label(m: Api, tmp_path: 
 
     r = await post(m, "/links", body)
     assert r.status_code == 200, r.text
-    none, linked = await rows(m, MessageLink, col(MessageLink.signal_id) == signal_id)
+    none, linked = sorted(  # heap order is not insert order: the superseding row is second
+        await rows(m, MessageLink, col(MessageLink.signal_id) == signal_id),
+        key=lambda r: r.supersedes_link_id is not None,
+    )
     assert none.outcome == LinkOutcome.NONE
     assert (linked.outcome, linked.method) == (LinkOutcome.LINKED, LinkMethod.USER_CORRECTION)
     assert linked.supersedes_link_id == none.id

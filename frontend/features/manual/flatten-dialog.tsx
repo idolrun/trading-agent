@@ -62,7 +62,7 @@ function FlattenDialog({ onClose }: { onClose: () => void }) {
         open
         onOpenChange={(open) => !open && onClose()}
         title="Flatten positions"
-        description="Turns the kill switch on and sends an exit for every open lot in scope. Needs a passkey check."
+        description="Turns the kill switch on and sends an exit for every open lot in scope. Needs a password check."
       >
         {flatten.data ? (
           <>

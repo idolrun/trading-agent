@@ -38,24 +38,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/login/options": {
+    "/api/v1/audit": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Audit Log */
+        get: operations["audit_log_api_v1_audit_get"];
         put?: never;
-        /** Login Options */
-        post: operations["login_options_api_v1_auth_login_options_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/login/verify": {
+    "/api/v1/auth/change-password": {
         parameters: {
             query?: never;
             header?: never;
@@ -64,8 +64,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login Verify */
-        post: operations["login_verify_api_v1_auth_login_verify_post"];
+        /** Change Password */
+        post: operations["change_password_api_v1_auth_change_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -89,40 +106,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/register/options": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register Options */
-        post: operations["register_options_api_v1_auth_register_options_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/register/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register Verify */
-        post: operations["register_verify_api_v1_auth_register_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/session": {
         parameters: {
             query?: never;
@@ -140,7 +123,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/step-up/options": {
+    "/api/v1/auth/step-up": {
         parameters: {
             query?: never;
             header?: never;
@@ -149,25 +132,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Step Up Options */
-        post: operations["step_up_options_api_v1_auth_step_up_options_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/step-up/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Step Up Verify */
-        post: operations["step_up_verify_api_v1_auth_step_up_verify_post"];
+        /** Step Up */
+        post: operations["step_up_api_v1_auth_step_up_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -686,6 +652,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_v1_users_get"];
+        put?: never;
+        /** Create User */
+        post: operations["create_user_api_v1_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate User */
+        post: operations["deactivate_user_api_v1_users__user_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate User */
+        post: operations["reactivate_user_api_v1_users__user_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset Password */
+        post: operations["reset_password_api_v1_users__user_id__reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -818,12 +853,37 @@ export interface components {
             /** Stepup */
             stepUp: boolean;
         };
-        /** AssertionRequest */
-        AssertionRequest: {
-            /** Credential */
-            credential: {
+        /**
+         * AuditAction
+         * @enum {string}
+         */
+        AuditAction: "user_created" | "user_deactivated" | "user_reactivated" | "password_reset" | "password_changed" | "login_success" | "login_failed" | "logout" | "step_up_success" | "step_up_failure" | "rate_limited" | "trade_approved" | "trade_rejected" | "card_edited" | "order_created" | "order_cancelled" | "lot_adjusted" | "kill_switch";
+        /** AuditEntry */
+        AuditEntry: {
+            action: components["schemas"]["AuditAction"];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Details */
+            details: {
                 [key: string]: unknown;
             };
+            /** Id */
+            id: number;
+            /** Ip */
+            ip: string | null;
+            /** Requestid */
+            requestId: string | null;
+            /** Resourceid */
+            resourceId: string | null;
+            /** Resourcetype */
+            resourceType: string | null;
+            /** Useremail */
+            userEmail: string | null;
+            /** Userid */
+            userId: string | null;
         };
         /** BreakevenOut */
         BreakevenOut: {
@@ -977,6 +1037,13 @@ export interface components {
              */
             provider: "anthropic" | "openai" | "deepseek" | "openai_compat";
         };
+        /** ChangePasswordRequest */
+        ChangePasswordRequest: {
+            /** Currentpassword */
+            currentPassword: string;
+            /** Newpassword */
+            newPassword: string;
+        };
         /** ConfigChangeOut */
         ConfigChangeOut: {
             /** Actor */
@@ -1048,6 +1115,14 @@ export interface components {
             strike: string | null;
             /** Underlying */
             underlying: string;
+        };
+        /** CreateUserRequest */
+        CreateUserRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
         };
         /** DecisionRequest */
         DecisionRequest: {
@@ -1571,6 +1646,13 @@ export interface components {
             /** Spendmonthtodateusd */
             spendMonthToDateUsd: string;
         };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
         /** LotDetail */
         LotDetail: {
             /** Avgprice */
@@ -1822,6 +1904,13 @@ export interface components {
             /** Nextcursor */
             nextCursor: string | null;
         };
+        /** Page[AuditEntry] */
+        Page_AuditEntry_: {
+            /** Items */
+            items: components["schemas"]["AuditEntry"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
         /** Page[CardOut] */
         Page_CardOut_: {
             /** Items */
@@ -1877,6 +1966,11 @@ export interface components {
             items: components["schemas"]["QueueItem"][];
             /** Nextcursor */
             nextCursor: string | null;
+        };
+        /** PasswordRequest */
+        PasswordRequest: {
+            /** Password */
+            password: string;
         };
         /** PositionDetail */
         PositionDetail: {
@@ -2083,27 +2177,6 @@ export interface components {
             /** Unknownorders */
             unknownOrders: number;
         };
-        /** RegisterOptionsRequest */
-        RegisterOptionsRequest: {
-            /** Enrollmenttoken */
-            enrollmentToken: string;
-            /** Label */
-            label: string;
-        };
-        /** RegisterVerifyRequest */
-        RegisterVerifyRequest: {
-            /** Credential */
-            credential: {
-                [key: string]: unknown;
-            };
-            /** Enrollmenttoken */
-            enrollmentToken: string;
-        };
-        /** RegisterVerifyResponse */
-        RegisterVerifyResponse: {
-            /** Credentialid */
-            credentialId: string;
-        };
         /** RelinkOut */
         RelinkOut: {
             /** Cardids */
@@ -2278,11 +2351,18 @@ export interface components {
         };
         /** SessionResponse */
         SessionResponse: {
+            /** Email */
+            email: string;
             /**
              * Expiresat
              * Format: date-time
              */
             expiresAt: string;
+            /**
+             * Mustchangepassword
+             * @default false
+             */
+            mustChangePassword: boolean;
             /** Stepupuntil */
             stepUpUntil?: string | null;
         };
@@ -2438,6 +2518,41 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** UserOut */
+        UserOut: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Email */
+            email: string;
+            /** Isactive */
+            isActive: boolean;
+            /** Lastloginat */
+            lastLoginAt: string | null;
+            /** Mustchangepassword */
+            mustChangePassword: boolean;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /**
+             * Userid
+             * Format: uuid
+             */
+            userId: string;
+        };
+        /**
+         * UserWithPassword
+         * @description The temporary password is returned once and never stored (only its hash).
+         */
+        UserWithPassword: {
+            /** Temporarypassword */
+            temporaryPassword: string;
+            user: components["schemas"]["UserOut"];
+        };
         /** VapidKeyResponse */
         VapidKeyResponse: {
             /** Publickey */
@@ -2517,9 +2632,14 @@ export interface operations {
             };
         };
     };
-    login_options_api_v1_auth_login_options_post: {
+    audit_log_api_v1_audit_get: {
         parameters: {
-            query?: never;
+            query?: {
+                user_id?: string | null;
+                action?: components["schemas"]["AuditAction"] | null;
+                cursor?: string | null;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2532,9 +2652,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["Page_AuditEntry_"];
                 };
             };
             /** @description Client Error */
@@ -2548,7 +2666,7 @@ export interface operations {
             };
         };
     };
-    login_verify_api_v1_auth_login_verify_post: {
+    change_password_api_v1_auth_change_password_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2557,7 +2675,38 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AssertionRequest"];
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
             };
         };
         responses: {
@@ -2608,74 +2757,6 @@ export interface operations {
             };
         };
     };
-    register_options_api_v1_auth_register_options_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterOptionsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    register_verify_api_v1_auth_register_verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterVerifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RegisterVerifyResponse"];
-                };
-            };
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     session_api_v1_auth_session_get: {
         parameters: {
             query?: never;
@@ -2705,38 +2786,7 @@ export interface operations {
             };
         };
     };
-    step_up_options_api_v1_auth_step_up_options_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    step_up_verify_api_v1_auth_step_up_verify_post: {
+    step_up_api_v1_auth_step_up_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2745,7 +2795,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AssertionRequest"];
+                "application/json": components["schemas"]["PasswordRequest"];
             };
         };
         responses: {
@@ -3859,6 +3909,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VapidKeyResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_users_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"][];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_user_api_v1_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserWithPassword"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    deactivate_user_api_v1_users__user_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reactivate_user_api_v1_users__user_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reset_password_api_v1_users__user_id__reset_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserWithPassword"];
                 };
             };
             /** @description Client Error */

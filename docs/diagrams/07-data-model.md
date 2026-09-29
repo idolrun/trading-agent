@@ -179,7 +179,7 @@ erDiagram
         text decision "approve edit reject"
         jsonb edits
         timestamptz at
-        text session_id "illustrative: passkey session"
+        text session_id "illustrative: user session"
     }
     orders {
         text order_id PK "illustrative"

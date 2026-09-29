@@ -13,17 +13,16 @@ import { Toaster } from "@/components/toaster"
 import { cardFixture, healthFixture, lotDetailFixture, positionDetailFixture, server } from "@/test/msw"
 import { renderWithQuery } from "@/test/render"
 
-const webauthn = vi.hoisted(() => ({ startAuthentication: vi.fn(), startRegistration: vi.fn() }))
-vi.mock("@simplewebauthn/browser", () => webauthn)
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }))
 
 const SNOWFLAKE = "111222333444555666"
 const stepUpRequired = () =>
-  HttpResponse.json({ code: "step_up_required", message: "confirm with your passkey first" }, { status: 403 })
+  HttpResponse.json({ code: "step_up_required", message: "confirm your password first" }, { status: 403 })
 
 type Body = Record<string, unknown>
 let bodies: Body[]
 let fresh: boolean
+let stepUps: number
 
 /** Step-up is single-use: `guarded` consumes it, like the backend. */
 function guarded(handler: (body: Body, attempt: number) => Response) {
@@ -46,17 +45,20 @@ function recorded(response: () => Response) {
 beforeEach(() => {
   bodies = []
   fresh = false
-  webauthn.startAuthentication.mockReset().mockResolvedValue({ id: "cred" })
+  stepUps = 0
   server.use(
-    http.post("*/api/v1/auth/step-up/options", () => HttpResponse.json({ challenge: "c" })),
-    http.post("*/api/v1/auth/step-up/verify", () => {
+    http.post("*/api/v1/auth/step-up", () => {
       fresh = true
+      stepUps += 1
       return HttpResponse.json({ stepUpUntil: "2026-09-29T15:00:00Z" })
     }),
   )
 })
 
-const confirmPasskey = async () => userEvent.click(await screen.findByRole("button", { name: "Confirm with passkey" }))
+async function confirmPassword() {
+  await userEvent.type(await screen.findByLabelText("Password"), "correct horse battery")
+  await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
+}
 
 async function fillStockEntry() {
   await userEvent.selectOptions(screen.getByLabelText("Instrument"), "stock")
@@ -65,7 +67,7 @@ async function fillStockEntry() {
 }
 
 describe("manual entry", () => {
-  it("asks for a passkey first, keeps the idempotency key across it, and rotates it after a 422", async () => {
+  it("asks for the password first, keeps the idempotency key across it, and rotates it after a 422", async () => {
     server.use(
       http.post(
         "*/api/v1/manual/entry",
@@ -80,15 +82,15 @@ describe("manual entry", () => {
     await fillStockEntry()
 
     await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
-    await confirmPasskey()
+    await confirmPassword()
     expect(await screen.findByRole("alert")).toHaveTextContent("entries are blocked")
     expect(bodies).toHaveLength(1)
     expect(bodies[0]).toMatchObject({ instrument: { instrument: "stock", underlying: "SPY" }, qty: 1, limitPrice: "1.25" })
 
     await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
-    await confirmPasskey()
+    await confirmPassword()
     await waitFor(() => expect(bodies).toHaveLength(2))
-    expect(webauthn.startAuthentication).toHaveBeenCalledTimes(2)
+    expect(stepUps).toBe(2)
     expect(typeof bodies[0].idempotencyKey).toBe("string")
     expect(bodies[1].idempotencyKey).not.toBe(bodies[0].idempotencyKey)
   })
@@ -104,14 +106,14 @@ describe("manual entry", () => {
     renderWithQuery(<EntryForm />)
     await fillStockEntry()
     await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
-    await confirmPasskey()
+    await confirmPassword()
     await waitFor(() => expect(keys).toHaveLength(2))
     expect(keys[0]).toBe(keys[1])
   })
 })
 
 describe("flatten", () => {
-  it("picks a scope, confirms with a passkey and shows each blocked lot", async () => {
+  it("picks a scope, confirms with the password and shows each blocked lot", async () => {
     server.use(
       http.post(
         "*/api/v1/flatten",
@@ -131,7 +133,7 @@ describe("flatten", () => {
     const dialog = screen.getByRole("dialog", { name: "Flatten positions" })
     await userEvent.click(within(dialog).getByRole("radio", { name: "Everything" }))
     await userEvent.click(within(dialog).getByRole("button", { name: "Flatten now" }))
-    await confirmPasskey()
+    await confirmPassword()
     expect(await screen.findByText("Blocked: Market closed")).toBeInTheDocument()
     expect(bodies[0]).toMatchObject({ scope: "all" })
     expect(typeof bodies[0].idempotencyKey).toBe("string")
@@ -139,7 +141,7 @@ describe("flatten", () => {
 })
 
 describe("lot actions", () => {
-  it("adjusts to the broker quantity behind a passkey check", async () => {
+  it("adjusts to the broker quantity behind a password check", async () => {
     server.use(http.post(`*/api/v1/lots/${lotDetailFixture.id}/adjust`, guarded(() => HttpResponse.json({ ...lotDetailFixture, qty: 3 }))))
     renderWithQuery(<LotDetail lotId={lotDetailFixture.id} />)
     const form = within(await screen.findByRole("form", { name: "Adjust" }))
@@ -148,11 +150,11 @@ describe("lot actions", () => {
     expect(form.getByRole("button", { name: "Adjust quantity" })).toBeDisabled()
     await userEvent.type(form.getByLabelText("Adjust reason"), "broker shows 3")
     await userEvent.click(form.getByRole("button", { name: "Adjust quantity" }))
-    await confirmPasskey()
+    await confirmPassword()
     await waitFor(() => expect(bodies).toEqual([{ qty: 3, reason: "broker shows 3" }]))
   })
 
-  it("exits without a passkey and adds a stop", async () => {
+  it("exits without a password and adds a stop", async () => {
     server.use(
       http.post("*/api/v1/manual/exit", recorded(() => HttpResponse.json({ cardId: cardFixture.id, state: "approved", orderIds: [] }))),
       http.post("*/api/v1/manual/stops", recorded(() => HttpResponse.json({ cardId: cardFixture.id, state: "approved", orderIds: [] }))),
@@ -165,7 +167,7 @@ describe("lot actions", () => {
     await waitFor(() => expect(bodies).toHaveLength(2))
     expect(bodies[0]).toMatchObject({ lotId: lotDetailFixture.id, qty: lotDetailFixture.qty })
     expect(bodies[1]).toMatchObject({ lotId: lotDetailFixture.id, op: "add", level: "0.8", basis: "premium" })
-    expect(webauthn.startAuthentication).not.toHaveBeenCalled()
+    expect(stepUps).toBe(0)
   })
 
   it("offers exit only on a foreign lot", async () => {

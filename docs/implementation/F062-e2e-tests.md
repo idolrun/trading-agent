@@ -12,7 +12,7 @@ Browser-level tests of the full system (Next.js + FastAPI + PostgreSQL + fake Me
 - Used by: F064 (CI gate).
 
 ## Scope
-- `pnpm add -D @playwright/test`; `frontend/e2e/`. Backend started with `Settings.environment="test"`, fake broker/market data, `FixtureInterpreter` or recorded fake model responses, a test-only enrolment path using a virtual WebAuthn authenticator (Playwright/CDP `WebAuthn.addVirtualAuthenticator`).
+- `pnpm add -D @playwright/test`; `frontend/e2e/`. Backend started with `Settings.environment="test"`, fake broker/market data, `FixtureInterpreter` or recorded fake model responses, a test user created with `app.auth.cli create-user` (or the service) and signed in through the login form.
 - Test driver posts webhook events to `/ingest` with HMAC (test secret) and advances a controllable clock endpoint that exists **only** in `environment=test` (never in production — asserted).
 | Scenario | Expected |
 |---|---|
@@ -27,7 +27,7 @@ Browser-level tests of the full system (Next.js + FastAPI + PostgreSQL + fake Me
 | Feed silence | degraded banner |
 
 ## Files to create
-`frontend/playwright.config.ts`, `frontend/e2e/*.spec.ts`, `frontend/e2e/support/{driver.ts,webauthn.ts}`, `compose.e2e.yaml` (or documented commands), backend test-only clock route guarded by environment.
+`frontend/playwright.config.ts`, `frontend/e2e/*.spec.ts`, `frontend/e2e/support/driver.ts`, `compose.e2e.yaml` (or documented commands), backend test-only clock route guarded by environment.
 
 ## Acceptance criteria
 Suite green locally and in CI; each scenario asserts DB side effects via API (orders, cards) not just UI text.

@@ -1,46 +1,34 @@
-# F053 — Passkey Login & Step-up UI
+# F053 — Password Login, User Management & Step-up UI
+
+> **Revised 2026-09-29** with F009: passkeys were replaced by email + password.
 
 ## Objective
-Passkey-only sign-in, enrolment (with a console-issued token), logout, route protection and a reusable step-up dialog for manual entry and flatten.
+Email + password sign-in, forced change of temporary passwords, logout, route protection, a reusable password step-up dialog for protected actions, and screens to manage users and read the audit log.
 
 ## Requirements covered
-- PRD §13, AC-10 (no password path; step-up for manual entry and flatten), C39, C42.
+- PRD §13 (step-up for manual entry and flatten), C39, C42. Original AC-10 (passkey only) superseded.
 
 ## Dependencies
 - Depends on: F052 (backend F009)
-- Produces: `/login`, `/enroll` routes, `useSession`, `<RequireSession>` gate, `useStepUp()` hook + `<StepUpDialog>`, `proxy.ts` optimistic redirect.
+- Produces: `/login`, `/change-password`, `/users`, `/audit`, `useSession`, `<RequireSession>` gate, `useStepUp()` + `<StepUpDialog>`, `proxy.ts` optimistic redirect.
 - Used by: F054–F061.
 
 ## Routes & components
-| Route | Page | Server/client | Behaviour |
-|---|---|---|---|
-| `/login` | `app/login/page.tsx` | client component (WebAuthn needs `navigator.credentials`) | "Sign in with passkey" → `POST /auth/login/options` → `startAuthentication` → `POST /auth/login/verify` → redirect to `/` |
-| `/enroll` | `app/enroll/page.tsx` | client | token from query string (`?token=`), label input, `startRegistration`, verify |
-| all others | `app/(desk)/layout.tsx` | server layout + client gate | `GET /auth/session`; 401 → `/login` |
-- `proxy.ts` (Next 16 Proxy): if no `session` cookie → redirect to `/login` (optimistic only; the backend remains the authority — per Next docs, Proxy is not full auth).
-- `@simplewebauthn/browser` for options/response encoding (`pnpm add @simplewebauthn/browser`).
-- `useStepUp()` returns `ensureStepUp(): Promise<void>` → options → `startAuthentication` → verify; mutations for manual entry/flatten call it first and retry once on `403 step_up_required`.
-- No password field exists anywhere (lint rule: `grep -r 'type="password"'` in CI fails).
+| Route | Page | Behaviour |
+|---|---|---|
+| `/login` | `app/login/page.tsx` | email + password form → `POST /auth/login`; `mustChangePassword` → `/change-password`, else `next` |
+| `/change-password` | `app/change-password/page.tsx` | current + new + repeat (≥12 chars) → `POST /auth/change-password` → `/` |
+| `/users` (desk) | `features/users/user-manager.tsx` | list; add by email (temporary password shown once in a dialog with Copy); deactivate/reactivate (not yourself); reset password |
+| `/audit` (desk) | `features/users/audit-log.tsx` | newest first, filter by action, load more |
+| all desk routes | `app/(desk)/layout.tsx` | `GET /auth/session`; 401 → `/login`; a pending temporary password → `/change-password`; header shows the email and Sign out |
+- `proxy.ts`: no `session` cookie → redirect to `/login` (optimistic only; the backend is the authority).
+- `useStepUp()`: `withStepUp(fn)` retries once after the user confirms their password in `<StepUpDialog>` (`POST /auth/step-up`) on `403 step_up_required`. The typed password is discarded when the dialog closes.
 
 ## States
-Loading (spinner with label), error (message from `ApiError`, retry), unsupported browser (no WebAuthn → explanation), cancelled prompt (neutral message).
+Loading spinner with label, error alert (focused; message from `ApiError`), Try again after a failure, repeat-password mismatch.
 
-## Accessibility / responsive
-Buttons labelled; focus moves to error; works on phone (iOS Safari PWA) and desktop.
-
-## Files to create
-`frontend/app/login/page.tsx`, `frontend/app/enroll/page.tsx`, `frontend/app/(desk)/layout.tsx` (move `app/page.tsx` + `app/cards/[cardId]` under the group), `frontend/proxy.ts`, `frontend/features/auth/{api.ts,use-session.ts,use-step-up.ts,step-up-dialog.tsx,login-screen.tsx,enroll-screen.tsx}`, tests `frontend/features/auth/*.test.tsx`.
-
-## Files to modify
-`frontend/lib/api/client.ts` (401 handler wiring), `frontend/app/layout.tsx` (providers).
-
-## Tests
-- Login success/cancel/error with mocked `@simplewebauthn/browser` + msw.
-- Protected route without session → redirect.
-- Step-up hook retries once after `403 step_up_required`.
+## Files
+`frontend/features/auth/{api,submit,use-session,use-step-up}.ts(x)`, `login-screen.tsx`, `change-password-screen.tsx`, `step-up-dialog.tsx`, `require-session.tsx`; `frontend/features/users/{api.ts,user-manager.tsx,audit-log.tsx}`; tests `features/auth/*.test.tsx`, `features/users/users.test.tsx`. `@simplewebauthn/browser`, the enrol page and the `lint:no-password` script are gone.
 
 ## Acceptance criteria
-AC-10 UI part: passkey-only; step-up dialog wired for protected actions.
-
-## Implementation steps
-1. Auth API module. 2. Login/enroll screens. 3. Session gate + route group. 4. Proxy redirect. 5. Step-up hook/dialog. 6. Tests.
+Sign-in, forced password change, logout, gate and step-up work against the F009 API; users can be added, deactivated, reactivated and reset from the UI; audit log is readable.

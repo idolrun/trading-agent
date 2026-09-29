@@ -1,10 +1,12 @@
+> **Note (2026-09-29):** migration `0015` (F009 revised) dropped `logins`, `passkey_credentials` and `enrollment_tokens`, added `users` and `audit_log`, and moved `auth_sessions` from `credential_id` to `user_id`. Passkey names below are historical.
+
 # F004 — Schema: Platform (alerts, config, flags, auth, push, evaluation)
 
 ## Objective
 Create platform tables per [`database-schema.md` §5](database-schema.md#5-platform-tables-f004). They come before trading state because `approvals` references `auth_sessions` and `provider_position_events` references `manual_corrections`.
 
 ## Requirements covered
-- PRD §13 (passkey-only, sessions, login audit), §14 (alerts, config changes, manual corrections, logins, eval labels/runs), FR-26 (push), TRD §9 (entry block), 7.9 (kill switch), FR-1c (catch-up), FR-4 (degraded), C64, C67, C73.
+- PRD §13 (sessions, login audit; auth revised to email + password by migration `0015`, F009), §14 (alerts, config changes, manual corrections, logins, eval labels/runs), FR-26 (push), TRD §9 (entry block), 7.9 (kill switch), FR-1c (catch-up), FR-4 (degraded), C64, C67, C73.
 
 ## Dependencies
 - Depends on: F003

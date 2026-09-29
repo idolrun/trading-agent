@@ -46,21 +46,24 @@ uv run python -m app.runtime_config.cli set --file config.json --reason "initial
 API: `GET /api/v1/config`, `PUT /api/v1/config` with `{expectedVersion, document, reason}`
 (409 on a stale version); both need a signed-in session.
 
-## Passkey auth (F009)
+## Password auth (F009)
 
-Passkey only — no password path exists. New passkeys can only be added from the server console:
+Email + password, allowlist only: there is no self-registration and no public register
+endpoint. The first user (and any recovery) comes from the server console:
 
 ```bash
-uv run python -m app.auth.cli enroll            # one-time token, valid 15 min
+uv run python -m app.auth.cli create-user you@example.com    # prints a temporary password once
+uv run python -m app.auth.cli reset-password you@example.com # new temporary password, ends sessions
 uv run python -m app.auth.cli list
-uv run python -m app.auth.cli revoke <credential-id>   # also ends its sessions
 ```
 
-The dashboard registers with the token (`/api/v1/auth/register/*`), then signs in
-(`/api/v1/auth/login/*`). Sessions: HttpOnly Secure SameSite=Strict cookie, 60 min idle /
-12 h absolute, bound to the browser's User-Agent. State-changing `/api/*` calls must carry
-`Origin: DASHBOARD_ORIGIN`. Manual entry / flatten need a fresh step-up (`/auth/step-up/*`,
-120 s, single use).
+Temporary passwords must be changed at first login (`POST /api/v1/auth/change-password`; every
+other endpoint answers 403 `password_change_required` until then). A signed-in user manages
+users through `/api/v1/users` (add, deactivate, reactivate, reset password) and reads
+`/api/v1/audit`. Sessions: HttpOnly Secure SameSite=Strict cookie, 60 min idle / 12 h
+absolute, bound to the browser's User-Agent. State-changing `/api/*` calls must carry
+`Origin: DASHBOARD_ORIGIN`. Card decisions, manual entry, flatten and lot adjust need a fresh
+password step-up (`/auth/step-up`, 120 s, single use).
 
 ## Message ingest (F011)
 

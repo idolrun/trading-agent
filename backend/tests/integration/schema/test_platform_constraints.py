@@ -52,11 +52,11 @@ async def test_audit_tables_insert_only_for_app_role(db_session: AsyncSession) -
             ),
         ]
     )
-    await db_session.execute(text("INSERT INTO logins (outcome) VALUES ('failure')"))
+    await db_session.execute(text("INSERT INTO audit_log (action) VALUES ('login_failed')"))
     await db_session.commit()
     updates = {
         "alerts": "UPDATE alerts SET message = 'x'",
-        "logins": "UPDATE logins SET user_agent = 'x'",
+        "audit_log": "UPDATE audit_log SET user_email = 'x'",
         "config_changes": "UPDATE config_changes SET reason = 'x'",
         "manual_corrections": "UPDATE manual_corrections SET reason = 'x'",
     }
@@ -114,10 +114,10 @@ async def test_eval_label_split_checked(db_session: AsyncSession) -> None:
     )
 
 
-async def test_auth_session_requires_known_credential(db_session: AsyncSession) -> None:
+async def test_auth_session_requires_known_user(db_session: AsyncSession) -> None:
     await expect_error(
         db_session,
         errors.ForeignKeyViolation,
-        """INSERT INTO auth_sessions (session_id, token_hash, credential_id, expires_at)
-           VALUES (gen_random_uuid(), 'h', 'unknown', now())""",
+        """INSERT INTO auth_sessions (session_id, token_hash, user_id, expires_at)
+           VALUES (gen_random_uuid(), 'h', gen_random_uuid(), now())""",
     )

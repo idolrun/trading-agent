@@ -17,7 +17,7 @@ export function useSession() {
 /** `next` is user-controlled: accept same-origin absolute paths only. */
 export function safeNext(next: string | null | undefined): string {
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/"
-  return /^\/(login|enroll)(?:[/?#]|$)/.test(next) ? "/" : next
+  return /^\/login(?:[/?#]|$)/.test(next) ? "/" : next
 }
 
 export function loginUrl(next?: string): string {

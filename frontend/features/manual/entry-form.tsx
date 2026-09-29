@@ -114,7 +114,7 @@ export function EntryForm() {
             />
           )}
         </Field>
-        <Field label="Limit price" hint="Needs a passkey check.">
+        <Field label="Limit price" hint="Needs a password check.">
           {(id) => (
             <input
               id={id}

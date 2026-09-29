@@ -104,6 +104,9 @@ async def test_edit_bumps_version_then_old_version_conflicts(
     assert r.status_code == 200 and r.json()["version"] == 2 and r.json()["state"] == "pending"
     assert (await api.client.post(url, json=decision("approve", 1))).status_code == 409
     assert (await api.client.post(url, json=decision("reject", 2))).status_code == 200
+    audit = (await api.client.get("/api/v1/audit")).json()["items"]
+    recorded = [(a["action"], a["resourceId"]) for a in audit if a["resourceType"] == "card"]
+    assert recorded == [("trade_rejected", ids["trim"]), ("card_edited", ids["trim"])]
 
 
 async def test_approve_rejects_identity_edits(seeded: tuple[Api, dict[str, str]]) -> None:

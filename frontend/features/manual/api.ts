@@ -73,7 +73,7 @@ function useIdempotencyKey() {
 type Options<Vars, Result> = {
   /** `key` is the current idempotency key; ignore it for endpoints that take none. */
   call: (vars: Vars, key: string) => Promise<Result>
-  /** `useStepUp().withStepUp`, only for the endpoints that require a fresh passkey check. */
+  /** `useStepUp().withStepUp`, only for the endpoints that require a fresh password check. */
   withStepUp?: <R>(fn: () => Promise<R>) => () => Promise<R>
   success: string | ((result: Result) => string)
   /** Runs after a successful call (close the dialog, reset the form). */

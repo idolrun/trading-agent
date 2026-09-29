@@ -1,66 +1,84 @@
-"""Passkey auth tables (database-schema.md §5, PRD §13). Only hashes / public keys are stored."""
+"""Auth tables: allowlisted users, sessions, append-only audit log (database-schema.md §5)."""
 
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
-from sqlalchemy import BigInteger, Index, LargeBinary, Text
+from sqlalchemy import Index, LargeBinary
 from sqlalchemy import text as sa_text
 from sqlmodel import Field, SQLModel
 
-from app.db import TIMESTAMPTZ, array, check_in, choice, identity_pk, inet, now_default, timestamptz
+from app.db import (
+    TIMESTAMPTZ,
+    check_in,
+    choice,
+    flag,
+    identity_pk,
+    inet,
+    jsonb_object,
+    now_default,
+    timestamptz,
+)
 
 
-class LoginOutcome(StrEnum):
-    SUCCESS = "success"
-    FAILURE = "failure"
+class AuditAction(StrEnum):
+    USER_CREATED = "user_created"
+    USER_DEACTIVATED = "user_deactivated"
+    USER_REACTIVATED = "user_reactivated"
+    PASSWORD_RESET = "password_reset"  # noqa: S105
+    PASSWORD_CHANGED = "password_changed"  # noqa: S105
+    LOGIN_SUCCESS = "login_success"
+    LOGIN_FAILED = "login_failed"
+    LOGOUT = "logout"
     STEP_UP_SUCCESS = "step_up_success"
     STEP_UP_FAILURE = "step_up_failure"
-    LOGOUT = "logout"
     RATE_LIMITED = "rate_limited"
-    ENROLLED = "enrolled"
+    TRADE_APPROVED = "trade_approved"
+    TRADE_REJECTED = "trade_rejected"
+    CARD_EDITED = "card_edited"
+    ORDER_CREATED = "order_created"
+    ORDER_CANCELLED = "order_cancelled"
+    LOT_ADJUSTED = "lot_adjusted"
+    KILL_SWITCH = "kill_switch"
 
 
-class Login(SQLModel, table=True):
-    """Immutable audit. `credential_id` is not an FK: failed attempts may carry unknown IDs."""
+class User(SQLModel, table=True):
+    """The allowlist: only an active row here can sign in. No roles, no self-registration."""
 
-    __tablename__ = "logins"
+    __tablename__ = "users"
+
+    user_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    email: str = Field(unique=True)  # stored lowercased
+    password_hash: str
+    is_active: bool = flag(default=True)
+    must_change_password: bool = flag(default=True)
+    created_at: datetime = now_default()
+    updated_at: datetime = now_default()
+    last_login_at: datetime | None = timestamptz(nullable=True)
+
+
+class AuditLog(SQLModel, table=True):
+    """Immutable (SELECT + INSERT only for the runtime role). `user_email` is a snapshot, and
+    `user_id` is not an FK: failed logins carry no user."""
+
+    __tablename__ = "audit_log"
     __table_args__ = (
-        check_in("outcome", LoginOutcome),
-        Index("ix_logins_at", sa_text("at DESC")),
+        check_in("action", AuditAction),
+        Index("ix_audit_log_at", sa_text("at DESC")),
+        Index("ix_audit_log_user_at", "user_id", sa_text("at DESC")),
     )
 
     id: int | None = identity_pk()
-    outcome: LoginOutcome = choice()
-    credential_id: bytes | None = Field(default=None, sa_type=LargeBinary)
-    session_id: uuid.UUID | None = Field(default=None, foreign_key="auth_sessions.session_id")
-    ip: str | None = inet()
-    user_agent: str | None = None
     at: datetime = now_default()
-
-
-class PasskeyCredential(SQLModel, table=True):
-    __tablename__ = "passkey_credentials"
-
-    credential_id: bytes = Field(sa_type=LargeBinary, primary_key=True)
-    public_key: bytes = Field(sa_type=LargeBinary)
-    sign_count: int = Field(default=0, sa_type=BigInteger, sa_column_kwargs={"server_default": "0"})
-    transports: list[str] = array(Text)
-    label: str | None = None
-    created_at: datetime = now_default()
-    last_used_at: datetime | None = timestamptz(nullable=True)
-    revoked_at: datetime | None = timestamptz(nullable=True)
-
-
-class EnrollmentToken(SQLModel, table=True):
-    """Recovery only via server console: the CLI prints a token, only its hash is stored."""
-
-    __tablename__ = "enrollment_tokens"
-
-    token_hash: bytes = Field(sa_type=LargeBinary, primary_key=True)
-    expires_at: datetime = Field(sa_type=TIMESTAMPTZ)
-    used_at: datetime | None = timestamptz(nullable=True)
-    created_at: datetime = now_default()
+    user_id: uuid.UUID | None = None
+    user_email: str | None = None
+    action: AuditAction = choice()
+    resource_type: str | None = None
+    resource_id: str | None = None
+    ip: str | None = inet()
+    request_id: str | None = None
+    details: dict[str, Any] = jsonb_object()
 
 
 class AuthSession(SQLModel, table=True):
@@ -75,9 +93,8 @@ class AuthSession(SQLModel, table=True):
 
     session_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     token_hash: bytes = Field(sa_type=LargeBinary, unique=True)
-    credential_id: bytes = Field(
-        sa_type=LargeBinary, foreign_key="passkey_credentials.credential_id"
-    )
+    # Nullable only for sessions that predate password auth (all revoked by migration 0015).
+    user_id: uuid.UUID | None = Field(default=None, foreign_key="users.user_id")
     created_at: datetime = now_default()
     expires_at: datetime = Field(sa_type=TIMESTAMPTZ)
     last_seen_at: datetime = now_default()

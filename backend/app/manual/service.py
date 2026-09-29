@@ -75,7 +75,7 @@ class ManualResult:
 
 
 async def _consumed() -> bool:
-    return True  # the route's `StepUpDep` already used the passkey assertion
+    return True  # the route's `StepUpDep` already used the password check
 
 
 class ManualService:

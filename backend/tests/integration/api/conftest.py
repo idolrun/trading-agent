@@ -1,4 +1,4 @@
-"""API fixtures: the app with lifespan on the test DB, and a client signed in with a passkey."""
+"""API fixtures: the app with lifespan on the test DB, and a client signed in with a password."""
 
 import asyncio
 import json
@@ -16,10 +16,11 @@ from httpx import ASGITransport, AsyncClient
 from app.config import Settings, get_settings
 from app.main import create_app
 from tests.integration.conftest import _url
-from tests.webauthn_authenticator import SoftAuthenticator
 
 ORIGIN = "https://test"
 UA = "pytest-browser/1.0"
+EMAIL = "owner@example.com"
+PASSWORD = "correct horse battery"
 
 
 def api_settings() -> Settings:
@@ -27,7 +28,6 @@ def api_settings() -> Settings:
         update={
             "environment": "test",
             "database_url": _url("test_database_url"),
-            "rp_id": "test",
             "dashboard_origin": ORIGIN,
             "background_enabled": False,
         }
@@ -38,29 +38,30 @@ def api_settings() -> Settings:
 class Api:
     app: FastAPI
     client: AsyncClient
-    authenticator: SoftAuthenticator
 
-    async def enroll(self, label: str = "phone") -> None:
-        token, _ = await self.app.state.auth.create_enrollment_token()
-        options = await self.client.post(
-            "/api/v1/auth/register/options", json={"enrollmentToken": token, "label": label}
+    async def add_user(self, email: str = EMAIL) -> str:
+        """Allowlist `email` as the console would; returns its temporary password."""
+        _, temp = await self.app.state.auth.create_user(email, None, None)
+        return str(temp)
+
+    async def login(self, email: str = EMAIL, password: str = PASSWORD) -> httpx.Response:
+        return await self.client.post(
+            "/api/v1/auth/login", json={"email": email, "password": password}
         )
-        assert options.status_code == 200, options.text
-        r = await self.client.post(
-            "/api/v1/auth/register/verify",
-            json={
-                "enrollmentToken": token,
-                "credential": self.authenticator.create(options.json()),
-            },
-        )
+
+    async def sign_in(self, email: str = EMAIL) -> None:
+        """Add a user, log in with the temporary password and replace it."""
+        temp = await self.add_user(email)
+        r = await self.login(email, temp)
         assert r.status_code == 200, r.text
-
-    async def login(self) -> None:
-        options = await self.client.post("/api/v1/auth/login/options")
         r = await self.client.post(
-            "/api/v1/auth/login/verify",
-            json={"credential": self.authenticator.get(options.json())},
+            "/api/v1/auth/change-password",
+            json={"currentPassword": temp, "newPassword": PASSWORD},
         )
+        assert r.status_code == 204, r.text
+
+    async def step_up(self, password: str = PASSWORD) -> None:
+        r = await self.client.post("/api/v1/auth/step-up", json={"password": password})
         assert r.status_code == 200, r.text
 
 
@@ -76,13 +77,12 @@ async def api(owner_engine: object) -> AsyncIterator[Api]:
             headers={"Origin": ORIGIN, "User-Agent": UA},
         ) as client,
     ):
-        yield Api(app, client, SoftAuthenticator("test", ORIGIN))
+        yield Api(app, client)
 
 
 @pytest.fixture
 async def signed_in(api: Api) -> Api:
-    await api.enroll()
-    await api.login()
+    await api.sign_in()
     return api
 
 

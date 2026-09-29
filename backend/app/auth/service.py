@@ -1,59 +1,75 @@
-"""Passkey use cases: enrolment, login, sessions, step-up, logout. Every attempt is audited."""
+"""Password auth use cases: login, sessions, step-up, password change, user management.
+Every security-relevant attempt is audited."""
 
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from webauthn import base64url_to_bytes
-from webauthn.helpers import bytes_to_base64url
 
-from app.alerts.models import AlertKind, Severity
-from app.alerts.service import AlertService
 from app.auth import repo
-from app.auth.models import AuthSession, LoginOutcome, PasskeyCredential
-from app.auth.sessions import hash_token, new_token, session_problem, step_up_since
-from app.auth.webauthn_service import (
-    ChallengeStore,
-    SignCountRegression,
-    VerificationFailed,
-    WebAuthn,
+from app.auth.audit import AuditService, Client
+from app.auth.models import AuditAction, AuthSession, User
+from app.auth.passwords import (
+    MIN_LENGTH,
+    hash_password_async,
+    temporary_password,
+    verify_password_async,
 )
+from app.auth.sessions import hash_token, new_token, session_problem, step_up_since
 from app.config import Settings
 from app.db import in_transaction
 from app.markettime import Clock
 
 logger = logging.getLogger(__name__)
 
-ENROLLMENT_TTL = timedelta(minutes=15)
-
-
-class InvalidEnrollmentToken(Exception):
-    pass
+__all__ = ["AuthContext", "AuthFailed", "AuthService", "Client"]
 
 
 class AuthFailed(Exception):
+    """Wrong email/password: deliberately says nothing about which."""
+
+
+class InvalidPassword(Exception):
     pass
 
 
-@dataclass(frozen=True)
-class Client:
-    ip: str | None
-    user_agent: str | None
+class UserExists(Exception):
+    pass
+
+
+class UserNotFound(Exception):
+    pass
+
+
+class CannotDeactivateSelf(Exception):
+    pass
 
 
 @dataclass(frozen=True)
 class AuthContext:
     session_id: uuid.UUID
-    credential_id: bytes
+    user_id: uuid.UUID
+    email: str
     expires_at: datetime
     step_up_at: datetime | None
+    must_change_password: bool
 
     @classmethod
-    def of(cls, row: AuthSession) -> "AuthContext":
-        return cls(row.session_id, row.credential_id, row.expires_at, row.step_up_at)
+    def of(cls, row: AuthSession, user: User) -> "AuthContext":
+        return cls(
+            row.session_id,
+            user.user_id,
+            user.email,
+            row.expires_at,
+            row.step_up_at,
+            user.must_change_password,
+        )
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
 
 
 class AuthService:
@@ -62,87 +78,28 @@ class AuthService:
         session_factory: async_sessionmaker[AsyncSession],
         settings: Settings,
         clock: Clock,
-        alerts: AlertService,
+        audit: AuditService,
     ) -> None:
         self._sessions = session_factory
         self._settings = settings
         self.clock = clock
-        self._alerts = alerts
-        self.webauthn = WebAuthn(settings.rp_id, settings.rp_name, settings.dashboard_origin)
-        self.challenges = ChallengeStore(clock)
-
-    # --- Enrolment (console token -> passkey registration) ---
-
-    async def create_enrollment_token(self) -> tuple[str, datetime]:
-        """Console only. The raw token is shown once; only its hash is stored."""
-        token, expires_at = new_token(), self.clock.now() + ENROLLMENT_TTL
-        async with in_transaction(self._sessions, None) as db:
-            await repo.add_enrollment_token(db, hash_token(token), expires_at)
-        return token, expires_at
-
-    async def registration_options(self, token: str, label: str) -> tuple[dict[str, Any], str]:
-        async with in_transaction(self._sessions, None) as db:
-            if not await repo.enrollment_token_usable(db, hash_token(token), self.clock.now()):
-                raise InvalidEnrollmentToken
-            existing = [c.credential_id for c in await repo.active_credentials(db)]
-        options, challenge = self.webauthn.registration_options(existing)
-        challenge_id = self.challenges.put(
-            "register", challenge, token_hash=hash_token(token), label=label
-        )
-        return options, challenge_id
-
-    async def register(
-        self, token: str, credential: dict[str, Any], challenge_id: str | None, client: Client
-    ) -> bytes:
-        """Raises InvalidEnrollmentToken, or VerificationFailed for a bad attestation."""
-        pending = self.challenges.pop(challenge_id, "register")
-        if pending is None or pending[1]["token_hash"] != hash_token(token):
-            raise InvalidEnrollmentToken
-        challenge, data = pending
-        try:
-            registered = self.webauthn.verify_registration(credential, challenge)
-        except VerificationFailed:
-            await self._audit(LoginOutcome.FAILURE, client)
-            raise
-        now = self.clock.now()
-        async with in_transaction(self._sessions, None) as db:
-            if not await repo.consume_enrollment_token(db, data["token_hash"], now):
-                raise InvalidEnrollmentToken
-            db.add(
-                PasskeyCredential(
-                    credential_id=registered.credential_id,
-                    public_key=registered.public_key,
-                    sign_count=registered.sign_count,
-                    label=data["label"],
-                )
-            )
-            await repo.add_login(
-                db,
-                LoginOutcome.ENROLLED,
-                ip=client.ip,
-                user_agent=client.user_agent,
-                credential_id=registered.credential_id,
-            )
-        return registered.credential_id
+        self.audit = audit
 
     # --- Login / sessions ---
 
-    async def login_options(self) -> tuple[dict[str, Any], str]:
+    async def login(self, email: str, password: str, client: Client) -> tuple[str, AuthContext]:
+        """Returns (cookie token, context). Raises AuthFailed for unknown, inactive or wrong."""
+        email = normalize_email(email)
         async with in_transaction(self._sessions, None) as db:
-            allowed = [c.credential_id for c in await repo.active_credentials(db)]
-        options, challenge = self.webauthn.authentication_options(allowed)
-        return options, self.challenges.put("login", challenge)
-
-    async def login(
-        self, credential: dict[str, Any], challenge_id: str | None, client: Client
-    ) -> tuple[str, AuthContext]:
-        """Returns (cookie token, context). Raises AuthFailed; every attempt is audited."""
-        pending = self.challenges.pop(challenge_id, "login")
-        stored = await self._verify(credential, pending, client, LoginOutcome.FAILURE)
+            user = await repo.user_by_email(db, email)
+        ok = await verify_password_async(password, user.password_hash if user else None)
+        if user is None or not ok or not user.is_active:
+            await self.audit.record(AuditAction.LOGIN_FAILED, client, details={"email": email})
+            raise AuthFailed
         token, now = new_token(), self.clock.now()
         row = AuthSession(
             token_hash=hash_token(token),
-            credential_id=stored.credential_id,
+            user_id=user.user_id,
             expires_at=now + timedelta(hours=self._settings.session_absolute_hours),
             last_seen_at=now,
             ip=client.ip,
@@ -151,75 +108,70 @@ class AuthService:
         async with in_transaction(self._sessions, None) as db:
             db.add(row)
             await db.flush()
-            await repo.add_login(
-                db,
-                LoginOutcome.SUCCESS,
-                ip=client.ip,
-                user_agent=client.user_agent,
-                credential_id=stored.credential_id,
-                session_id=row.session_id,
+            await repo.update_user(db, user.user_id, now, last_login_at=now)
+            await self.audit.record(
+                AuditAction.LOGIN_SUCCESS,
+                client,
+                user_id=user.user_id,
+                email=user.email,
+                resource_type="session",
+                resource_id=row.session_id,
+                db=db,
             )
-        return token, AuthContext.of(row)
+        return token, AuthContext.of(row, user)
 
     async def authenticate(self, token: str | None, user_agent: str | None) -> AuthContext | None:
-        """Validate a session cookie; revokes idle/expired/device-changed sessions."""
+        """Validate a session cookie; revokes idle/expired/device-changed/deactivated sessions."""
         if not token:
             return None
         now = self.clock.now()
         async with in_transaction(self._sessions, None) as db:
-            row = await repo.session_by_token_hash(db, hash_token(token))
-            if row is None:
+            found = await repo.session_and_user(db, hash_token(token))
+            if found is None:
                 return None
+            row, user = found
             problem = session_problem(row, now, user_agent, self._settings)
-            if problem is not None:
+            if problem is None and (user is None or not user.is_active):
+                problem = "user_inactive"
+            if problem is not None or user is None:
                 await repo.revoke_session(db, row.session_id, now)
                 logger.info("session rejected", extra={"reason": problem})
                 return None
             await repo.touch_session(db, row.session_id, now)
-            return AuthContext.of(row)
+            return AuthContext.of(row, user)
 
     async def logout(self, ctx: AuthContext, client: Client) -> None:
         async with in_transaction(self._sessions, None) as db:
             await repo.revoke_session(db, ctx.session_id, self.clock.now())
-            await repo.add_login(
-                db,
-                LoginOutcome.LOGOUT,
-                ip=client.ip,
-                user_agent=client.user_agent,
-                credential_id=ctx.credential_id,
-                session_id=ctx.session_id,
+            await self.audit.record(
+                AuditAction.LOGOUT,
+                client,
+                user_id=ctx.user_id,
+                email=ctx.email,
+                resource_type="session",
+                resource_id=ctx.session_id,
+                db=db,
             )
 
-    # --- Step-up (manual entry, flatten) ---
+    # --- Password: step-up and change ---
 
-    async def step_up_options(self, ctx: AuthContext) -> tuple[dict[str, Any], str]:
-        options, challenge = self.webauthn.authentication_options([ctx.credential_id])
-        return options, self.challenges.put("step_up", challenge, session_id=ctx.session_id)
+    async def _check_password(self, ctx: AuthContext, password: str) -> bool:
+        async with in_transaction(self._sessions, None) as db:
+            user = await repo.user_by_id(db, ctx.user_id)
+        return await verify_password_async(password, user.password_hash if user else None)
 
-    async def step_up(
-        self,
-        ctx: AuthContext,
-        credential: dict[str, Any],
-        challenge_id: str | None,
-        client: Client,
-    ) -> datetime:
-        """Fresh assertion with the session's own passkey. Returns when the step-up lapses."""
-        pending = self.challenges.pop(challenge_id, "step_up")
-        if pending is not None and pending[1]["session_id"] != ctx.session_id:
-            pending = None
-        stored = await self._verify(
-            credential, pending, client, LoginOutcome.STEP_UP_FAILURE, ctx=ctx
-        )
+    async def step_up(self, ctx: AuthContext, password: str, client: Client) -> datetime:
+        """Fresh password check. Returns when the step-up lapses."""
+        if not await self._check_password(ctx, password):
+            await self.audit.record(
+                AuditAction.STEP_UP_FAILURE, client, user_id=ctx.user_id, email=ctx.email
+            )
+            raise AuthFailed
         now = self.clock.now()
         async with in_transaction(self._sessions, None) as db:
             await repo.set_step_up(db, ctx.session_id, now)
-            await repo.add_login(
-                db,
-                LoginOutcome.STEP_UP_SUCCESS,
-                ip=client.ip,
-                user_agent=client.user_agent,
-                credential_id=stored.credential_id,
-                session_id=ctx.session_id,
+            await self.audit.record(
+                AuditAction.STEP_UP_SUCCESS, client, user_id=ctx.user_id, email=ctx.email, db=db
             )
         return now + timedelta(seconds=self._settings.step_up_window_s)
 
@@ -229,81 +181,120 @@ class AuthService:
         async with in_transaction(self._sessions, None) as db:
             return await repo.consume_step_up(db, ctx.session_id, since)
 
-    async def record_rate_limited(self, client: Client) -> None:
-        await self._audit(LoginOutcome.RATE_LIMITED, client)
-
-    # --- Console ---
-
-    async def credentials(self) -> list[PasskeyCredential]:
-        async with in_transaction(self._sessions, None) as db:
-            return await repo.all_credentials(db)
-
-    async def revoke(self, credential_id: bytes) -> bool:
-        async with in_transaction(self._sessions, None) as db:
-            return await repo.revoke_credential(db, credential_id, self.clock.now())
-
-    # --- helpers ---
-
-    async def _verify(
-        self,
-        credential: dict[str, Any],
-        pending: tuple[bytes, dict[str, Any]] | None,
-        client: Client,
-        failure: LoginOutcome,
-        ctx: AuthContext | None = None,
-    ) -> PasskeyCredential:
-        """Check an assertion against a stored, unrevoked passkey and bump its sign count."""
-        credential_id = _raw_id(credential)
-        session_id = ctx.session_id if ctx else None
-        async with in_transaction(self._sessions, None) as db:
-            stored = await repo.active_credential(db, credential_id) if credential_id else None
-        if (
-            pending is None
-            or stored is None
-            or (ctx is not None and stored.credential_id != ctx.credential_id)
-        ):
-            await self._audit(failure, client, credential_id, session_id)
-            raise AuthFailed
-        try:
-            sign_count = self.webauthn.verify_authentication(
-                credential, pending[0], stored.public_key, stored.sign_count
-            )
-        except SignCountRegression:
-            await self._alerts.raise_(
-                AlertKind.AUTH_ANOMALY,
-                Severity.URGENT,
-                "Passkey sign count went backwards: possible cloned authenticator",
-                details={"credential_id": bytes_to_base64url(stored.credential_id)},
-            )
-            await self._audit(failure, client, credential_id, session_id)
-            raise AuthFailed from None
-        except VerificationFailed:
-            await self._audit(failure, client, credential_id, session_id)
-            raise AuthFailed from None
-        async with in_transaction(self._sessions, None) as db:
-            await repo.record_credential_use(db, stored.credential_id, sign_count, self.clock.now())
-        return stored
-
-    async def _audit(
-        self,
-        outcome: LoginOutcome,
-        client: Client,
-        credential_id: bytes | None = None,
-        session_id: uuid.UUID | None = None,
+    async def change_password(
+        self, ctx: AuthContext, current: str, new: str, client: Client
     ) -> None:
+        """Raises AuthFailed (wrong current password) or InvalidPassword (new one unacceptable)."""
+        if not await self._check_password(ctx, current):
+            await self.audit.record(
+                AuditAction.STEP_UP_FAILURE, client, user_id=ctx.user_id, email=ctx.email
+            )
+            raise AuthFailed
+        if len(new) < MIN_LENGTH:
+            raise InvalidPassword(f"password must be at least {MIN_LENGTH} characters")
+        if new == current:
+            raise InvalidPassword("choose a password different from the current one")
+        hashed, now = await hash_password_async(new), self.clock.now()
         async with in_transaction(self._sessions, None) as db:
-            await repo.add_login(
-                db,
-                outcome,
-                ip=client.ip,
-                user_agent=client.user_agent,
-                credential_id=credential_id,
-                session_id=session_id,
+            await repo.update_user(
+                db, ctx.user_id, now, password_hash=hashed, must_change_password=False
+            )
+            await repo.revoke_user_sessions(db, ctx.user_id, now, keep=ctx.session_id)
+            await self.audit.record(
+                AuditAction.PASSWORD_CHANGED, client, user_id=ctx.user_id, email=ctx.email, db=db
             )
 
+    async def record_rate_limited(self, client: Client) -> None:
+        await self.audit.record(AuditAction.RATE_LIMITED, client)
 
-def _raw_id(credential: dict[str, Any]) -> bytes | None:
-    try:
-        return base64url_to_bytes(str(credential.get("rawId") or credential["id"]))
-    except (KeyError, ValueError):
-        return None
+    # --- User management (any signed-in user; `actor` is None for the console CLI) ---
+
+    async def users(self) -> list[User]:
+        async with in_transaction(self._sessions, None) as db:
+            return await repo.all_users(db)
+
+    async def find_user(self, email: str) -> User | None:
+        async with in_transaction(self._sessions, None) as db:
+            return await repo.user_by_email(db, normalize_email(email))
+
+    async def create_user(
+        self, email: str, actor: AuthContext | None, client: Client | None
+    ) -> tuple[User, str]:
+        """Returns the user and its temporary password (shown once; only the hash is stored)."""
+        email, temp = normalize_email(email), temporary_password()
+        user = User(email=email, password_hash=await hash_password_async(temp))
+        async with in_transaction(self._sessions, None) as db:
+            if await repo.user_by_email(db, email) is not None:
+                raise UserExists
+            db.add(user)
+            await db.flush()
+            await self._audit_user(AuditAction.USER_CREATED, user, actor, client, db)
+        return user, temp
+
+    async def deactivate(self, user_id: uuid.UUID, actor: AuthContext, client: Client) -> User:
+        if user_id == actor.user_id:
+            raise CannotDeactivateSelf
+        return await self._change_user(
+            user_id, AuditAction.USER_DEACTIVATED, actor, client, is_active=False, revoke=True
+        )
+
+    async def reactivate(self, user_id: uuid.UUID, actor: AuthContext, client: Client) -> User:
+        return await self._change_user(
+            user_id, AuditAction.USER_REACTIVATED, actor, client, is_active=True
+        )
+
+    async def reset_password(
+        self, user_id: uuid.UUID, actor: AuthContext | None, client: Client | None
+    ) -> tuple[User, str]:
+        temp = temporary_password()
+        user = await self._change_user(
+            user_id,
+            AuditAction.PASSWORD_RESET,
+            actor,
+            client,
+            password_hash=await hash_password_async(temp),
+            must_change_password=True,
+            revoke=True,
+        )
+        return user, temp
+
+    async def _change_user(
+        self,
+        user_id: uuid.UUID,
+        action: AuditAction,
+        actor: AuthContext | None,
+        client: Client | None,
+        *,
+        revoke: bool = False,
+        **values: object,
+    ) -> User:
+        now = self.clock.now()
+        async with in_transaction(self._sessions, None) as db:
+            user = await repo.user_by_id(db, user_id)
+            if user is None:
+                raise UserNotFound
+            await repo.update_user(db, user_id, now, **values)
+            if revoke:
+                await repo.revoke_user_sessions(db, user_id, now)
+            await self._audit_user(action, user, actor, client, db)
+            await db.refresh(user)
+            return user
+
+    async def _audit_user(
+        self,
+        action: AuditAction,
+        target: User,
+        actor: AuthContext | None,
+        client: Client | None,
+        db: AsyncSession,
+    ) -> None:
+        await self.audit.record(
+            action,
+            client,
+            user_id=actor.user_id if actor else None,
+            email=actor.email if actor else None,
+            resource_type="user",
+            resource_id=target.user_id,
+            details={"email": target.email, **({} if actor else {"via": "console"})},
+            db=db,
+        )

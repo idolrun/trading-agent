@@ -11,7 +11,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Skips /login, /enroll, /api, /_next and any path with a dot (favicon.ico,
+  // Skips /login, /api, /_next and any path with a dot (favicon.ico,
   // sw.js, manifest.webmanifest, images).
-  matcher: ["/((?!(?:login|enroll|api|_next)(?:/|$)|.*\\..*).*)"],
+  matcher: ["/((?!(?:login|api|_next)(?:/|$)|.*\\..*).*)"],
 }

@@ -1,128 +1,120 @@
-"""F009: passkey auth end to end with a software authenticator."""
+"""F009: email + password auth end to end."""
 
 from datetime import timedelta
 
 from fastapi import FastAPI
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.alerts.models import Alert
 from app.api.deps import StepUpDep
-from app.auth.models import AuthSession, Login
+from app.auth.models import AuditLog, AuthSession, User
 from app.auth.sessions import hash_token
 from app.markettime import FixedClock
-from tests.integration.api.conftest import ORIGIN, Api
-from tests.webauthn_authenticator import SoftAuthenticator
+from tests.integration.api.conftest import EMAIL, PASSWORD, Api
 
 
-async def outcomes(db: AsyncSession) -> list[str]:
-    return list((await db.scalars(select(Login.outcome).order_by(Login.id))).all())
+async def actions(db: AsyncSession) -> list[str]:
+    return list((await db.scalars(select(AuditLog.action).order_by(AuditLog.id))).all())
 
 
-async def test_register_login_session_logout(api: Api, db_session: AsyncSession) -> None:
+async def test_login_session_logout(api: Api, db_session: AsyncSession) -> None:
     assert (await api.client.get("/api/v1/auth/session")).status_code == 401
-    await api.enroll()
-    await api.login()
+    await api.sign_in()
     r = await api.client.get("/api/v1/auth/session")
     assert r.status_code == 200
-    assert r.json()["stepUpUntil"] is None
-    assert "session" in api.client.cookies
+    assert r.json()["email"] == EMAIL
+    assert r.json()["stepUpUntil"] is None and r.json()["mustChangePassword"] is False
     assert (await api.client.post("/api/v1/auth/logout")).status_code == 204
     assert (await api.client.get("/api/v1/auth/session")).status_code == 401
-    assert await outcomes(db_session) == ["enrolled", "success", "logout"]
+    assert await actions(db_session) == [
+        "user_created",
+        "login_success",
+        "password_changed",
+        "logout",
+    ]
 
 
 async def test_session_cookie_flags(api: Api) -> None:
-    await api.enroll()
-    options = await api.client.post("/api/v1/auth/login/options")
-    r = await api.client.post(
-        "/api/v1/auth/login/verify", json={"credential": api.authenticator.get(options.json())}
-    )
+    await api.add_user()
+    api.client.cookies.clear()
+    temp = await api.add_user("other@example.com")
+    r = await api.login("other@example.com", temp)
     cookie = next(c for c in r.headers.get_list("set-cookie") if c.startswith("session="))
     for flag in ("HttpOnly", "Secure", "SameSite=strict", "Path=/"):
         assert flag.lower() in cookie.lower()
 
 
-async def test_enrollment_token_single_use_and_expiry(api: Api, db_session: AsyncSession) -> None:
-    await api.enroll()
-    auth = api.app.state.auth
-    # expired token
-    auth.clock = FixedClock(auth.clock.now() - timedelta(hours=1))
-    token, _ = await auth.create_enrollment_token()
-    auth.clock = api.app.state.clock
-    r = await api.client.post(
-        "/api/v1/auth/register/options", json={"enrollmentToken": token, "label": "old"}
-    )
-    assert r.status_code == 401
-    # unknown token
-    r = await api.client.post(
-        "/api/v1/auth/register/options", json={"enrollmentToken": "nope", "label": "x"}
-    )
-    assert r.status_code == 401
-
-
-async def test_used_enrollment_token_cannot_register_again(api: Api) -> None:
-    token, _ = await api.app.state.auth.create_enrollment_token()
-    body = {"enrollmentToken": token, "label": "phone"}
-    options = await api.client.post("/api/v1/auth/register/options", json=body)
-    r = await api.client.post(
-        "/api/v1/auth/register/verify",
-        json={"enrollmentToken": token, "credential": api.authenticator.create(options.json())},
-    )
-    assert r.status_code == 200
-    r = await api.client.post("/api/v1/auth/register/options", json=body)
-    assert r.status_code == 401
-
-
-async def test_wrong_origin_rejected(api: Api) -> None:
-    r = await api.client.post(
-        "/api/v1/auth/login/options", headers={"Origin": "https://evil.example"}
-    )
-    assert r.status_code == 403
-    assert r.json()["code"] == "forbidden"
-    r = await api.client.post("/api/v1/auth/login/options", headers={"Origin": ""})
-    assert r.status_code == 403
-
-
-async def test_unknown_passkey_fails_and_is_audited(api: Api, db_session: AsyncSession) -> None:
-    await api.enroll()
-    stranger = SoftAuthenticator("test", ORIGIN)
-    options = await api.client.post("/api/v1/auth/login/options")
-    r = await api.client.post(
-        "/api/v1/auth/login/verify", json={"credential": stranger.get(options.json())}
-    )
-    assert r.status_code == 401
-    assert (await outcomes(db_session))[-1] == "failure"
-
-
-async def test_challenge_is_single_use(api: Api) -> None:
-    await api.enroll()
-    options = await api.client.post("/api/v1/auth/login/options")
-    challenge_cookie = api.client.cookies.get("webauthn_challenge")
-    await api.client.post(
-        "/api/v1/auth/login/verify", json={"credential": api.authenticator.get(options.json())}
-    )
-    api.client.cookies.set("webauthn_challenge", challenge_cookie or "", path="/api/v1/auth")
-    r = await api.client.post(
-        "/api/v1/auth/login/verify", json={"credential": api.authenticator.get(options.json())}
-    )
-    assert r.status_code == 401
-
-
-async def test_sign_count_regression_raises_urgent_alert(
+async def test_login_failures_look_alike_and_are_audited(
     api: Api, db_session: AsyncSession
 ) -> None:
-    await api.enroll()
-    await api.login()
-    api.authenticator.sign_count = 0  # a clone would replay an older counter
-    options = await api.client.post("/api/v1/auth/login/options")
-    r = await api.client.post(
-        "/api/v1/auth/login/verify", json={"credential": api.authenticator.get(options.json())}
+    temp = await api.add_user()
+    inactive = await api.add_user("off@example.com")
+    off = await db_session.scalar(select(User).where(User.email == "off@example.com"))
+    assert off is not None
+    await db_session.execute(
+        text("UPDATE users SET is_active = false WHERE user_id = :u"), {"u": off.user_id}
     )
+    await db_session.commit()
+    bodies = []
+    for email, password in [
+        (EMAIL, "wrong password!!"),
+        ("nobody@example.com", temp),
+        ("off@example.com", inactive),
+    ]:
+        r = await api.login(email, password)
+        assert r.status_code == 401
+        bodies.append(r.json())
+    assert bodies[0] == bodies[1] == bodies[2]
+    assert (await actions(db_session))[2:] == ["login_failed"] * 3
+    assert await db_session.scalar(select(AuthSession.session_id)) is None
+    users = (await db_session.scalars(select(User))).all()
+    assert len(users) == 2  # an unknown email never creates an account
+
+
+async def test_email_is_case_insensitive(api: Api) -> None:
+    temp = await api.add_user("Owner@Example.com")
+    assert (await api.login("OWNER@example.COM", temp)).status_code == 200
+
+
+async def test_temporary_password_must_be_changed(api: Api) -> None:
+    temp = await api.add_user()
+    assert (await api.login(EMAIL, temp)).status_code == 200
+    session = await api.client.get("/api/v1/auth/session")
+    assert session.json()["mustChangePassword"] is True
+    r = await api.client.get("/api/v1/alerts")
+    assert (r.status_code, r.json()["code"]) == (403, "password_change_required")
+
+    change = "/api/v1/auth/change-password"
+    r = await api.client.post(change, json={"currentPassword": "nope", "newPassword": PASSWORD})
     assert r.status_code == 401
-    alert = await db_session.scalar(select(Alert))
-    assert alert is not None
-    assert (alert.kind, alert.severity) == ("auth_anomaly", "urgent")
+    r = await api.client.post(change, json={"currentPassword": temp, "newPassword": "short"})
+    assert (r.status_code, r.json()["code"]) == (422, "invalid")
+    r = await api.client.post(change, json={"currentPassword": temp, "newPassword": temp})
+    assert r.status_code == 422
+    r = await api.client.post(change, json={"currentPassword": temp, "newPassword": PASSWORD})
+    assert r.status_code == 204
+    assert (await api.client.get("/api/v1/alerts")).status_code == 200
+    api.client.cookies.clear()
+    assert (await api.login(EMAIL, temp)).status_code == 401
+    assert (await api.login(EMAIL, PASSWORD)).status_code == 200
+
+
+async def test_change_password_ends_other_sessions(signed_in: Api) -> None:
+    other = signed_in.client.__class__(
+        transport=signed_in.client._transport,
+        base_url=signed_in.client.base_url,
+        headers=signed_in.client.headers,
+    )
+    async with other:
+        r = await other.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
+        assert r.status_code == 200
+        r = await signed_in.client.post(
+            "/api/v1/auth/change-password",
+            json={"currentPassword": PASSWORD, "newPassword": "another long password"},
+        )
+        assert r.status_code == 204
+        assert (await signed_in.client.get("/api/v1/auth/session")).status_code == 200
+        assert (await other.get("/api/v1/auth/session")).status_code == 401
 
 
 async def test_user_agent_change_revokes_session(signed_in: Api) -> None:
@@ -139,53 +131,55 @@ async def test_idle_session_expires(signed_in: Api) -> None:
     assert (await signed_in.client.get("/api/v1/auth/session")).status_code == 401
 
 
-async def test_step_up_required_and_single_use(signed_in: Api, db_session: AsyncSession) -> None:
-    app: FastAPI = signed_in.app
-
+def _add_step_up_route(app: FastAPI) -> None:
     async def flatten(_ctx: StepUpDep) -> dict[str, bool]:
         return {"ok": True}
 
     app.add_api_route("/api/v1/_test/flatten", flatten, methods=["POST"])
+
+
+async def test_step_up_required_and_single_use(signed_in: Api, db_session: AsyncSession) -> None:
+    _add_step_up_route(signed_in.app)
     client = signed_in.client
 
     r = await client.post("/api/v1/_test/flatten")
     assert (r.status_code, r.json()["code"]) == (403, "step_up_required")
 
-    options = await client.post("/api/v1/auth/step-up/options")
-    r = await client.post(
-        "/api/v1/auth/step-up/verify",
-        json={"credential": signed_in.authenticator.get(options.json())},
-    )
+    r = await client.post("/api/v1/auth/step-up", json={"password": "wrong password"})
+    assert r.status_code == 401
+    assert (await client.post("/api/v1/_test/flatten")).status_code == 403  # a failure grants none
+
+    r = await client.post("/api/v1/auth/step-up", json={"password": PASSWORD})
     assert r.status_code == 200 and r.json()["stepUpUntil"]
     assert (await client.post("/api/v1/_test/flatten")).status_code == 200
     assert (await client.post("/api/v1/_test/flatten")).status_code == 403  # used up
-    assert (await outcomes(db_session))[-1] == "step_up_success"
+    recorded = await actions(db_session)
+    assert "step_up_failure" in recorded and recorded[-1] == "step_up_success"
 
 
 async def test_step_up_window_lapses(signed_in: Api) -> None:
-    app: FastAPI = signed_in.app
-
-    async def flatten(_ctx: StepUpDep) -> dict[str, bool]:
-        return {"ok": True}
-
-    app.add_api_route("/api/v1/_test/flatten", flatten, methods=["POST"])
-    options = await signed_in.client.post("/api/v1/auth/step-up/options")
-    await signed_in.client.post(
-        "/api/v1/auth/step-up/verify",
-        json={"credential": signed_in.authenticator.get(options.json())},
-    )
-    auth = app.state.auth
+    _add_step_up_route(signed_in.app)
+    await signed_in.step_up()
+    auth = signed_in.app.state.auth
     auth.clock = FixedClock(auth.clock.now() + timedelta(seconds=121))
     assert (await signed_in.client.post("/api/v1/_test/flatten")).status_code == 403
 
 
 async def test_rate_limit(api: Api, db_session: AsyncSession) -> None:
-    codes = [(await api.client.post("/api/v1/auth/login/options")).status_code for _ in range(11)]
-    assert codes == [200] * 10 + [429]
-    assert (await outcomes(db_session))[-1] == "rate_limited"
+    body = {"email": EMAIL, "password": "x"}
+    codes = [
+        (await api.client.post("/api/v1/auth/login", json=body)).status_code for _ in range(11)
+    ]
+    assert codes == [401] * 10 + [429]
+    assert (await actions(db_session))[-1] == "rate_limited"
 
 
 async def test_session_token_is_stored_hashed(signed_in: Api, db_session: AsyncSession) -> None:
     token = signed_in.client.cookies["session"]
     stored = (await db_session.scalars(select(AuthSession.token_hash))).all()
     assert stored == [hash_token(token)]
+
+
+async def test_password_is_stored_hashed(signed_in: Api, db_session: AsyncSession) -> None:
+    hashes = (await db_session.scalars(select(User.password_hash))).all()
+    assert len(hashes) == 1 and hashes[0].startswith("scrypt$") and PASSWORD not in hashes[0]

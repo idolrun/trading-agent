@@ -4,11 +4,12 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request
 from pydantic import ValidationError
 
-from app.api.deps import AuthDep, SessionDep, SessionFactoryDep
+from app.api.deps import AuditDep, AuthDep, ClientDep, SessionDep, SessionFactoryDep
 from app.api.errors import ApiError
 from app.api.pagination import Cursor, Limit, Page
 from app.api.schemas.card_decisions import DecisionRequest
 from app.api.schemas.cards import CardDetail, CardOut
+from app.auth.models import AuditAction
 from app.cards import queries
 from app.cards.approval_service import (
     ApprovalService,
@@ -55,6 +56,8 @@ async def decide_card(
     request: Request,
     sessions: SessionFactoryDep,
     auth: AuthDep,
+    audit: AuditDep,
+    client: ClientDep,
     ctx: SessionDep,
 ) -> CardDetail:
     approvals: ApprovalService = request.app.state.approvals
@@ -77,5 +80,11 @@ async def decide_card(
     except (DecisionInvalid, ValidationError) as exc:
         raise ApiError(str(exc), "invalid", 422) from None
     except StepUpRequired:
-        raise ApiError("confirm with your passkey first", "step_up_required", 403) from None
+        raise ApiError("confirm your password first", "step_up_required", 403) from None
+    action = {
+        "approve": AuditAction.TRADE_APPROVED,
+        "reject": AuditAction.TRADE_REJECTED,
+        "edit": AuditAction.CARD_EDITED,
+    }[body.decision]
+    await audit.by(ctx, client, action, "card", card_id, version=body.version)
     return await get_card(card_id, sessions, ctx)

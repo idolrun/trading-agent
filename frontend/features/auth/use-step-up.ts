@@ -1,12 +1,11 @@
-import { startAuthentication } from "@simplewebauthn/browser"
 import { useCallback, useRef, useState } from "react"
-import { stepUpOptions, stepUpVerify } from "@/features/auth/api"
-import { useCeremony } from "@/features/auth/ceremony"
+import { stepUp } from "@/features/auth/api"
+import { useSubmit } from "@/features/auth/submit"
 import { ApiError } from "@/lib/api/errors"
 
 export class StepUpCancelledError extends Error {
   constructor() {
-    super("Passkey confirmation was cancelled")
+    super("Password confirmation was cancelled")
     this.name = "StepUpCancelledError"
   }
 }
@@ -17,12 +16,11 @@ export const isStepUpRequired = (error: unknown): error is ApiError =>
 type Waiter = { promise: Promise<void>; resolve: () => void; reject: (error: Error) => void }
 
 /**
- * Passkey step-up. The dialog exists because browsers only start a passkey
- * prompt from a user gesture: `ensureStepUp()` opens `<StepUpDialog {...dialogProps} />`
- * and settles once the user confirms (resolves) or cancels (rejects).
+ * Password step-up: `ensureStepUp()` opens `<StepUpDialog {...dialogProps} />` and settles
+ * once the user confirms (resolves) or cancels (rejects).
  */
 export function useStepUp() {
-  const { state, run, reset } = useCeremony()
+  const { state, run, reset } = useSubmit()
   const [open, setOpen] = useState(false)
   const waiter = useRef<Waiter | null>(null)
 
@@ -41,17 +39,18 @@ export function useStepUp() {
     return waiter.current.promise
   }, [reset])
 
-  const onConfirm = useCallback(async () => {
-    const ok = await run(async () => {
-      const optionsJSON = await stepUpOptions()
-      const credential = await startAuthentication({ optionsJSON })
-      await stepUpVerify(credential)
-    })
-    if (!ok) return
-    waiter.current?.resolve()
-    waiter.current = null
-    setOpen(false)
-  }, [run])
+  const onConfirm = useCallback(
+    async (password: string) => {
+      const ok = await run(async () => {
+        await stepUp(password)
+      })
+      if (!ok) return
+      waiter.current?.resolve()
+      waiter.current = null
+      setOpen(false)
+    },
+    [run],
+  )
 
   const onCancel = useCallback(() => {
     waiter.current?.reject(new StepUpCancelledError())
@@ -60,8 +59,8 @@ export function useStepUp() {
   }, [])
 
   /**
-   * Wraps a mutation function: on `403 step_up_required`, confirms with a
-   * passkey and retries ONCE. A second failure surfaces as is.
+   * Wraps a mutation function: on `403 step_up_required`, confirms with the
+   * password and retries ONCE. A second failure surfaces as is.
    */
   const withStepUp = useCallback(
     <Args extends unknown[], Result>(fn: (...args: Args) => Promise<Result>) =>

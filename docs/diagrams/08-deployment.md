@@ -53,9 +53,9 @@ flowchart LR
         end
     end
 
-    OPER["Operator: server console<br/>(passkey recovery, runbooks)"]:::human
+    OPER["Operator: server console<br/>(password recovery, runbooks)"]:::human
 
-    DESK -->|"HTTPS 443, passkey session<br/>SameSite=Strict cookie"| CADDY
+    DESK -->|"HTTPS 443, user session<br/>SameSite=Strict cookie"| CADDY
     PHONE -->|"HTTPS 443"| CADDY
     MAPI -->|"HTTPS POST /ingest<br/>HMAC + timestamp window"| CADDY
     UPT -->|"HTTPS GET /health"| CADDY
@@ -83,7 +83,7 @@ flowchart LR
 ```
 
 ### What the diagram represents
-Physical placement, trust zones and every network dependency. Outbound calls go to SaaS over HTTPS; the only inbound port is 443 on Caddy, carrying three kinds of traffic: the Message API webhook (HMAC-authenticated), the dashboard (passkey-authenticated), and the uptime probe.
+Physical placement, trust zones and every network dependency. Outbound calls go to SaaS over HTTPS; the only inbound port is 443 on Caddy, carrying three kinds of traffic: the Message API webhook (HMAC-authenticated), the dashboard (email + password, allowlisted users), and the uptime probe.
 
 ### Component responsibilities
 | Element | Responsibility | Notes |
@@ -96,10 +96,10 @@ Physical placement, trust zones and every network dependency. Outbound calls go 
 | **Push services** | Deliver Web Push to desktop and phone | Best-effort; dashboard latency is the SLO, push is not (PRD §12). |
 
 ### Network / security boundaries
-1. **Public → Caddy (443):** HMAC on `/ingest`; passkey-only auth, short device-bound server-side sessions, step-up passkey for manual entry and flatten; no password path exists (AC-10).
+1. **Public → Caddy (443):** HMAC on `/ingest`; email + password auth for allowlisted users (no self-registration), short device-bound server-side sessions, password step-up for manual entry and flatten, append-only audit log.
 2. **App → SaaS:** only provider-side text and provider context leave the system (FR-8); enforced by the Jev state builder's types and the LLM scope-guard middleware.
 3. **App → Postgres:** a separate failure domain. Network path is not specified in the TRD (OD-17); private networking + TLS is the proposed default.
-4. **Operator:** server console only — the sole passkey-recovery path (PRD §13).
+4. **Operator:** server console only — the sole password-recovery path (PRD §13).
 
 ### Important dependencies and their deployment implications
 | Dependency | If slow/down | Mitigation |

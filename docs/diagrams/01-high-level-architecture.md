@@ -14,7 +14,7 @@ flowchart TB
 
     subgraph PEOPLE["People"]
         TRADER["Trader — single user<br/>desktop browser + phone PWA<br/>approves every order action"]:::human
-        OPER["Operator<br/>server console only<br/>(passkey recovery, runbooks)"]:::human
+        OPER["Operator<br/>server console only<br/>(password recovery, runbooks)"]:::human
     end
 
     subgraph UPSTREAM["Upstream signal source"]
@@ -33,7 +33,7 @@ flowchart TB
         RECON["Reconciliation<br/>startup + every 60 s + after fills"]:::code
         MDA["Market-data adapter<br/>in-process quote & chain cache"]:::code
         BRKA["Broker adapter<br/>thin, client-order-ID aware"]:::code
-        WEB["Web tier<br/>FastAPI + HTMX + SSE · PWA<br/>passkeys · Web Push · manual ops"]:::code
+        WEB["Web tier<br/>FastAPI + HTMX + SSE · PWA<br/>password auth · Web Push · manual ops"]:::code
     end
 
     PG[("PostgreSQL 16 — managed HA + PITR<br/>ONLY source of truth for system state<br/>inbox queue · ledgers · cards · orders<br/>7-year audit · LangGraph checkpoints/store")]:::store
@@ -66,7 +66,7 @@ flowchart TB
     CARDS -.->|"SSE + push"| WEB
     WEB -.->|"card / fill / alert push"| PUSHSVC
     PUSHSVC -.-> TRADER
-    TRADER -->|"approve / edit / reject<br/>manual ops · kill switch (passkey)"| WEB
+    TRADER -->|"approve / edit / reject<br/>manual ops · kill switch (password step-up)"| WEB
     WEB ==>|"approvals row BEFORE resume"| PG
     WEB -->|"Command(resume=approve)"| PIPE
     PIPE -->|"revalidate → submit_order()"| EXEC
@@ -96,7 +96,7 @@ The whole system at container level: one Python asyncio service, one managed Pos
 | **Cards & approvals** | Card state machine, validity rules (C22), expiry timers, supersession, notifications. | Every order action needs approval (C6/C14). |
 | **Execution** | The single `submit_order()` gate: FR-20 invariants, order intent, broker call, re-pricing, system-held stops, stop restore, end-of-day close. | "Every order goes through one function" (TRD §1.5). |
 | **Reconciliation** | Compares system lots/orders with the broker; any mismatch blocks new entries. | Broker is the source of truth for holdings (PRD §11). |
-| **Web tier** | Dashboard, SSE, Web Push, passkey auth, manual operations, labeling screen. | Approvals within seconds on desktop and phone (G3). |
+| **Web tier** | Dashboard, SSE, Web Push, password auth, manual operations, labeling screen. | Approvals within seconds on desktop and phone (G3). |
 | **PostgreSQL** | Only source of truth for system state, the message queue, audit trail and LangGraph checkpoints. No Kafka, no Redis (C94). | Single transactional boundary; RPO ≈ 0 for trading data (C93). |
 
 ### Consistency and reliability considerations

@@ -56,7 +56,7 @@ flowchart TB
     end
 
     subgraph WEBT["Presentation"]
-        web["web<br/>FastAPI · HTMX · SSE · Web Push<br/>passkeys · manual ops · labeling"]:::code
+        web["web<br/>FastAPI · HTMX · SSE · Web Push<br/>password auth · manual ops · labeling"]:::code
         evalkit["evalkit<br/>replay runner · gate metrics"]:::code
     end
 
@@ -317,7 +317,7 @@ flowchart TB
 
     subgraph CALLERS["Callers (the ONLY paths to an order)"]
         G["graph: submit_order node<br/>(after approval + revalidate)"]:::code
-        M["web: manual ops<br/>(passkey; step-up for entry / flatten)"]:::human
+        M["web: manual ops<br/>(password login; step-up for entry / flatten)"]:::human
         T["timers: cutoff 2 EOD auto-close"]:::code
         SW["stop watcher: underlying crossed<br/>(pre-approved)"]:::code
         RP["exit re-price loop<br/>(within approved intent)"]:::code

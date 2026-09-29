@@ -93,7 +93,7 @@ Everything else: candidate finding, routing thresholds, literal-span verificatio
 - Every entry, add, exit, trim, stop/TP change, bracket, manual entry and flatten needs an approval (PRD §9). The only automatic actions are the pre-approved ones: broker/system stop or TP firing after approval, exit re-pricing within an approved intent, EOD close at cutoff 2, and stop restore after an unfilled exit — each recorded with `auto_reason`.
 - Approval is a LangGraph `interrupt()`; the approval record is written to the `approvals` table **before** resuming, so AC-2 is auditable from domain tables alone.
 - Cards expire rather than act when unanswered (C18); entry cards also expire on price-band breach or supersession (C22). Review cards require the user to complete fields first; disabled cards explain why they are blocked.
-- Manual operations use passkey auth (step-up for manual entry and flatten) and pass the **same** `submit_order()` checks (C42).
+- Manual operations use password auth (step-up for manual entry and flatten) and pass the **same** `submit_order()` checks (C42).
 
 ### How the architecture can scale
 The design point is ~0.1 msg/s average with bursts of 50 messages/10 s; latency is dominated by model calls, not infrastructure. Scaling steps are ordered and **trigger-gated**:

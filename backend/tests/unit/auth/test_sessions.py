@@ -17,7 +17,7 @@ def row(**overrides: object) -> AuthSession:
     values: dict[str, object] = {
         "session_id": uuid.uuid4(),
         "token_hash": b"h",
-        "credential_id": b"c",
+        "user_id": uuid.uuid4(),
         "created_at": T0,
         "expires_at": T0 + timedelta(hours=12),
         "last_seen_at": T0,

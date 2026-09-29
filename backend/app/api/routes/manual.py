@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Path, Request
 from pydantic import ValidationError
 
-from app.api.deps import SessionDep, SessionFactoryDep, StepUpDep
+from app.api.deps import AuditDep, ClientDep, SessionDep, SessionFactoryDep, StepUpDep
 from app.api.errors import ApiError
 from app.api.schemas.ledger import LotDetail, PositionDetail
 from app.api.schemas.manual import (
@@ -29,6 +29,7 @@ from app.api.schemas.manual import (
     RelinkRequest,
     StopRequest,
 )
+from app.auth.models import AuditAction
 from app.ledger import queries
 from app.manual.corrections import Corrections
 from app.manual.service import ManualInvalid, ManualNotFound, ManualResult, ManualService
@@ -61,25 +62,36 @@ def _corrections(request: Request) -> Corrections:
 
 
 @router.post("/manual/exit")
-async def manual_exit(body: ExitRequest, request: Request, ctx: SessionDep) -> ManualResultOut:
+async def manual_exit(
+    body: ExitRequest, request: Request, ctx: SessionDep, audit: AuditDep, client: ClientDep
+) -> ManualResultOut:
     async with _errors():
         result = await _service(request).exit(
             body.lot_id, body.qty, body.idempotency_key, ctx.session_id
         )
+    await audit.by(
+        ctx, client, AuditAction.ORDER_CREATED, "lot", body.lot_id, kind="exit", qty=str(body.qty)
+    )
     return _out(result)
 
 
 @router.post("/manual/stops")
-async def manual_stop(body: StopRequest, request: Request, ctx: SessionDep) -> ManualResultOut:
+async def manual_stop(
+    body: StopRequest, request: Request, ctx: SessionDep, audit: AuditDep, client: ClientDep
+) -> ManualResultOut:
     async with _errors():
         result = await _service(request).stop(
             body.lot_id, body.op, body.level, body.basis, body.idempotency_key, ctx.session_id
         )
+    action = AuditAction.ORDER_CANCELLED if body.op == "cancel" else AuditAction.ORDER_CREATED
+    await audit.by(ctx, client, action, "lot", body.lot_id, kind="stop", op=body.op)
     return _out(result)
 
 
 @router.post("/manual/entry")
-async def manual_entry(body: EntryRequest, request: Request, ctx: StepUpDep) -> ManualResultOut:
+async def manual_entry(
+    body: EntryRequest, request: Request, ctx: StepUpDep, audit: AuditDep, client: ClientDep
+) -> ManualResultOut:
     async with _errors():
         result = await _service(request).entry(
             body.instrument.to_instrument(),
@@ -88,19 +100,44 @@ async def manual_entry(body: EntryRequest, request: Request, ctx: StepUpDep) -> 
             body.idempotency_key,
             ctx.session_id,
         )
+    await audit.by(
+        ctx,
+        client,
+        AuditAction.ORDER_CREATED,
+        "card",
+        result.card_id,
+        kind="entry",
+        qty=str(body.qty),
+    )
     return _out(result)
 
 
 @router.post("/kill-switch")
-async def kill_switch(body: KillSwitchRequest, request: Request, ctx: SessionDep) -> KillSwitchOut:
+async def kill_switch(
+    body: KillSwitchRequest, request: Request, ctx: SessionDep, audit: AuditDep, client: ClientDep
+) -> KillSwitchOut:
     active = await _service(request).kill_switch(body.active, body.reason, ctx.session_id)
+    await audit.by(
+        ctx,
+        client,
+        AuditAction.KILL_SWITCH,
+        "system_flag",
+        "kill_switch",
+        active=active,
+        reason=body.reason,
+    )
     return KillSwitchOut(active=active)
 
 
 @router.post("/flatten")
-async def flatten(body: FlattenRequest, request: Request, ctx: StepUpDep) -> FlattenOut:
+async def flatten(
+    body: FlattenRequest, request: Request, ctx: StepUpDep, audit: AuditDep, client: ClientDep
+) -> FlattenOut:
     async with _errors():
         results = await _service(request).flatten(body.scope, body.idempotency_key, ctx.session_id)
+    await audit.by(
+        ctx, client, AuditAction.ORDER_CREATED, "flatten", None, kind="flatten", lots=len(results)
+    )
     return FlattenOut(
         kill_switch=True,
         lots=[
@@ -152,9 +189,14 @@ async def adjust_lot(
     request: Request,
     sessions: SessionFactoryDep,
     ctx: StepUpDep,
+    audit: AuditDep,
+    client: ClientDep,
 ) -> LotDetail:
     async with _errors():
         await _service(request).adjust_lot(lot_id, body.qty, body.reason)
+    await audit.by(
+        ctx, client, AuditAction.LOT_ADJUSTED, "lot", lot_id, qty=str(body.qty), reason=body.reason
+    )
     async with sessions() as db:
         lot = await queries.get_lot(db, lot_id)
     assert lot is not None  # noqa: S101 — just adjusted

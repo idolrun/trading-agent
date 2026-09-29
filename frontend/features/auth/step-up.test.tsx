@@ -7,12 +7,15 @@ import { StepUpCancelledError, useStepUp } from "@/features/auth/use-step-up"
 import { apiPost } from "@/lib/api/client"
 import { server } from "@/test/msw"
 
-const webauthn = vi.hoisted(() => ({ startAuthentication: vi.fn(), startRegistration: vi.fn() }))
-vi.mock("@simplewebauthn/browser", () => webauthn)
-
 let calls = 0
 let outcome: "ok" | "always-step-up" = "ok"
 let steps = 0
+let lastBody: unknown
+
+const confirm = async (password = "correct horse battery") => {
+  await userEvent.type(await screen.findByLabelText("Password"), password)
+  await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
+}
 
 // Stands in for a protected mutation (e.g. manual entry in F059).
 const protectedCall = () => apiPost<{ ok: true }>("/api/v1/test/protected")
@@ -36,18 +39,17 @@ beforeEach(() => {
   calls = 0
   steps = 0
   outcome = "ok"
-  webauthn.startAuthentication.mockReset().mockResolvedValue({ id: "cred" })
   server.use(
     http.post("*/api/v1/test/protected", () => {
       calls += 1
       // First call needs step-up; later calls succeed once the step-up ran.
       if (outcome === "always-step-up" || steps === 0) {
-        return HttpResponse.json({ code: "step_up_required", message: "confirm with your passkey first" }, { status: 403 })
+        return HttpResponse.json({ code: "step_up_required", message: "confirm your password first" }, { status: 403 })
       }
       return HttpResponse.json({ ok: true })
     }),
-    http.post("*/api/v1/auth/step-up/options", () => HttpResponse.json({ challenge: "c" })),
-    http.post("*/api/v1/auth/step-up/verify", () => {
+    http.post("*/api/v1/auth/step-up", async ({ request }) => {
+      lastBody = await request.json()
       steps += 1
       return HttpResponse.json({ stepUpUntil: "2026-09-29T15:00:00Z" })
     }),
@@ -55,15 +57,15 @@ beforeEach(() => {
 })
 
 describe("useStepUp", () => {
-  it("confirms with a passkey on 403 step_up_required and retries once", async () => {
+  it("confirms with the password on 403 step_up_required and retries once", async () => {
     const onResult = vi.fn()
     render(<Harness onResult={onResult} />)
     await userEvent.click(screen.getByText("act"))
-    await userEvent.click(await screen.findByRole("button", { name: "Confirm with passkey" }))
+    await confirm()
     await vi.waitFor(() => expect(onResult).toHaveBeenCalledWith("done"))
     expect(calls).toBe(2)
     expect(steps).toBe(1)
-    expect(webauthn.startAuthentication).toHaveBeenCalledWith({ optionsJSON: { challenge: "c" } })
+    expect(lastBody).toEqual({ password: "correct horse battery" })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
@@ -72,7 +74,7 @@ describe("useStepUp", () => {
     const onResult = vi.fn()
     render(<Harness onResult={onResult} />)
     await userEvent.click(screen.getByText("act"))
-    await userEvent.click(await screen.findByRole("button", { name: "Confirm with passkey" }))
+    await confirm()
     await vi.waitFor(() => expect(onResult).toHaveBeenCalledWith("api-error"))
     expect(calls).toBe(2)
     expect(steps).toBe(1)
@@ -89,12 +91,16 @@ describe("useStepUp", () => {
     expect(steps).toBe(0)
   })
 
-  it("keeps the dialog open with a neutral message when the prompt is dismissed", async () => {
-    webauthn.startAuthentication.mockRejectedValue(Object.assign(new Error("x"), { name: "NotAllowedError" }))
+  it("keeps the dialog open with the error when the password is wrong", async () => {
+    server.use(
+      http.post("*/api/v1/auth/step-up", () =>
+        HttpResponse.json({ code: "unauthorized", message: "wrong password" }, { status: 401 }),
+      ),
+    )
     render(<Harness onResult={vi.fn()} />)
     await userEvent.click(screen.getByText("act"))
-    await userEvent.click(await screen.findByRole("button", { name: "Confirm with passkey" }))
-    expect(await screen.findByRole("status")).toHaveTextContent("Passkey prompt closed")
+    await confirm("nope")
+    expect(await screen.findByRole("alert")).toHaveTextContent("wrong password")
     expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled()
   })
 

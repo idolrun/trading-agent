@@ -31,7 +31,7 @@ export function AdjustLot({ lot }: { lot: LotDetail }) {
     <>
     <form onSubmit={submit} aria-label="Adjust" className="flex flex-col gap-2 rounded-lg border border-border p-3">
       <h3 className="font-medium">Adjust to broker quantity</h3>
-      <Field label="Broker qty" hint="Setting 0 closes this lot. Needs a passkey check.">
+      <Field label="Broker qty" hint="Setting 0 closes this lot. Needs a password check.">
         {(id) => (
           <input
             id={id}

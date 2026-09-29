@@ -33,7 +33,7 @@ class AlertKind(StrEnum):
     INVARIANT_BLOCK = "invariant_block"
     NOTE_HIDDEN = "note_hidden"
     SYSTEM_FLAG = "system_flag"  # a safety flag was set or cleared (F008)
-    AUTH_ANOMALY = "auth_anomaly"  # e.g. passkey sign-count regression (F009)
+    AUTH_ANOMALY = "auth_anomaly"  # unused since passkeys were replaced by passwords
     MESSAGE_API = "message_api"  # unmappable webhook payload, history unavailable (F011, F014)
     TIMER_FAILED = "timer_failed"  # a timer handler raised (F027)
     ORDER_FAILED = "order_failed"  # broker rejected / unavailable / timeout-not-found (F028)

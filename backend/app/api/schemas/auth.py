@@ -1,31 +1,28 @@
 from datetime import datetime
-from typing import Any
 
 from pydantic import Field
 
 from app.api.schemas.base import CamelModel
 
 
-class RegisterOptionsRequest(CamelModel):
-    enrollment_token: str = Field(min_length=1)
-    label: str = Field(min_length=1, max_length=64)
+class LoginRequest(CamelModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
 
 
-class RegisterVerifyRequest(CamelModel):
-    enrollment_token: str = Field(min_length=1)
-    credential: dict[str, Any]  # WebAuthn RegistrationResponseJSON (browser output, as is)
+class PasswordRequest(CamelModel):
+    password: str = Field(min_length=1, max_length=1024)
 
 
-class RegisterVerifyResponse(CamelModel):
-    credential_id: str  # base64url
-
-
-class AssertionRequest(CamelModel):
-    credential: dict[str, Any]  # WebAuthn AuthenticationResponseJSON
+class ChangePasswordRequest(CamelModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=1, max_length=1024)
 
 
 class SessionResponse(CamelModel):
+    email: str
     expires_at: datetime
+    must_change_password: bool = False
     step_up_until: datetime | None = None
 
 

@@ -4,7 +4,7 @@ import type { Schemas } from "@/lib/api/types"
 import { stableFilters } from "@/lib/query/keys"
 
 // Same-origin: next.config.ts proxies /api/* to the backend, so the session
-// cookie stays SameSite=Strict and the WebAuthn RP ID is the dashboard host.
+// cookie stays SameSite=Strict and the API origin is the dashboard host.
 const http = axios.create({
   headers: { Accept: "application/json" },
 })
@@ -60,7 +60,7 @@ export async function apiGet<T>(path: string, filters?: object): Promise<T> {
 
 /**
  * `notifyUnauthorized: false` is for sign-in and step-up calls, where a 401
- * means "passkey rejected", not "session expired".
+ * means "wrong password", not "session expired".
  */
 export async function apiPost<T>(
   path: string,

@@ -214,7 +214,7 @@ class ApprovalService:
         *,
         session_id: uuid.UUID,
         consume_step_up: Callable[[], Awaitable[bool]],
-        stepped_up: bool = False,  # the caller already held a passkey step-up (flatten, F047)
+        stepped_up: bool = False,  # the caller already held a password step-up (flatten, F047)
     ) -> None:
         with bind(card_id=str(card_id)):
             resume: dict[str, Any] | None = None

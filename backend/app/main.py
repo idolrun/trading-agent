@@ -27,6 +27,8 @@ from app.api.routes import manual as manual_routes
 from app.api.routes import orders as orders_routes
 from app.api.routes import positions as positions_routes
 from app.api.routes import push as push_routes
+from app.api.routes import users as users_routes
+from app.auth.audit import AuditService
 from app.auth.rate_limit import SlidingWindowLimiter
 from app.auth.service import AuthService
 from app.broker.fake import FakeBroker
@@ -123,7 +125,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         lambda: (config_service.get() or RuntimeConfig()).llm,
         app.state.clock,
     )
-    app.state.auth = AuthService(session_factory, settings, app.state.clock, app.state.alerts)
+    app.state.audit = AuditService(session_factory)
+    app.state.auth = AuthService(session_factory, settings, app.state.clock, app.state.audit)
     # Only fakes until F051 (settings.broker_adapter / marketdata_adapter == "fake").
     fake_broker = FakeBroker(app.state.clock)
     broker: BrokerClient = fake_broker
@@ -409,6 +412,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.middleware("http")(origin_check(settings.dashboard_origin))
     app.include_router(auth_routes.router, prefix="/api/v1")
+    app.include_router(users_routes.router, prefix="/api/v1")
     app.include_router(config_routes.router, prefix="/api/v1")
     app.include_router(events_routes.router, prefix="/api/v1")
     for read in (feed_routes, cards_routes, positions_routes, lots_routes, orders_routes):

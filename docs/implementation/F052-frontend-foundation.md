@@ -5,7 +5,7 @@ Point the existing Next.js 16 app at the real FastAPI backend through a same-ori
 
 ## Requirements covered
 - Decision log: C17.
-- PRD FR-25 (responsive web dashboard), §13 (public dashboard, passkey cookies), X1 (Next.js instead of TRD's HTMX — README §10.2), X4 (no duplicated business rules).
+- PRD FR-25 (responsive web dashboard), §13 (public dashboard, session cookies), X1 (Next.js instead of TRD's HTMX — README §10.2), X4 (no duplicated business rules).
 - Request §13–§14 (App Router; UI → API client → backend; do not duplicate backend rules).
 
 ## Dependencies
@@ -15,7 +15,7 @@ Point the existing Next.js 16 app at the real FastAPI backend through a same-ori
 
 ## Scope
 - **Read first:** `frontend/node_modules/next/dist/docs/` (per `frontend/AGENTS.md`) — notably `rewrites`, `proxy.ts` (Next 16 renamed Middleware to Proxy), App Router data fetching.
-- **Same-origin proxy:** `next.config.ts` `rewrites()` → `{ source: "/api/:path*", destination: `${process.env.BACKEND_ORIGIN}/api/:path*` }` (server-only env, not `NEXT_PUBLIC_*`). Browser always calls `/api/v1/...` on the dashboard origin → session cookie `SameSite=Strict` and WebAuthn RP ID = dashboard host work. Remove `NEXT_PUBLIC_API_BASE_URL` from `lib/api/client.ts`.
+- **Same-origin proxy:** `next.config.ts` `rewrites()` → `{ source: "/api/:path*", destination: `${process.env.BACKEND_ORIGIN}/api/:path*` }` (server-only env, not `NEXT_PUBLIC_*`). Browser always calls `/api/v1/...` on the dashboard origin → session cookie `SameSite=Strict` and the dashboard-origin check work. Remove `NEXT_PUBLIC_API_BASE_URL` from `lib/api/client.ts`.
 - **Contract types:** `pnpm add -D openapi-typescript`; script `gen:api` = `openapi-typescript ./openapi.json -o lib/api/schema.d.ts`; feature `types.ts` files re-export/alias generated types (`components["schemas"]["Card"]`) instead of hand-written shapes; a CI check (`pnpm gen:api && git diff --exit-code`) catches drift.
 - **Delete mocks:** `frontend/app/api/v1/**` (route handlers + `_store.ts`, `_http.ts`), `frontend/features/cards/decision.ts` (`applyCardDecision` duplicates backend rules). `useDecideCard` optimistic update becomes "mark card as deciding" only; the server response is the truth.
 - **Discord IDs are strings** in the generated types — no numeric parsing anywhere.
