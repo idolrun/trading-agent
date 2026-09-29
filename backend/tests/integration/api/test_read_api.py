@@ -13,6 +13,7 @@ from app.execution.models import Fill, Order
 from app.instruments import OptionContract, Stock
 from app.ledger import repo as ledger
 from app.ledger.lots import apply_fill
+from app.markettime import FixedClock
 from tests.integration.api.conftest import Api
 from tests.integration.pipeline.harness import T0, Harness, follow_up, opened_position, option_entry
 from tests.messages import PROVIDER_A, PROVIDER_B
@@ -175,6 +176,7 @@ async def test_feed_orders_fills_health(seeded: tuple[Api, Harness]) -> None:
     fills = (await c.get("/api/v1/fills", params={"orderId": order["id"]})).json()["items"]
     assert len(fills) == 1
 
+    api.app.state.health._clock = FixedClock(T0 + timedelta(hours=1))  # the seed's trading day
     health = (await c.get("/api/v1/health/details")).json()
     assert health["status"] == "ok" and health["flags"]["kill_switch"] is False
     assert health["backlogDepth"] == 0 and health["window"] == "day"

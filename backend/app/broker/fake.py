@@ -128,6 +128,21 @@ class FakeBroker:
         while True:
             yield await self._events.get()
 
+    def forget(self) -> None:
+        """Drop every order, position, script and recorded call (E2E reset between tests)."""
+        for table in (
+            self.scripts,
+            self._orders,
+            self._by_client,
+            self._requests,
+            self._oco_groups,
+            self._oco_of,
+            self._positions,
+        ):
+            table.clear()
+        self.calls.clear()
+        self.pending_events()
+
     def pending_events(self) -> list[BrokerEvent]:
         """Drain queued events without awaiting (test helper)."""
         drained = []

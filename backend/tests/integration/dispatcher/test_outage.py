@@ -191,6 +191,12 @@ async def test_timeout_is_the_messages_failure_poisons_and_starts_no_recovery(
     await dispatcher.start()
     try:
         await all_finished(factory, 1)
+
+        async def alerted() -> bool:  # the poison alert commits after the `failed` mark
+            async with factory() as db:
+                return await db.scalar(select(Alert)) is not None
+
+        await eventually(alerted)
     finally:
         await dispatcher.stop()
 

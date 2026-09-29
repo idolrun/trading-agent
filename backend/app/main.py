@@ -28,6 +28,7 @@ from app.api.routes import manual as manual_routes
 from app.api.routes import orders as orders_routes
 from app.api.routes import positions as positions_routes
 from app.api.routes import push as push_routes
+from app.api.routes import testing as testing_routes
 from app.api.routes import users as users_routes
 from app.auth.audit import AuditService
 from app.auth.rate_limit import SlidingWindowLimiter
@@ -65,7 +66,7 @@ from app.manual.corrections import Corrections
 from app.manual.service import ManualService
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
-from app.markettime import SystemClock
+from app.markettime import ControlledClock, SystemClock
 from app.messageapi.fake import FakeMessageHistory
 from app.messageapi.port import MessageHistory
 from app.notify.bus import EventBus
@@ -137,6 +138,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.broker_events = broker_events
     app.state.marketdata = marketdata
     simulated = SimulatedBroker(marketdata, app.state.clock)
+    app.state.simulated = simulated
     # Fills of both (paper/live broker and the shadow simulator) move the lot ledger (F040).
     app.state.broker_consumer = BrokerEventConsumer(session_factory, [broker_events, simulated])
     # Every order goes through here (TRD §1.5); shadow mode never touches `broker`.
@@ -415,7 +417,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Trading Agent", lifespan=lifespan, responses=ERROR_RESPONSES)
     settings = settings or get_settings()
     app.state.settings = settings
-    app.state.clock = SystemClock()
+    test = settings.environment == "test"
+    app.state.clock = ControlledClock() if test else SystemClock()
     app.state.auth_limiter = SlidingWindowLimiter(
         settings.auth_rate_limit_per_min, timedelta(minutes=1), app.state.clock
     )
@@ -435,6 +438,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_routes.liveness)
     app.include_router(push_routes.router, prefix="/api/v1")
     app.include_router(ingest_routes.router)
+    if test:  # E2E control plane (F062): never mounted in development or production
+        app.include_router(testing_routes.router, prefix="/api/v1")
 
     return app
 

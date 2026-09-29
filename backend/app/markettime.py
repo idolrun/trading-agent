@@ -42,6 +42,23 @@ class FixedClock:
         self.at += delta
 
 
+class ControlledClock:
+    """`environment=test` only (E2E, F062): the system clock until set, then frozen where the
+    test control plane puts it (app/api/routes/testing.py)."""
+
+    def __init__(self) -> None:
+        self.at: datetime | None = None
+
+    def now(self) -> datetime:
+        return self.at or datetime.now(UTC)
+
+    def set(self, at: datetime) -> None:
+        self.at = _aware(at)
+
+    def advance(self, delta: timedelta) -> None:
+        self.at = self.now() + delta
+
+
 @dataclass(frozen=True)
 class Session:
     day: date

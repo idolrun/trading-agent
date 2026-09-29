@@ -15,6 +15,10 @@ uv run fastapi dev app/main.py            # dev server: /health, /docs
 
 Settings come from environment variables or the repo-root `.env` (see `app/config.py`).
 
+`ENVIRONMENT=test` swaps in a controllable clock and mounts the E2E control plane
+(`/api/v1/test/*`, `app/api/routes/testing.py`); never set it outside the browser E2E suite
+(`frontend/e2e/README.md`, `cd ../frontend && pnpm e2e`).
+
 ## Local database (PostgreSQL 17 in Docker)
 
 ```bash

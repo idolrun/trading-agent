@@ -1,0 +1,48 @@
+import { cardOnDesk, expect, optionEntry, lit, PROVIDER_A, test } from "./support/driver"
+
+// AC-16: an entry sized to 2 contracts with 3 take-profits shows and places TP1 1 + TP2 1 (TP3
+// dropped: never more legs than contracts), with the stop for the whole lot, after the fill.
+test("entry of 2 contracts with 3 TPs", async ({ page, driver }) => {
+  const text = "Bought GOOGL 352.5C 10/2 @ 3.30 SL 2.50 TP 4.00 5.00 6.00"
+  await driver.post(text, [
+    optionEntry("GOOGL", "352.5", "352.5C", "10/2", "3.30", {
+      stop_level: lit("2.50"),
+      tp_levels: ["4.00", "5.00", "6.00"].map((v) => lit(v)),
+    }),
+  ])
+
+  const entry = await driver.cardFor("entry", { state: "pending" })
+  expect(entry.proposal.qty).toBe(2) // $1000 tier / (3.45 limit * 100)
+  expect(entry.proposal.tpLegs).toEqual([
+    { level: "4", qty: 1 },
+    { level: "5", qty: 1 },
+  ])
+
+  const card = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL")
+  await expect(card.getByLabel("Quantity", { exact: true })).toHaveValue("2")
+  await expect(card.getByText("Take-profit split (adds up to 2)")).toBeVisible()
+  await expect(card.getByLabel("TP1 quantity")).toHaveValue("1")
+  await expect(card.getByLabel("TP2 quantity")).toHaveValue("1")
+  await expect(card.getByLabel("TP3 quantity")).toHaveCount(0)
+  await expect(card.getByText("Stop 2.50")).toBeVisible()
+  await card.getByRole("button", { name: "Approve" }).click()
+  await expect(card).toBeHidden()
+
+  const lot = await driver.lotOf(PROVIDER_A, "GOOGL")
+  expect(lot.qty).toBe(2)
+  const bracket = await driver.waitFor(
+    () => driver.orders(),
+    (orders) => {
+      const working = orders.filter((o) => o.lotId === lot.id && o.status === "working")
+      return working.length === 3 ? working : undefined
+    },
+    "the stop and two TP orders",
+  )
+  const tps = bracket.filter((o) => o.kind === "tp").sort((a, b) => Number(a.limitPrice) - Number(b.limitPrice))
+  expect(tps.map((o) => [o.qty, o.limitPrice])).toEqual([
+    [1, "4"],
+    [1, "5"],
+  ])
+  const [stop] = bracket.filter((o) => o.kind === "stop")
+  expect(stop).toMatchObject({ qty: 2, stopPrice: "2.5", side: "sell" })
+})

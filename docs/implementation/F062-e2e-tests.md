@@ -14,6 +14,8 @@ Browser-level tests of the full system (Next.js + FastAPI + PostgreSQL + fake Me
 ## Scope
 - `pnpm add -D @playwright/test`; `frontend/e2e/`. Backend started with `Settings.environment="test"`, fake broker/market data, `FixtureInterpreter` or recorded fake model responses, a test user created with `app.auth.cli create-user` (or the service) and signed in through the login form.
 - Test driver posts webhook events to `/ingest` with HMAC (test secret) and advances a controllable clock endpoint that exists **only** in `environment=test` (never in production — asserted).
+- As built: test-only routes under `/api/v1/test/*` (`clock`, `market`, `interpretations/{id}`, `reset`; `backend/app/api/routes/testing.py`, excluded from OpenAPI, 404 in development/production). Dedicated database `trading_e2e` (created + migrated by `frontend/e2e/support/backend.sh`), never the shared `trading_test`. Stack on ports 8100 (backend) / 3100 (Next production build in `.next-e2e`) so a running dev server is untouched. Default shadow mode: fills come from the simulated broker at the scripted quotes. Commands in `frontend/e2e/README.md`.
+- Known gap found by the suite: after the AC-14 underlying confirmation the card still has no contract/qty/price and approving it is invalidated with `no_contract`; covered by a `test.fail` scenario in `frontend/e2e/missing-underlying.spec.ts` until fixed.
 | Scenario | Expected |
 |---|---|
 | AC-18 A1, B2, A3, B4 | A3 card on A's GOOGL lot, B4 on B's TSLA lot |
@@ -28,9 +30,10 @@ Browser-level tests of the full system (Next.js + FastAPI + PostgreSQL + fake Me
 
 ## Files to create
 `frontend/playwright.config.ts`, `frontend/e2e/*.spec.ts`, `frontend/e2e/support/driver.ts`, `compose.e2e.yaml` (or documented commands), backend test-only clock route guarded by environment.
+As built: documented commands (`frontend/e2e/README.md`, `pnpm e2e`) instead of `compose.e2e.yaml`; `frontend/e2e/support/{env,auth,global-setup}.ts` + `backend.sh`.
 
 ## Acceptance criteria
 Suite green locally and in CI; each scenario asserts DB side effects via API (orders, cards) not just UI text.
 
 ## Implementation steps
-1. Harness (services, virtual authenticator, driver). 2. Scenarios one by one. 3. CI wiring.
+1. Harness (services, password sign-in through the form, driver). 2. Scenarios one by one. 3. CI wiring (F064).

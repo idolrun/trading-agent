@@ -105,6 +105,10 @@ class TimerService:
         except TimeoutError:
             pass
 
+    def wake(self) -> None:
+        """Re-check due timers now (the E2E clock moved)."""
+        self._wake.set()
+
     async def _on_notify(self, _channel: str, _payload: str) -> None:
         self._wake.set()
 
