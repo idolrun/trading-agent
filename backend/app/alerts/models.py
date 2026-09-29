@@ -39,6 +39,7 @@ class AlertKind(StrEnum):
     ORDER_FAILED = "order_failed"  # broker rejected / unavailable / timeout-not-found (F028)
     ENTRY_PARTIAL = "entry_partial"  # entry remainder cancelled after M s, some filled (F041)
     UNDERLYING_STOP = "underlying_stop"  # a system-held underlying stop fired (F044)
+    EOD_FORCED_CLOSE = "eod_forced_close"  # expiring lot closed at cutoff 2 (F045)
 
 
 class Alert(SQLModel, table=True):

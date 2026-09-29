@@ -299,7 +299,7 @@ async def insert_card(
     key: str,
     source: CardSource,
     signal_id: uuid.UUID | None,
-    provider_id: int,
+    provider_id: int | None,
     position_id: uuid.UUID | None,
     lot_id: uuid.UUID | None,
     posted_at: datetime,

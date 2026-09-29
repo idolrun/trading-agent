@@ -40,6 +40,7 @@ from app.execution.card_executor import CardExecutor
 from app.execution.consumer import BrokerEventConsumer
 from app.execution.entry import EntryPolicy
 from app.execution.exit import ExitPolicy
+from app.execution.expiration import ExpirationService
 from app.execution.submit import OrderService
 from app.execution.underlying_stops import UnderlyingStopWatcher
 from app.graph.checkpointer import open_pool, saver_and_store
@@ -219,6 +220,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.timers.register(TimerKind.CARD_EXPIRY, app.state.approvals.on_card_expiry)
     app.state.timers.register(TimerKind.ENTRY_CANCEL, entry.on_entry_cancel)
+    expiration = ExpirationService(
+        session_factory,
+        config=config_service,
+        clock=app.state.clock,
+        approvals=app.state.approvals,
+        exits=exits,
+        alerts=app.state.alerts,
+    )
+    app.state.expiration = expiration  # F046 startup: schedule_today()
+    app.state.broker_consumer.on_fill.append(expiration.on_fill)
+    app.state.timers.register(TimerKind.CUTOFF_1, expiration.on_cutoff_1)
+    app.state.timers.register(TimerKind.CUTOFF_2, expiration.on_cutoff_2)
     release = ReleaseService(
         session_factory,
         planner=planner,
