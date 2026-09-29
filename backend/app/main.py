@@ -66,6 +66,8 @@ from app.notify.push import PushService
 from app.pipeline.plan import Planner
 from app.pipeline.processor import RawReviewPoisonHandler
 from app.pipeline.release import ReleaseService
+from app.reconcile.service import Reconciler
+from app.reconcile.startup import startup
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -163,6 +165,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         config=config_service,
         alerts=app.state.alerts,
     )
+    app.state.brackets, app.state.exits = brackets, exits  # F047 manual ops
     entry = EntryPolicy(
         session_factory,
         orders=app.state.orders,
@@ -170,6 +173,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         alerts=app.state.alerts,
         clock=app.state.clock,
     )
+    app.state.entry = entry
     app.state.approvals = ApprovalService(
         session_factory,
         checkpointer=checkpointer,
@@ -240,6 +244,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         approvals=app.state.approvals,
     )
     app.state.timers.register(TimerKind.OFFHOURS_RELEASE, release.on_release)
+    # Paper/live only: shadow mode has nothing at a broker to compare (OD-33).
+    reconciler = Reconciler(
+        session_factory,
+        broker=broker,
+        consumer=app.state.broker_consumer,
+        flags=app.state.flags,
+        alerts=app.state.alerts,
+        config=config_service,
+        clock=app.state.clock,
+    )
+    app.state.reconciler = reconciler
+    app.state.broker_consumer.on_fill.append(reconciler.on_fill)
     app.state.bus = EventBus()
     background = [
         config_listener,
@@ -277,7 +293,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             clock=app.state.clock,
             listen_dsn=libpq_dsn(str(settings.database_url)),
         )
-        await dispatcher.start()
+        # TRD §9 steps 1-11; entries stay blocked until it ends (and reconciliation is clean).
+        await startup(
+            sessions=session_factory,
+            flags=app.state.flags,
+            reconciler=reconciler,
+            approvals=app.state.approvals,
+            gaps=gaps,
+            timers=app.state.timers,
+            expiration=expiration,
+            exits=exits,
+            dispatcher=dispatcher,
+        )
+        background.append(asyncio.create_task(reconciler.run_periodic(), name="reconcile"))
         background.append(
             asyncio.create_task(run_heartbeat(session_factory, app.state.clock), name="heartbeat")
         )
@@ -302,6 +330,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if graph_deps is not None:
             for note in graph_deps.background:
                 note.cancel()
+        reconciler.stop()
         for task in background:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)

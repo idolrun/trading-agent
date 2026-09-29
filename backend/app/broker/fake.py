@@ -162,6 +162,11 @@ class FakeBroker:
                     self._cancel(sibling)
         return order
 
+    def seed_position(self, instrument: Instrument, qty: int, avg_price: Decimal) -> None:
+        """Set the position to `qty` at `avg_price` (e.g. a foreign holding, or a fix at the
+        broker). Emits nothing: it is not an order."""
+        self._positions[broker_symbol(instrument)] = (instrument, qty, avg_price * qty)
+
     # --- internals ---
 
     def _existing(self, client_order_id: str) -> BrokerOrder | None:

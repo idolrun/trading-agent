@@ -93,13 +93,26 @@ async def _fill(
     if event.fill_id is None or event.qty is None or event.price is None:
         logger.error("fill event without id/qty/price", extra={"coid": event.client_order_id})
         return None
+    # A fill never takes an order past its quantity: a reconciliation-synthesized fill and the
+    # stream's own fill for the same shares carry different ids (F046).
+    # ponytail: a partially filled, then cancelled order can still double-count if the stream
+    # lags > 30 s behind reconciliation; stable broker fill ids (F051) close that.
+    applied = await db.scalar(
+        select(func.coalesce(func.sum(col(Fill.qty)), 0)).where(
+            col(Fill.order_id) == order.order_id
+        )
+    )
+    qty = min(event.qty, order.qty - int(applied or 0))
+    if qty <= 0:
+        logger.warning("fill beyond order quantity ignored", extra={"coid": order.client_order_id})
+        return None
     fill_id = await db.scalar(
         pg_insert(Fill)
         .values(
             fill_id=uuid.uuid4(),
             order_id=order.order_id,
             broker_fill_id=event.fill_id,
-            qty=event.qty,
+            qty=qty,
             price=event.price,
             filled_at=event.at,
         )

@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
@@ -12,6 +12,8 @@ from sqlmodel import col
 from app.execution.invariants import PROTECTIVE, WorkingSells
 from app.execution.models import (
     OPEN_ORDER_STATUSES,
+    Fill,
+    Mode,
     Order,
     OrderEvent,
     OrderEventSource,
@@ -99,3 +101,39 @@ async def open_orders(db: AsyncSession, lot_id: uuid.UUID, kind: OrderKind) -> l
         )
     )
     return list(rows.all())
+
+
+async def orders_to_sync(db: AsyncSession) -> list[tuple[Order, int]]:
+    """(order, qty of its stored fills) for reconciliation (F046): every open order sent to a
+    real broker, plus any whose fill never reached the fills table (shadow orders never)."""
+    applied = (
+        select(func.coalesce(func.sum(col(Fill.qty)), 0))
+        .where(col(Fill.order_id) == col(Order.order_id))
+        .scalar_subquery()
+    )
+    rows = await db.execute(
+        select(Order, applied).where(
+            col(Order.mode) != Mode.SHADOW,
+            or_(col(Order.status).in_(OPEN_ORDER_STATUSES), col(Order.filled_qty) > applied),
+        )
+    )
+    return [(order, int(qty)) for order, qty in rows.tuples().all()]
+
+
+async def open_exit_roots(db: AsyncSession) -> list[uuid.UUID]:
+    """Working exit orders whose re-price loop restart must adopt (F043, F046)."""
+    rows = await db.scalars(
+        select(col(Order.order_id)).where(
+            col(Order.kind) == OrderKind.EXIT,
+            col(Order.parent_order_id).is_(None),
+            col(Order.status).in_(OPEN_ORDER_STATUSES),
+        )
+    )
+    return list(rows.all())
+
+
+async def known_client_ids(db: AsyncSession, client_order_ids: list[str]) -> set[str]:
+    rows = await db.scalars(
+        select(col(Order.client_order_id)).where(col(Order.client_order_id).in_(client_order_ids))
+    )
+    return set(rows.all())

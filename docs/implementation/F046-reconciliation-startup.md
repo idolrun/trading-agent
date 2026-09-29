@@ -41,10 +41,10 @@ Treat the broker as the source of truth: reconcile lots and orders against the b
 |---|---|---|
 | `backend/app/reconcile/service.py` | `Reconciler` (pure compare + apply) | order submission |
 | `backend/app/reconcile/startup.py` | ordered startup steps | — |
-| `backend/tests/integration/reconcile/test_reconcile.py`, `backend/tests/graph/test_restart.py` | tests | — |
+| `backend/tests/integration/reconcile/test_reconcile.py`, `backend/tests/integration/graph/test_restart.py`, `backend/tests/unit/reconcile/test_compare.py` | tests | — |
 
 ## Files to modify
-`app/main.py` (lifespan runs `startup()` before accepting dispatch), `app/execution/consumer.py` (post-fill reconcile hook).
+`app/main.py` (lifespan runs `startup()` in place of `dispatcher.start()`; reconciler on `app.state`, post-fill hook registered on the consumer's existing `on_fill` list, so `consumer.py` is unchanged), `app/cards/approval_service.py` (`resume_approved`), `app/execution/repo.py` (`orders_to_sync`, `open_exit_roots`, `known_client_ids`), `app/execution/intent.py` (`CLIENT_ID_PREFIX`), `app/system/flags.py` (`active_reason`), `app/broker/fake.py` (`seed_position`). Shadow mode is skipped (OD-33).
 
 ## Tests
 - AC-7: kill (cancel tasks) after intent commit but before broker ack; restart → order adopted by client id; no duplicate submit; pending card expired.

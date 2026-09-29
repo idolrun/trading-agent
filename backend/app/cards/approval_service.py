@@ -173,6 +173,30 @@ class ApprovalService:
                 )
         return len(ids)
 
+    async def resume_approved(self) -> int:
+        """TRD §9: an approved card whose thread stopped after the decision (crash before or
+        during `execute`) continues; `execute` is idempotent by client order id (AC-7). The
+        approval is already committed, so an unresolved interrupt gets it, not an expiry."""
+        async with self._sessions() as db:
+            rows = (
+                await db.execute(
+                    select(col(Card.card_id), col(Approval.approval_id))
+                    .join(Approval, col(Approval.card_id) == col(Card.card_id))
+                    .where(col(Card.state) == CardState.APPROVED)
+                )
+            ).all()
+        resumed = 0
+        for card_id, approval_id in rows:
+            snap = await self._graph.aget_state(thread_config(card_id))
+            if snap.created_at is not None and not snap.next:
+                continue  # the run finished (e.g. a completed review stays approved)
+            resumed += 1
+            await self._safely(
+                self.resume(card_id, {"decision": "approve", "approval_id": str(approval_id)}),
+                card_id,
+            )
+        return resumed
+
     # --- T4: the user's decision -------------------------------------------------------
 
     async def decide(

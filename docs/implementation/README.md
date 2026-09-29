@@ -570,6 +570,7 @@ C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple chan
 | OD-26 | How "X% commons" is extracted (no Appendix A role for position %) | F023, F033 | Not actionable until a Jev role/LLM field is agreed; card = review |
 | OD-27 | Kill switch scope: "pauses new cards and entries" | F024, F047 | Entry/add cards disabled; exit/stop cards still created |
 | OD-31 | Flatten scope vs foreign positions | F047 | Tracked lots only; foreign excluded (C47 read-only) |
+| OD-33 | Reconciliation in shadow mode (`SimulatedBroker` is in-memory, lost on restart) | F046 | Skipped and treated as clean; the database is the truth in shadow — **confirm** |
 
 ---
 

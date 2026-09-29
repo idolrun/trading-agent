@@ -10,6 +10,7 @@ from app.execution.models import AutoReason, OrderKind, OrderType, Side, TimeInF
 from app.instruments import Instrument
 
 NAMESPACE = uuid.UUID("3d8f1b2a-7c4e-4a9b-b6d1-5e2f8a0c9d17")
+CLIENT_ID_PREFIX = "cta-"  # broker orders with this prefix are ours (F046 recovery)
 
 
 class OrderIntent(BaseModel):
@@ -62,4 +63,4 @@ def client_order_id(intent: OrderIntent, auth: Approved | Auto) -> str:
         key = f"{anchor}:{auth.reason}:{auth.seq}"
         if auth.ref is not None:
             key += f":{auth.ref}"
-    return "cta-" + str(uuid.uuid5(NAMESPACE, key))
+    return CLIENT_ID_PREFIX + str(uuid.uuid5(NAMESPACE, key))

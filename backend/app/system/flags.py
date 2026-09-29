@@ -72,6 +72,15 @@ class FlagService:
             )
         return bool(active)
 
+    async def active_reason(self, flag: FlagName, *, db: AsyncSession | None = None) -> str | None:
+        """Why the flag is active now; None when it is not active."""
+        async with in_transaction(self._sessions, db) as session:
+            return await session.scalar(
+                select(col(SystemFlag.reason)).where(
+                    col(SystemFlag.flag) == flag, col(SystemFlag.active)
+                )
+            )
+
     async def entries_allowed(self, *, db: AsyncSession | None = None) -> tuple[bool, str | None]:
         """False (with reason for the disabled-card text) if kill switch or entries-blocked."""
         async with in_transaction(self._sessions, db) as session:
