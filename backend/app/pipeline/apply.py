@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
@@ -111,7 +112,8 @@ async def apply_event(db: AsyncSession, inp: ApplyInput) -> ApplyOutcome:
     result = ApplyOutcome()
 
     if inp.outcomes and not await _insert_signal(db, inp, inp.outcomes[0]):
-        result.created = False
+        result.created = False  # the caller still starts approval graphs for these cards
+        result.card_ids = await _card_ids_of(db, [o.signal_id for o in inp.outcomes])
     else:
         for o in inp.outcomes[1:]:
             await _insert_signal(db, inp, o)
@@ -128,6 +130,15 @@ async def apply_event(db: AsyncSession, inp: ApplyInput) -> ApplyOutcome:
     if result.created and result.card_ids:
         await record_stage(db, env.key, inp.ctx.attempt, Stage.CARD)
     return result
+
+
+async def _card_ids_of(db: AsyncSession, signal_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    rows = await db.scalars(
+        select(col(Card.card_id))
+        .where(col(Card.signal_id).in_(signal_ids))
+        .order_by(col(Card.created_at), col(Card.card_id))
+    )
+    return list(rows.all())
 
 
 async def _apply_signal(

@@ -54,10 +54,9 @@ async def startup(
         await flags.set(FlagName.ENTRIES_BLOCKED, True, reason="startup", actor=Actor.SYSTEM)
     async with _step(2, "reconcile: adopt orders, reconcile lots"):  # steps 2-4
         report = await reconciler.run(release=False)
-    async with _step(5, "expire open cards, resume interrupted approvals"):
+    async with _step(5, "expire open cards"):
         expired = await approvals.expire_on_restart()
-        resumed = await approvals.resume_approved()
-        logger.info("approvals recovered", extra={"expired": expired, "resumed": resumed})
+        logger.info("open cards expired", extra={"expired": expired})
     async with _step(7, "gap detector"):  # step 6 (inbox reset) is Dispatcher.start()
         try:
             await gaps.run_once()
@@ -76,4 +75,43 @@ async def startup(
     async with _step(11, "entries gate"):
         if report.clean:
             await reconciler.release()
+    async with _step(12, "resume interrupted approvals"):  # TRD step 5, after the gate
+        await _resume(approvals, flags)
     return report
+
+
+async def recover_after_failover(
+    *,
+    flags: FlagService,
+    reconciler: Reconciler,
+    approvals: ApprovalService,
+    gaps: GapDetector,
+    timers: TimerService,
+) -> ReconcileReport:
+    """TRD §9 "after a failover: run the startup sequence" in a live process: the dispatcher
+    holds its workers and calls this once the database answers again. The process kept its
+    state, so open cards stay open, exits keep running and the inbox is not reset; the rest
+    is the startup sequence: block entries, reconcile, backfill, due timers, gate, resume."""
+    await flags.set(FlagName.ENTRIES_BLOCKED, True, reason="failover", actor=Actor.SYSTEM)
+    report = await reconciler.run(release=False)
+    try:
+        await gaps.run_once()
+    except Exception:
+        logger.exception("failover gap detection failed")  # the periodic run retries
+    await timers.run_due()
+    if report.clean:
+        await reconciler.release()
+    await _resume(approvals, flags)
+    logger.warning("failover recovery done", extra={"clean": report.clean})
+    return report
+
+
+async def _resume(approvals: ApprovalService, flags: FlagService) -> None:
+    """Approved entries are resumed only once entries are unblocked: revalidating them under
+    the block (dirty reconcile, manual block) would invalidate the approval ("entries
+    blocked"). Until then they stay `approved`; exits and reviews resume now."""
+    entries = not await flags.is_active(FlagName.ENTRIES_BLOCKED)
+    resumed = await approvals.resume_approved(entries=entries)
+    if not entries:
+        approvals.resume_when_entries_unblocked()
+    logger.info("approvals resumed", extra={"resumed": resumed, "entries": entries})

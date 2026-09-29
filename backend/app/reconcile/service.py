@@ -16,7 +16,9 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col
 
 from app.alerts.models import AlertKind, Severity
 from app.alerts.service import AlertService
@@ -41,8 +43,10 @@ from app.system.models import FlagName
 
 logger = logging.getLogger(__name__)
 FILL_STATUSES = frozenset({OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED})
+# committed, never acknowledged: without a broker id the broker's "no such order" is final
+ORPHAN_STATUSES = frozenset({OrderStatus.INTENT, OrderStatus.UNKNOWN})
 # Only a block this service (or startup) set may be lifted by a clean run.
-SELF_CLEARED_REASONS = ("startup", "reconciliation")
+SELF_CLEARED_REASONS = ("startup", "failover", "reconciliation")
 AFTER_FILL_DEBOUNCE_S = 2.0
 # Orders touched this recently are left to the event stream (a synthesized fill would be
 # applied twice when the real one arrives). Startup runs with 0: no stream is running yet.
@@ -290,6 +294,9 @@ class Reconciler:
         for order, applied_qty in pending:
             found = await self._broker.get_by_client_id(order.client_order_id)
             if found is None:
+                if _orphan(order) and not (settle and now - order.updated_at < settle):
+                    synced += await self._void_orphan(order)
+                    continue
                 logger.warning("broker has no such order", extra={"coid": order.client_order_id})
                 continue
             events = order_events(order, applied_qty, found, now)
@@ -299,6 +306,35 @@ class Reconciler:
                 await self._consumer.handle(event, OrderEventSource.RECONCILE)
             synced += bool(events)
         return synced
+
+    async def _void_orphan(self, order: Order) -> bool:
+        """A crash after the intent commit and the broker never saw the order: void it, so a
+        retry of the same intent finds it rejected instead of treating it as submitted."""
+        async with in_transaction(self._sessions, None) as db:
+            row = await db.scalar(
+                select(Order).where(col(Order.order_id) == order.order_id).with_for_update()
+            )
+            if row is None or not _orphan(row):
+                return False  # the stream or a retry moved it meanwhile
+            await orders_repo.set_status(
+                db,
+                row,
+                OrderStatus.REJECTED,
+                OrderEventSource.RECONCILE,
+                payload={"error": "broker has no such order"},
+            )
+        coid = order.client_order_id
+        await self._alerts.raise_(
+            AlertKind.ORDER_FAILED,
+            Severity.URGENT,
+            f"Order {coid} never reached the broker; intent voided",
+            details={"client_order_id": coid, "kind": order.kind, "side": order.side},
+            dedupe_key=f"{AlertKind.ORDER_FAILED}:{coid}",
+            card_id=order.card_id,
+            lot_id=order.lot_id,
+            order_id=order.order_id,
+        )
+        return True
 
     async def release(self) -> None:
         """Lift `entries_blocked` if startup or a reconciliation set it (never a manual block)."""
@@ -321,6 +357,10 @@ class Reconciler:
             )
         elif release:
             await self.release()
+
+
+def _orphan(order: Order) -> bool:
+    return order.status in ORPHAN_STATUSES and order.broker_order_id is None
 
 
 async def _apply_foreign(db: AsyncSession, change: ForeignChange) -> None:

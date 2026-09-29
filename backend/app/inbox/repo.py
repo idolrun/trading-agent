@@ -23,6 +23,7 @@ from app.inbox.models import (
 from app.observability.counters import bump
 
 _TERMINAL = (InboxStatus.DONE, InboxStatus.FAILED, InboxStatus.STALE)
+_APPLIED = (InboxStatus.DONE, InboxStatus.STALE)
 
 
 def _key_filter(model: type[InboxItem] | type[MessageEvent], key: EventKey) -> ColumnElement[bool]:
@@ -161,7 +162,9 @@ async def mark(
     error: str | None = None,
     skip_reason: SkipReason | None = None,
     late: bool | None = None,
-) -> None:
+) -> bool:
+    """False = nothing changed: a retry or failure mark (`received`/`failed`) never rewinds an
+    applied (`done`/`stale`) event; its cards and ledger changes are committed."""
     values: dict[str, object] = {"status": status, "updated_at": func.now()}
     if error is not None:
         values["last_error"] = error
@@ -171,7 +174,11 @@ async def mark(
         values["late"] = late
     if status in _TERMINAL:
         values["finished_at"] = func.now()
-    await db.execute(update(InboxItem).where(_key_filter(InboxItem, key)).values(**values))
+    where = _key_filter(InboxItem, key)
+    if status in (InboxStatus.RECEIVED, InboxStatus.FAILED):
+        where = and_(where, col(InboxItem.status).not_in(_APPLIED))
+    result = await db.execute(update(InboxItem).where(where).values(**values))
+    return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
 async def reset_in_flight(db: AsyncSession) -> int:
@@ -199,7 +206,7 @@ async def later_applied(db: AsyncSession, provider_id: int, posted_at: datetime)
         select(
             exists().where(
                 col(InboxItem.provider_id) == provider_id,
-                col(InboxItem.status).in_((InboxStatus.DONE, InboxStatus.STALE)),
+                col(InboxItem.status).in_(_APPLIED),
                 col(InboxItem.posted_at) > posted_at,
             )
         )

@@ -8,7 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.execution.intent import Approved, Auto, OrderIntent, client_order_id
-from app.execution.invariants import LotView, WorkingSells, violations
+from app.execution.invariants import LotView, WorkingSells, excluding, violations
 from app.execution.models import AutoReason
 from app.instruments import OptionContract, broker_symbol
 
@@ -61,9 +61,35 @@ def test_sell_quantities() -> None:
     assert violations(intent("tp", qty=1), LOT, WorkingSells(protective=2), 2) == [
         "protective_exceeds_lot"
     ]
-    assert violations(intent("stop", qty=2), LOT, WorkingSells(exits=2), 2) == []  # F043 reduces
     assert violations(intent(qty=2), LOT, WorkingSells(), 1) == ["broker_position_short"]
     assert violations(intent(qty=1), LOT, WorkingSells(), None) == ["broker_position_short"]
+
+
+def test_exits_and_protection_never_hold_the_same_contracts() -> None:
+    """FR-20(3): exits + protective exposure <= lot on every sell."""
+    group = uuid.uuid4()
+    for kind in ("stop", "tp"):  # protection while an exit is working
+        assert violations(intent(kind, qty=1), LOT, WorkingSells(exits=2), 2) == [
+            "sells_exceed_lot"
+        ]
+        assert violations(intent(kind, qty=1), LOT, WorkingSells(exits=1), 2) == []
+    assert violations(intent(qty=1), LOT, WorkingSells(protective=2), 2) == ["sells_exceed_lot"]
+    assert violations(intent(qty=1), LOT, WorkingSells(protective=1), 2) == []
+    bracket = WorkingSells(groups={group: (2, 2)})  # OCO: stop 2 vs TPs 2 -> exposure 2
+    assert violations(intent(qty=1), LOT, bracket, 2) == ["sells_exceed_lot"]
+    assert violations(intent("tp", qty=1, oco_group_id=group), LOT, WorkingSells(exits=1), 2) == []
+
+
+def test_excluding_removes_the_intents_own_row() -> None:
+    group = uuid.uuid4()
+    working = WorkingSells(exits=2, protective=1, groups={group: (2, 1)})
+    assert excluding(working, intent(qty=2)) == WorkingSells(0, 1, {group: (2, 1)})
+    assert excluding(working, intent("stop", qty=1)) == WorkingSells(2, 0, {group: (2, 1)})
+    stop = intent("stop", qty=2, oco_group_id=group)
+    assert excluding(working, stop) == WorkingSells(2, 1, {group: (0, 1)})
+    assert excluding(working, intent("entry", "buy")) == working
+    # a retried exit re-checks against the others only: its own stored row is not "another"
+    assert violations(intent(qty=2), LOT, excluding(WorkingSells(exits=2), intent(qty=2)), 2) == []
 
 
 def test_client_order_ids_are_deterministic() -> None:
@@ -95,8 +121,7 @@ def test_allowed_sells_never_short_or_oversell(start: int, steps: list[tuple[str
         state = WorkingSells(exits=working["exit"], protective=working["stop"])
         if not violations(intent(kind, qty=qty), view, state, broker):
             working[kind] += qty
-            # at acceptance nothing is over-committed; a stop left over after an exit fills
-            # is reduced by F043 before the exit is sent (FR-20(3)), not by submit_order
-            assert working[kind] <= lot <= broker
-        assert working["exit"] <= lot  # working exits can never oversell the lot
+            assert working[kind] <= lot <= broker  # at acceptance nothing is over-committed
+        # exits and stops together never oversell the lot (an exit fill shrinks both sides)
+        assert working["exit"] + working["stop"] <= lot
         assert lot >= 0 and broker >= 0

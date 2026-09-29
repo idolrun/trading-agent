@@ -12,7 +12,7 @@ from pydantic import SecretStr
 from app.alerts.models import AlertKind, Severity
 from app.alerts.service import AlertService
 from app.config import Settings
-from app.llm.capabilities import CAPABILITIES
+from app.llm.params import safe_params
 from app.runtime_config.schema import ChainEntry, LlmConfig, LlmProvider
 
 logger = logging.getLogger(__name__)
@@ -54,9 +54,7 @@ class ModelRegistry:
         self._models: dict[str, BaseChatModel] = {}
 
     def model(self, entry: ChainEntry, cfg: LlmConfig) -> BaseChatModel:
-        params = dict(cfg.params.get(entry.model_key, {}))
-        if not CAPABILITIES[entry.provider].temperature:
-            params.pop("temperature", None)
+        params = safe_params(entry.provider, cfg.params.get(entry.model_key, {}))
         cache_key = f"{entry.model_key}|{json.dumps(params, sort_keys=True, default=str)}"
         if cache_key not in self._models:
             key = api_key(self._settings, entry.provider)
@@ -65,6 +63,6 @@ class ModelRegistry:
             # An OpenAI-compatible endpoint is ChatOpenAI with `base_url` from params.
             provider = "openai" if entry.provider == "openai_compat" else entry.provider
             self._models[cache_key] = init_chat_model(
-                f"{provider}:{entry.model}", api_key=key.get_secret_value(), **params
+                f"{provider}:{entry.model}", **params, api_key=key.get_secret_value()
             )
         return self._models[cache_key]

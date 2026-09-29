@@ -374,6 +374,14 @@ async def test_5_kill_in_approval_graph(
             state != CardState.APPROVED,
         )
     )
+    cs.append(  # resumed after the startup entries gate, not revalidated under the block
+        Check(
+            "approved entry invalidated by the restart",
+            str(state),
+            "!= invalidated",
+            state != CardState.INVALIDATED or not (report and report.clean),
+        )
+    )
     notes = (
         f"card {state} ({last.reason_code if last else ''} {last.detail if last else ''}); "
         f"thread next {tuple(snap.next)}; startup clean="

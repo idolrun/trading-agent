@@ -284,6 +284,34 @@ describe("card inbox", () => {
     expect(await within(article).findByText("not approvable: qty_exceeds_lot")).toBeInTheDocument()
   })
 
+  it("403 step_up_required (manual entry): asks for the password and retries the approval once", async () => {
+    let steps = 0
+    server.use(
+      http.post("*/api/v1/auth/step-up", () => {
+        steps += 1
+        return HttpResponse.json({ stepUpUntil: "2026-09-29T15:00:00Z" })
+      }),
+    )
+    const { decisions } = serve([card()], (_body, current) =>
+      steps === 0
+        ? HttpResponse.json({ code: "step_up_required", message: "confirm your password first" }, { status: 403 })
+        : { ...current, state: "approved" },
+    )
+    renderWithQuery(<CardInbox />)
+    await userEvent.click(await screen.findByRole("button", { name: "Approve" }))
+
+    await userEvent.type(await screen.findByLabelText("Password"), "correct horse battery")
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
+    await waitFor(() => expect(decisions).toHaveLength(2))
+    expect(steps).toBe(1)
+    expect(decisions.map((d) => d.body)).toEqual([
+      { decision: "approve", version: 1 },
+      { decision: "approve", version: 1 },
+    ])
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.queryByText("confirm your password first")).not.toBeInTheDocument()
+  })
+
   it("keyboard: A approves and R rejects the focused card, but not while typing in a field", async () => {
     const { decisions } = serve([
       card({ action: "trim", proposal: { qty: 1 } }),

@@ -89,9 +89,9 @@ hours and are never stale.
   - Pass: no acknowledged event lost, no duplicate card, startup reconciliation clean, no
     approvable entry card created while `entries_blocked` was set (flag audit vs card
     `created_at`), entries open again.
-  - Known app bug: when the DB drops mid-processing, `Dispatcher._failed` cannot mark the event
-    `received` again; the error ends the provider's worker and the row stays `processing` until a
-    restart. The test xfails when that is the only failing check, and fails on anything else.
+  - Phase A also passes only if no dispatcher worker died, every acknowledged event finished
+    without a restart, and the in-process failover recovery (`recover_after_failover`: block
+    entries, reconcile, release) ran before any entry was carded approvable again.
 
 ## The fakes (`fakes.py`)
 

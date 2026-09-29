@@ -50,6 +50,11 @@ def next_status(current: OrderStatus, incoming: OrderStatus) -> OrderStatus | No
     return incoming if RANK[incoming] > RANK[current] else None
 
 
+class FillRejected(Exception):
+    """The lot cannot take the fill: the whole event rolls back (no fill row, no `filled_qty`
+    advance); reconciliation (F046) reports the broker/lot mismatch and blocks entries."""
+
+
 @dataclass(frozen=True)
 class Applied:
     """A new fill that changed the books (input to the `on_fill` hooks)."""
@@ -127,7 +132,7 @@ async def _fill(
     fill = await db.get(Fill, fill_id)
     assert fill is not None  # noqa: S101 — just inserted
 
-    lot = await _apply_to_lot(db, order, fill)
+    lot = await _apply_to_lot(db, order, fill)  # raises FillRejected before anything commits
     # from the fills themselves: submit may already have copied the broker's snapshot
     qty, notional = (
         await db.execute(
@@ -152,28 +157,25 @@ async def _fill(
     )
     await notify(db, "fills", _event("fill.created", fill.fill_id))
     await notify(db, "orders", _event("order.updated", order.order_id))
-    if lot is not None:
-        await notify(db, "lots", _event("lot.updated", lot.lot_id))
+    await notify(db, "lots", _event("lot.updated", lot.lot_id))
     return Applied(order, fill, lot)
 
 
-async def _apply_to_lot(db: AsyncSession, order: Order, fill: Fill) -> Lot | None:
+async def _apply_to_lot(db: AsyncSession, order: Order, fill: Fill) -> Lot:
     """Entry buys open or grow the position's lot (FR-16: re-entry after close = new lot);
-    sells reduce the order's lot. Invariants (F028) kept sells within the lot."""
+    sells reduce the order's lot, under its row lock, never below 0 (FillRejected)."""
     side: Literal["buy", "sell"] = "buy" if order.side == Side.BUY else "sell"
     lot = await ledger.lock_lot(db, order.lot_id) if order.lot_id else None
     if side == "buy" and (lot is None or lot.qty == 0) and order.provider_position_id:
         lot = await ledger.open_lot_for_position(db, order.provider_position_id)
         lot = await ledger.lock_lot(db, lot.lot_id) if lot else None
     if lot is None and side == "sell":
-        logger.error("sell fill without a lot", extra={"order_id": str(order.order_id)})
-        return None
+        raise FillRejected(f"sell fill without a lot (order {order.order_id})")
     held = (lot.qty, lot.avg_price) if lot is not None and lot.qty > 0 else None
     try:
         update = apply_fill(held, side, fill.qty, fill.price)
-    except ValueError:
-        logger.exception("fill does not fit the lot", extra={"order_id": str(order.order_id)})
-        return None  # reconciliation (F046) reports the mismatch
+    except ValueError as exc:
+        raise FillRejected(f"fill does not fit the lot (order {order.order_id}): {exc}") from exc
     instrument, provider_id = None, None
     if lot is None or lot.qty == 0:
         position = (

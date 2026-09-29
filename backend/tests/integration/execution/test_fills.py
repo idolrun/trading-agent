@@ -10,7 +10,7 @@ from itertools import count
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -256,6 +256,50 @@ async def test_partial_fill_then_cancel_keeps_the_partial(b: Books) -> None:
     got = await b.get(order.order_id)
     assert got.status == OrderStatus.CANCELLED and got.filled_qty == 2
     assert (await b.lot_of(order.order_id)).qty == 2
+
+
+async def test_cancel_racing_a_fill_keeps_it_filled(b: Books) -> None:
+    order = await b.order(await b.position(), 3)
+    assert order.broker_order_id is not None
+    cancel = b.broker.cancel
+
+    async def filled_meanwhile(broker_order_id: str) -> None:
+        b.broker.fill(broker_order_id, price=Decimal("0.80"))  # fills while the cancel is out
+        await b.drain()
+        await cancel(broker_order_id)
+
+    b.broker.cancel = filled_meanwhile  # type: ignore[method-assign]
+    returned = await b.orders.cancel_order(order.order_id, "entry window over")
+    got = await b.get(order.order_id)
+    assert (got.status, got.filled_qty) == (OrderStatus.FILLED, 3)
+    assert (returned.status, returned.filled_qty) == (OrderStatus.FILLED, 3)
+    assert (await b.lot_of(order.order_id)).qty == 3
+    again = await b.orders.cancel_order(order.order_id, "late timer")  # terminal: no broker call
+    assert again.status == OrderStatus.FILLED
+    assert [c for c, _ in b.broker.calls].count("cancel") == 1
+
+
+async def test_sell_fill_that_does_not_fit_the_lot_rolls_back(b: Books) -> None:
+    position = await b.position()
+    entry = await b.order(position, 2)
+    b.broker.fill(entry.broker_order_id or "", price=Decimal("1.00"))
+    await b.drain()
+    lot = await b.lot_of(entry.order_id)
+    sell = await b.order(position, 2, side=Side.SELL, lot=lot.lot_id)
+    async with in_transaction(b.factory, None) as db:  # the lot shrank meanwhile (a bug)
+        await db.execute(update(Lot).where(col(Lot.lot_id) == lot.lot_id).values(qty=1))
+    b.hooked.clear()
+    b.broker.fill(sell.broker_order_id or "", price=Decimal("1.40"))
+    await b.drain()
+    got = await b.get(sell.order_id)
+    assert (got.status, got.filled_qty) == (OrderStatus.WORKING, 0)  # nothing committed
+    async with b.factory() as db:
+        fills = await db.scalar(
+            select(func.count()).select_from(Fill).where(col(Fill.order_id) == sell.order_id)
+        )
+        shrunk = await db.get(Lot, lot.lot_id)
+    assert fills == 0 and shrunk is not None and shrunk.qty == 1
+    assert b.hooked == []
 
 
 async def test_sell_fill_reduces_and_closes_the_lot(b: Books) -> None:

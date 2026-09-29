@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from functools import partial
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -74,7 +75,7 @@ from app.pipeline.plan import Planner
 from app.pipeline.processor import RawReviewPoisonHandler
 from app.pipeline.release import ReleaseService
 from app.reconcile.service import Reconciler
-from app.reconcile.startup import startup
+from app.reconcile.startup import recover_after_failover, startup
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -325,8 +326,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             poison=RawReviewPoisonHandler(session_factory, app.state.alerts),
             clock=app.state.clock,
             listen_dsn=libpq_dsn(str(settings.database_url)),
+            on_recover=partial(
+                recover_after_failover,
+                flags=app.state.flags,
+                reconciler=reconciler,
+                approvals=app.state.approvals,
+                gaps=gaps,
+                timers=app.state.timers,
+            ),
         )
-        # TRD §9 steps 1-11; entries stay blocked until it ends (and reconciliation is clean).
+        # TRD §9 steps 1-12; entries stay blocked until it ends (and reconciliation is clean).
         await startup(
             sessions=session_factory,
             flags=app.state.flags,
@@ -385,6 +394,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if graph_deps is not None:
             for note in graph_deps.background:
                 note.cancel()
+        # After the dispatcher: its failover recovery can re-arm the deferred entry resume.
+        await app.state.approvals.stop()
         reconciler.stop()
         for task in background:
             task.cancel()

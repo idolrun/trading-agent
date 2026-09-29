@@ -26,6 +26,7 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +64,7 @@ from app.notify.bus import EventBus
 from app.notify.push import PushService
 from app.pipeline.processor import RawReviewPoisonHandler
 from app.reconcile.service import Reconciler, ReconcileReport
-from app.reconcile.startup import startup
+from app.reconcile.startup import recover_after_failover, startup
 from app.runtime_config.models import Actor
 from app.runtime_config.schema import (
     ChainEntry,
@@ -575,6 +576,24 @@ async def open_run(
         async with asyncio.timeout(15):
             await ready.wait()
 
+        flags = FlagService(factory, h.alerts)
+        reconciler = Reconciler(
+            factory,
+            broker=broker,
+            consumer=BrokerEventConsumer(factory, [broker]),
+            flags=flags,
+            alerts=h.alerts,
+            config=h.config,
+            clock=clock,
+        )
+        gaps = GapDetector(
+            factory,
+            history=history or FakeMessageHistory(),
+            config=h.config,
+            alerts=h.alerts,
+            clock=clock,
+        )
+        timers = TimerService(factory, alerts=h.alerts, clock=clock)
         dispatcher = Dispatcher(
             factory,
             config=h.config,
@@ -583,33 +602,27 @@ async def open_run(
             clock=clock,
             listen_dsn=libpq_dsn(url),
             idle_exit_s=3600,
+            on_recover=partial(  # as `create_app` wires it
+                recover_after_failover,
+                flags=flags,
+                reconciler=reconciler,
+                approvals=approvals,
+                gaps=gaps,
+                timers=timers,
+            ),
         )
         run = LoadRun(h, timing, fake_jev, chats, plans)
         run.approvals, run.broker, run.dispatcher = approvals, broker, dispatcher
-        run.flags = FlagService(factory, h.alerts)
+        run.flags = flags
         if restart:
             assert exits is not None  # the harness always wires exits
             run.startup_report = await startup(
                 sessions=factory,
-                flags=run.flags,
-                reconciler=Reconciler(
-                    factory,
-                    broker=broker,
-                    consumer=BrokerEventConsumer(factory, [broker]),
-                    flags=run.flags,
-                    alerts=h.alerts,
-                    config=h.config,
-                    clock=clock,
-                ),
+                flags=flags,
+                reconciler=reconciler,
                 approvals=approvals,
-                gaps=GapDetector(
-                    factory,
-                    history=history or FakeMessageHistory(),
-                    config=h.config,
-                    alerts=h.alerts,
-                    clock=clock,
-                ),
-                timers=TimerService(factory, alerts=h.alerts, clock=clock),
+                gaps=gaps,
+                timers=timers,
                 expiration=ExpirationService(
                     factory,
                     config=h.config,

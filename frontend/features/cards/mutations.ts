@@ -22,13 +22,15 @@ function postCardDecision(cardId: string, decision: CardDecision): Promise<CardD
  * client never predicts it. "Deciding" is the mutation's own pending state
  * (`isPending` + `variables.cardId`); caches change only from the response.
  * 409 (changed / expired / already decided): toast, and `onSettled` refetches.
+ * Approving a manual entry/add needs a fresh password: `withStepUp` (`useStepUp().withStepUp`,
+ * with `<StepUpDialog>` mounted by the caller) confirms it and retries once.
  */
-export function useDecideCard() {
+export function useDecideCard(withStepUp: <R>(fn: () => Promise<R>) => () => Promise<R>) {
   const queryClient = useQueryClient()
 
   return useMutation<CardDetail, ApiError, DecideCardVariables>({
     mutationKey: [...cardKeys.all, "decision"],
-    mutationFn: ({ cardId, decision }) => postCardDecision(cardId, decision),
+    mutationFn: ({ cardId, decision }) => withStepUp(() => postCardDecision(cardId, decision))(),
     onMutate: () => queryClient.cancelQueries({ queryKey: cardKeys.all }),
     onSuccess: (card) => {
       queryClient.setQueryData(cardKeys.detail(card.id), card)

@@ -8,7 +8,11 @@ pg_try_advisory_lock per provider on a dedicated connection (database-schema.md 
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 
+import psycopg
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.alerts.models import AlertKind, Severity
@@ -17,13 +21,19 @@ from app.db import in_transaction, listen_forever
 from app.dispatcher.classify import age_seconds, error_summary, is_stale, skip_reason
 from app.dispatcher.types import PoisonHandler, ProcessingContext, Processor
 from app.inbox import repo as inbox
-from app.inbox.models import InboxStatus
+from app.inbox.envelope import EventKey
+from app.inbox.models import InboxStatus, SkipReason
 from app.logging import bind
 from app.markettime import Clock
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 
 logger = logging.getLogger(__name__)
+
+# The database is unreachable (failover, restart, network): wait and retry, never poison.
+# Driver errors only: a plain OSError (e.g. a TimeoutError from a broker call) is the message's.
+CONNECTION_ERRORS = (psycopg.OperationalError, OperationalError, InterfaceError)
+RETRY_MAX_S = 5.0
 
 
 class Dispatcher:
@@ -37,6 +47,7 @@ class Dispatcher:
         clock: Clock,
         listen_dsn: str | None = None,
         idle_exit_s: float = 60.0,
+        on_recover: Callable[[], Awaitable[object]] | None = None,
     ) -> None:
         self._sessions = session_factory
         self._config = config
@@ -49,6 +60,13 @@ class Dispatcher:
         self._wakeups: defaultdict[int, asyncio.Event] = defaultdict(asyncio.Event)
         self._slots: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._listener: asyncio.Task[None] | None = None
+        # TRD §9 after a failover: workers hold until `on_recover` (block entries, reconcile)
+        # has run on the reconnected database.
+        self._on_recover = on_recover
+        self._ready = asyncio.Event()
+        self._ready.set()
+        self._recovery: asyncio.Task[None] | None = None
+        self._connected = False
 
     async def start(self) -> None:
         """TRD §9 step 6: re-queue events a crash left `processing`, then start workers."""
@@ -58,14 +76,18 @@ class Dispatcher:
             logger.warning("re-queued in-flight events after restart", extra={"count": reset})
         if self._listen_dsn is not None:
             self._listener = asyncio.create_task(
-                listen_forever(self._listen_dsn, "inbox", self._on_notify, self.discover),
+                listen_forever(self._listen_dsn, "inbox", self._on_notify, self._on_connect),
                 name="inbox-listener",
             )
         else:
             await self.discover()
 
     async def stop(self) -> None:
-        tasks = [*self._workers.values(), *([self._listener] if self._listener else [])]
+        tasks = [
+            *self._workers.values(),
+            *([self._listener] if self._listener else []),
+            *([self._recovery] if self._recovery else []),
+        ]
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -96,11 +118,61 @@ class Dispatcher:
     async def _on_notify(self, _channel: str, payload: str) -> None:
         self.wake(int(payload))
 
+    async def _on_connect(self) -> None:
+        """First connect: pick up waiting events. A reconnect means the database went away
+        (failover): recover before processing again.
+
+        ponytail: an event claimed between the database's return and this reconnect (<= 1 s)
+        is processed before recovery; a worker's own connection error closes that gap."""
+        if self._connected:
+            self.recover()
+        else:
+            self._connected = True
+            await self.discover()
+
+    def recover(self) -> None:
+        """Hold every worker until the database answers and `on_recover` ran (idempotent)."""
+        if self._recovery is not None and not self._recovery.done():
+            return
+        self._ready.clear()
+        self._recovery = asyncio.create_task(self._recover(), name="dispatcher-recovery")
+
+    async def _recover(self) -> None:
+        """Retried until it completes: `on_recover` has blocked entries, so giving up (e.g. on
+        a broker error) would leave them blocked and approved cards unresumed while workers
+        run on."""
+        delay = 0.5
+        try:
+            while True:
+                try:
+                    async with AsyncExitStack() as held:
+                        for provider_id in sorted(self._slots):  # in-flight process() ends first
+                            await held.enter_async_context(self._slots[provider_id])
+                        if self._on_recover is not None:
+                            await self._on_recover()
+                    await self.discover()
+                    logger.warning("dispatcher resumed after a database outage")
+                    return
+                except CONNECTION_ERRORS:
+                    logger.warning("database unreachable; recovery retries", exc_info=True)
+                except Exception:
+                    logger.exception("failover recovery failed; retrying")
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, RETRY_MAX_S)
+        finally:
+            self._ready.set()
+
     async def _worker(self, provider_id: int) -> None:
         wakeup = self._wakeups[provider_id]
         while True:
+            await self._ready.wait()
             wakeup.clear()  # before the check, so a NOTIFY during the check is not lost
-            if await self._process_next(provider_id):
+            try:
+                if await self._process_next(provider_id):
+                    continue
+            except CONNECTION_ERRORS:  # the claim failed: the event is still `received`
+                logger.warning("database unreachable; worker waits", exc_info=True)
+                self.recover()
                 continue
             try:
                 await asyncio.wait_for(wakeup.wait(), self._idle_exit_s)
@@ -119,8 +191,7 @@ class Dispatcher:
         config = self._config.get() or RuntimeConfig()
         with bind(provider_id=provider_id, message_id=env.key.message_id):
             if (reason := skip_reason(env, config)) is not None:
-                async with in_transaction(self._sessions, None) as db:
-                    await inbox.mark(db, env.key, InboxStatus.DONE, skip_reason=reason)
+                await self._mark(env.key, InboxStatus.DONE, skip_reason=reason)
                 return True
             started_at = self._clock.now()
             age_s = age_seconds(started_at, env.posted_at)
@@ -133,24 +204,59 @@ class Dispatcher:
                 late=late,
             )
             try:
-                async with self.slot(provider_id):
-                    await self._processor.process(ctx)
+                await self._process_held(ctx)
             except Exception as exc:
                 await self._failed(ctx, exc, config)
         return True
 
+    async def _process_held(self, ctx: ProcessingContext) -> None:
+        """`process()` under the provider slot, never while failover recovery runs. Recovery
+        takes every slot, so a slot acquired before it started is waited for; one acquired
+        after sees `_ready` cleared and lets go (waiting inside the slot would deadlock)."""
+        slot = self.slot(ctx.envelope.provider_id)
+        while True:
+            await self._ready.wait()
+            async with slot:
+                if self._ready.is_set():
+                    await self._processor.process(ctx)
+                    return
+
     async def _failed(self, ctx: ProcessingContext, exc: Exception, config: RuntimeConfig) -> None:
         error = error_summary(exc)
-        poisoned = ctx.attempt >= config.poison_retry_limit
+        outage = isinstance(exc, CONNECTION_ERRORS)  # not the message's fault: no poison
+        poisoned = ctx.attempt >= config.poison_retry_limit and not outage
         logger.exception("processing failed", extra={"attempt": ctx.attempt, "poison": poisoned})
         status = InboxStatus.FAILED if poisoned else InboxStatus.RECEIVED  # retry same event
-        async with in_transaction(self._sessions, None) as db:
-            await inbox.mark(db, ctx.envelope.key, status, error=error)
+        if not await self._mark(ctx.envelope.key, status, error=error):
+            logger.warning("event already applied; the failure after apply is not retried")
+            return
         if poisoned:
             try:
                 await self._poison.on_poison(ctx, error)
             except Exception:
                 logger.exception("poison handler failed")
+
+    async def _mark(
+        self,
+        key: EventKey,
+        status: InboxStatus,
+        *,
+        error: str | None = None,
+        skip_reason: SkipReason | None = None,
+    ) -> bool:
+        """Release a claimed event. Retried until the database answers: giving up would leave
+        it `processing` (only a restart re-queues those) while later events overtake it.
+        False: the event was already `done`/`stale` and stays so."""
+        delay = 0.5
+        while True:
+            try:
+                async with in_transaction(self._sessions, None) as db:
+                    return await inbox.mark(db, key, status, error=error, skip_reason=skip_reason)
+            except CONNECTION_ERRORS:
+                logger.warning("database unreachable; retrying the inbox mark", exc_info=True)
+                self.recover()
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, RETRY_MAX_S)
 
 
 class AlertPoisonHandler:

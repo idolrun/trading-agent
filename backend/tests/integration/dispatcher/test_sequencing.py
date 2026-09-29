@@ -1,18 +1,16 @@
 """F012: per-provider ordering, parallel providers, poison, skips, restart, heartbeat."""
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.alerts.models import Alert
 from app.alerts.service import AlertService
-from app.db import create_session_factory, in_transaction
+from app.db import in_transaction
 from app.dispatcher.service import AlertPoisonHandler, Dispatcher
 from app.dispatcher.stub import StubProcessor
 from app.dispatcher.types import ProcessingContext
@@ -30,13 +28,6 @@ from tests.messages import CHANNEL, PROVIDER_A, PROVIDER_B, ac18, create
 
 T0 = datetime(2026, 9, 28, 14, 30, tzinfo=UTC)
 Factory = async_sessionmaker[AsyncSession]
-
-
-@pytest.fixture
-async def factory(owner_engine: object) -> AsyncIterator[Factory]:
-    engine = create_async_engine(_url("test_database_url"), poolclass=NullPool)
-    yield create_session_factory(engine)
-    await engine.dispose()
 
 
 async def make_dispatcher(

@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 from sqlmodel import col
@@ -218,6 +218,100 @@ async def test_timeout_then_missing_voids_the_intent(
     statuses = (await db_session.scalars(select(OrderEvent.status).order_by(OrderEvent.id))).all()
     assert statuses == ["intent", "unknown", "rejected"]
     assert (await db_session.scalars(select(Alert.kind))).all() == ["order_failed"]
+
+
+def restarted(w: World) -> OrderService:
+    """A fresh process: nothing in flight."""
+    return OrderService(
+        w.factory,
+        broker=w.broker,
+        simulated=w.simulated,
+        flags=w.flags,
+        alerts=w.alerts,
+        config=w.config,
+        clock=w.clock,
+    )
+
+
+async def crash_after(w: World, intent: OrderIntent, step: str) -> None:
+    """The process dies at `step` ("_send": before the broker call, "_finish": after the broker
+    accepted, before it was recorded); the intent row is committed."""
+
+    async def died(*_a: object, **_kw: object) -> Order:
+        raise RuntimeError("process died")
+
+    setattr(w.service, step, died)
+    with pytest.raises(RuntimeError):
+        await w.service.submit_order(intent, w.approval)
+
+
+async def test_crash_before_the_broker_call_sends_once_on_retry(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    w = World(factory)
+    await w.setup(db_session)
+    await crash_after(w, w.sell(), "_send")
+    assert w.broker.calls == []
+    order = await restarted(w).submit_order(w.sell(), w.approval)
+    assert order.status == "working" and order.broker_order_id is not None  # not a bare intent
+    assert [c for c, _ in w.broker.calls] == ["get_by_client_id", "submit"]
+    again = await restarted(w).submit_order(w.sell(), w.approval)
+    assert again.order_id == order.order_id and [c for c, _ in w.broker.calls].count("submit") == 1
+    assert await orders(db_session) == 1
+
+
+async def test_crash_after_the_broker_accepted_adopts_it(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    w = World(factory)
+    await w.setup(db_session)
+    await crash_after(w, w.sell(), "_finish")
+    order = await restarted(w).submit_order(w.sell(), w.approval)
+    assert order.status == "working" and order.broker_order_id is not None
+    assert [c for c, _ in w.broker.calls] == ["submit", "get_by_client_id"]  # never resent
+
+
+async def test_stuck_intent_no_longer_allowed_is_voided(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    w = World(factory)
+    await w.setup(db_session)
+    await crash_after(w, w.sell(), "_send")
+    w.broker.seed_position(GOOGL, 0, Decimal("1"))  # sold elsewhere meanwhile
+    order = await restarted(w).submit_order(w.sell(), w.approval)
+    assert order.status == "rejected"
+    assert [c for c, _ in w.broker.calls] == ["get_by_client_id"]
+    assert (await db_session.scalars(select(Alert.kind))).all() == ["order_failed"]
+
+
+async def test_stuck_unknown_is_voided_never_resent(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    w = World(factory)
+    await w.setup(db_session)
+    await crash_after(w, w.sell(), "_send")
+    async with in_transaction(factory, None) as db:  # timed out, died before the query
+        await db.execute(update(Order).values(status="unknown"))
+    order = await restarted(w).submit_order(w.sell(), w.approval)
+    assert order.status == "rejected"
+    assert [c for c, _ in w.broker.calls] == ["get_by_client_id"]
+
+
+async def test_protection_is_refused_while_an_exit_holds_the_lot(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    w = World(factory)
+    await w.setup(db_session)
+    await w.service.submit_order(w.sell(2), w.approval)  # the exit holds both contracts
+    group = uuid.uuid4()
+    for seq, kind, kw in (
+        (2, "stop", {"order_type": "stop", "stop_price": Decimal("0.5")}),
+        (3, "tp", {"oco_group_id": group}),
+    ):
+        with pytest.raises(InvariantViolation) as exc:
+            await w.service.submit_order(w.sell(1, kind, action_seq=seq, **kw), w.approval)
+        assert exc.value.reasons == ["sells_exceed_lot"]
+    assert await orders(db_session) == 1
 
 
 async def test_kill_switch_refuses_entries_not_exits(

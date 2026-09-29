@@ -6,6 +6,7 @@ supersession and restart resume the same graph. Approved cards are revalidated (
 gates) before `CardExecutor` submits through `submit_order()`.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -122,6 +123,8 @@ class ApprovalService:
         self._flags = flags
         self._clock = clock
         self.relink: RelinkService | None = None  # approval of re-link cards (F037)
+        self.unblock_poll_s = 5.0
+        self._deferred: asyncio.Task[None] | None = None
         self._graph: CompiledStateGraph[Any, Any, Any, Any] = build_approval_graph(
             self, checkpointer
         )
@@ -179,18 +182,21 @@ class ApprovalService:
                 )
         return len(ids)
 
-    async def resume_approved(self) -> int:
+    async def resume_approved(self, *, entries: bool = True) -> int:
         """TRD §9: an approved card whose thread stopped after the decision (crash before or
         during `execute`) continues; `execute` is idempotent by client order id (AC-7). The
-        approval is already committed, so an unresolved interrupt gets it, not an expiry."""
+        approval is already committed, so an unresolved interrupt gets it, not an expiry.
+        `entries=False` leaves approved entries untouched (still `approved`): revalidating
+        them while entries are blocked would invalidate the approval."""
+        query = (
+            select(col(Card.card_id), col(Approval.approval_id))
+            .join(Approval, col(Approval.card_id) == col(Card.card_id))
+            .where(col(Card.state) == CardState.APPROVED)
+        )
+        if not entries:
+            query = query.where(col(Card.action).not_in(ENTRY_ACTIONS))
         async with self._sessions() as db:
-            rows = (
-                await db.execute(
-                    select(col(Card.card_id), col(Approval.approval_id))
-                    .join(Approval, col(Approval.card_id) == col(Card.card_id))
-                    .where(col(Card.state) == CardState.APPROVED)
-                )
-            ).all()
+            rows = (await db.execute(query)).all()
         resumed = 0
         for card_id, approval_id in rows:
             snap = await self._graph.aget_state(thread_config(card_id))
@@ -202,6 +208,32 @@ class ApprovalService:
                 card_id,
             )
         return resumed
+
+    def resume_when_entries_unblocked(self) -> None:
+        """After a dirty reconcile: resume the approved entries once `entries_blocked` is
+        lifted (a later clean reconciliation or a manual fix). Idempotent."""
+        if self._deferred is None or self._deferred.done():
+            self._deferred = asyncio.create_task(
+                self._resume_after_block(), name="resume-approved-entries"
+            )
+
+    async def _resume_after_block(self) -> None:
+        while True:
+            await asyncio.sleep(self.unblock_poll_s)
+            try:
+                if await self._flags.is_active(FlagName.ENTRIES_BLOCKED):
+                    continue
+                resumed = await self.resume_approved()
+            except Exception:
+                logger.exception("resuming approved entries failed; retrying")
+                continue
+            logger.info("approved entries resumed after the block", extra={"resumed": resumed})
+            return
+
+    async def stop(self) -> None:
+        if self._deferred is not None:
+            self._deferred.cancel()
+            await asyncio.gather(self._deferred, return_exceptions=True)
 
     # --- T4: the user's decision -------------------------------------------------------
 

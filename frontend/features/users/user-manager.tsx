@@ -12,7 +12,8 @@ import { useUserMutations, useUsers, type UserWithPassword } from "@/features/us
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "never")
 
 function TemporaryPassword({ issued, onClose }: { issued: UserWithPassword | null; onClose: () => void }) {
-  const [copied, setCopied] = useState(false)
+  const [copiedFor, setCopiedFor] = useState<UserWithPassword | null>(null)
+  const copied = issued !== null && copiedFor === issued
   return (
     <Dialog.Root open={issued !== null} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
@@ -31,9 +32,14 @@ function TemporaryPassword({ issued, onClose }: { issued: UserWithPassword | nul
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                void navigator.clipboard?.writeText(issued?.temporaryPassword ?? "")
-                setCopied(true)
+              onClick={async () => {
+                if (!issued || !navigator.clipboard) return
+                try {
+                  await navigator.clipboard.writeText(issued.temporaryPassword)
+                  setCopiedFor(issued)
+                } catch {
+                  setCopiedFor(null)
+                }
               }}
             >
               {copied ? "Copied" : "Copy"}
@@ -113,7 +119,7 @@ export function UserManager() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={resetPassword.isPending}
+                    disabled={resetPassword.isPending || user.email === me}
                     onClick={() => resetPassword.mutate(user.userId, { onSuccess: setIssued })}
                   >
                     Reset password

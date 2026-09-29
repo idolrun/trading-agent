@@ -1,6 +1,9 @@
 """`submit_order()`: the only way an order reaches a broker (TRD §1.5, FR-20, FR-22, AC-7).
 
 1. Deterministic client order id; an existing order with that id is returned, never resent.
+   Except a stuck intent (crash after the intent commit: `intent`/`unknown`, no broker id):
+   query the broker by client id and adopt what exists; else an `intent` that still passes
+   the checks is sent once, anything else is voided (`rejected`, alerted).
 2. Approved orders only in regular hours (7.7); entries refused while the kill switch /
    entries-blocked flag is on.
 3. Fresh broker position read, then (T5a) lock the lot and check the invariants.
@@ -11,7 +14,9 @@
 import logging
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col
 
 from app.alerts.models import AlertKind, Severity
 from app.alerts.service import AlertService
@@ -19,8 +24,9 @@ from app.broker.errors import BrokerRejected, BrokerTimeout, BrokerUnavailable
 from app.broker.port import BrokerClient, BrokerOrder, OrderRequest
 from app.db import in_transaction
 from app.execution import repo
+from app.execution.fills import TERMINAL
 from app.execution.intent import Approved, Auto, OrderIntent, client_order_id
-from app.execution.invariants import LotView, WorkingSells, violations
+from app.execution.invariants import LotView, WorkingSells, excluding, violations
 from app.execution.models import Mode, Order, OrderEventSource, OrderKind, OrderStatus, Side
 from app.instruments import OptionContract, broker_symbol
 from app.ledger import repo as ledger
@@ -32,6 +38,7 @@ from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 
 logger = logging.getLogger(__name__)
+STUCK = frozenset({OrderStatus.INTENT, OrderStatus.UNKNOWN})
 
 
 class EntriesBlocked(Exception):
@@ -66,6 +73,8 @@ class OrderService:
         self._flags = flags
         self._alerts = alerts
         self._config = config
+        # client ids with a broker call in flight in this process: not stuck, just not back yet
+        self._sending: set[str] = set()
 
     async def submit_order(self, intent: OrderIntent, auth: Approved | Auto) -> Order:
         coid = client_order_id(intent, auth)
@@ -76,8 +85,11 @@ class OrderService:
         if isinstance(auth, Approved) and not is_regular_hours(self._clock.now()):
             raise OutsideRegularHours("orders are submitted during regular hours only")
         async with self._sessions() as db:
-            if (existing := await repo.by_client_id(db, coid)) is not None:
-                return existing  # AC-7: re-executed node, same id, no second order
+            existing = await repo.by_client_id(db, coid)
+        if existing is not None:
+            if _stuck(existing) and coid not in self._sending:
+                return await self._recover(existing, intent, coid)
+            return existing  # AC-7: re-executed node, same id, no second order
         mode = Mode((self._config.get() or RuntimeConfig()).trading_mode)
         broker = self._brokers[mode]
         if intent.kind == OrderKind.ENTRY:
@@ -112,10 +124,14 @@ class OrderService:
             order = await db.get(Order, order_id)
         if order is None:
             raise LookupError(f"order {order_id} not found")
+        if order.status in TERMINAL:
+            return order
         if order.broker_order_id is not None:
             await self._brokers[Mode(order.mode)].cancel(order.broker_order_id)
         async with in_transaction(self._sessions, None) as db:
-            order = await db.merge(order)
+            order = await _lock_order(db, order_id)
+            if order.status in TERMINAL:
+                return order  # a fill (or the broker's own cancel) landed during the call
             return await repo.set_status(
                 db,
                 order,
@@ -124,7 +140,60 @@ class OrderService:
                 payload={"reason": reason},
             )
 
+    async def _recover(self, order: Order, intent: OrderIntent, coid: str) -> Order:
+        """A crash after the intent commit (or after a timeout, before its query) left the
+        order without a broker id. The broker decides; an `unknown` is never resent (FR-22)."""
+        broker = self._brokers[Mode(order.mode)]
+        source = OrderEventSource.TIMEOUT_QUERY
+        if (found := await broker.get_by_client_id(coid)) is not None:
+            return await self._finish(order, found.status, source, placed=found)
+        if order.status == OrderStatus.UNKNOWN:
+            return await self._void(order, intent, coid, "submit timed out, broker has no order")
+        order, failed = await self._recheck(broker, order, intent)
+        if failed:
+            return await self._void(order, intent, coid, ", ".join(failed))
+        if coid in self._sending or not _stuck(order):
+            return order  # a concurrent run sent it meanwhile
+        logger.warning("stuck intent: the broker never saw it; sending once")
+        return await self._send(broker, order, intent, coid)
+
+    async def _recheck(
+        self, broker: BrokerClient, order: Order, intent: OrderIntent
+    ) -> tuple[Order, list[str]]:
+        """The submit checks again, for an intent that is already stored (and counted)."""
+        failed: list[str] = []
+        if intent.kind == OrderKind.ENTRY:
+            allowed, why = await self._flags.entries_allowed()
+            if not allowed:
+                failed.append(why or "entries blocked")
+        broker_qty = await self._broker_qty(broker, intent) if intent.side == Side.SELL else None
+        async with in_transaction(self._sessions, None) as db:  # order, then lot (as fills do)
+            order = await _lock_order(db, order.order_id)
+            lot, working = await self._lot(db, intent)
+            failed += violations(intent, lot, excluding(working, intent), broker_qty)
+        return order, failed
+
+    async def _void(self, order: Order, intent: OrderIntent, coid: str, why: str) -> Order:
+        await self._alert(
+            AlertKind.ORDER_FAILED,
+            f"Stuck order never reached the broker; intent voided: {why}",
+            intent,
+            coid,
+        )
+        return await self._finish(
+            order, OrderStatus.REJECTED, OrderEventSource.TIMEOUT_QUERY, error=why
+        )
+
     async def _send(
+        self, broker: BrokerClient, order: Order, intent: OrderIntent, coid: str
+    ) -> Order:
+        self._sending.add(coid)
+        try:
+            return await self._place(broker, order, intent, coid)
+        finally:
+            self._sending.discard(coid)
+
+    async def _place(
         self, broker: BrokerClient, order: Order, intent: OrderIntent, coid: str
     ) -> Order:
         request = OrderRequest(
@@ -216,6 +285,18 @@ class OrderService:
             card_id=intent.card_id,
             lot_id=intent.lot_id,
         )
+
+
+def _stuck(order: Order) -> bool:
+    return order.status in STUCK and order.broker_order_id is None
+
+
+async def _lock_order(db: AsyncSession, order_id: uuid.UUID) -> Order:
+    order: Order | None = await db.scalar(
+        select(Order).where(col(Order.order_id) == order_id).with_for_update()
+    )
+    assert order is not None  # noqa: S101 — orders are never deleted
+    return order
 
 
 def _values(intent: OrderIntent, auth: Approved | Auto, coid: str, mode: Mode) -> dict[str, object]:

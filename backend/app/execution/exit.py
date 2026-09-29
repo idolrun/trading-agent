@@ -5,7 +5,8 @@
 3. Every `exit_reprice_interval_s`: cancel and re-place the unfilled rest one step toward the
    bid (`Auto(REPRICE)` child of the root order, pre-approved within the intent).
 4. At the floor and still unfilled: stop, alert `exit_floor`, restore protection.
-5. Filled (fully or partly) and done: restore protection for whatever the lot still holds.
+5. Filled (fully or partly) and done: restore protection for whatever the lot still holds,
+   once every fill of the intent reached the lot (else alert and leave it to the operator).
 
 The floor and start mid are written to the root order's history, so after a restart F046 can
 `adopt()` a working exit and resume its loop from the DB.
@@ -197,6 +198,8 @@ class ExitPolicy:
             )
             if remaining <= 0:
                 break
+            # the lot may have shrunk under the exit (a stop fired): protective + exit <= lot
+            await self._brackets.reduce_protection(root.lot_id, remaining)
             seq += 1
             current = await self._orders.submit_order(
                 OrderIntent(
@@ -214,10 +217,19 @@ class ExitPolicy:
                 ),
                 Auto(AutoReason.REPRICE, seq),
             )
-        await self._settled(root)
+        if not await self._settled(root):
+            await self._alerts.raise_(
+                AlertKind.EXIT_FLOOR,
+                Severity.URGENT,
+                "Exit fills have not reached the lot; protection not restored, check the lot",
+                dedupe_key=f"exit_unsettled:{root.order_id}",
+                order_id=root.order_id,
+                lot_id=root.lot_id,
+            )
+            return
         await self._brackets.restore_protection(root.lot_id)
 
-    async def _settled(self, root: Order, tries: int = 50) -> None:
+    async def _settled(self, root: Order, tries: int = 50) -> bool:
         """Wait (bounded) until every fill of the intent reached the lot, so restoring never
         protects contracts already sold (fills arrive through the broker event stream)."""
         chain = (col(Order.order_id) == root.order_id) | (
@@ -234,11 +246,10 @@ class ExitPolicy:
                     .where(chain)
                 )
             if int(applied or 0) >= int(reported or 0):
-                return
+                return True
             await self.sleep(0.1)
-        logger.warning(
-            "exit fills not applied yet; restoring anyway", extra={"id": str(root.order_id)}
-        )
+        logger.warning("exit fills not applied yet", extra={"id": str(root.order_id)})
+        return False
 
     async def _prices(self, instrument: Instrument) -> tuple[Decimal, Decimal, Decimal]:
         try:

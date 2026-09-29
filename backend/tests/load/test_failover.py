@@ -21,13 +21,11 @@ RTO = from the stop command until every acknowledged event is processed and entr
 again (phase B end), must be <= 5 min. `conftest.py` orders this test last in the suite; Postgres
 is always started again in `finally`.
 
-Known app bug (confirmed, 2 of 2 runs with the slow path forced): when the database drops
-while a message is being processed, `Dispatcher._failed` (app/dispatcher/service.py) cannot mark
-the event back to `received`; the DB error escapes `_process_next`, ends the provider's worker
-task and leaves the inbox row `processing`. Nothing but `Dispatcher.start()` (a restart) resets
-`processing` rows, so without a restart the event is never processed (and the provider's later
-events overtake it). Phase A reports it; the test xfails on exactly that check and fails on any
-other.
+Phase A also checks the in-process failover recovery (`recover_after_failover`, wired into the
+dispatcher as in `create_app`): workers hold on a connection error, the failed event is released
+once the database answers (never left `processing`), entries are blocked and reconciled before
+processing resumes, so no entry is carded approvable between the database's return and the
+end of that recovery.
 """
 
 import asyncio
@@ -50,6 +48,7 @@ from sqlmodel import col
 
 from app.cards.edits import Edits
 from app.cards.models import Card, CardAction, CardState, CardType
+from app.execution.models import Order, OrderKind
 from app.inbox.models import InboxItem, MessageEvent
 from app.messageapi.fake import FakeMessageHistory
 from app.runtime_config.schema import TradingMode
@@ -260,7 +259,7 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
     session_id = await add_session(db_session)
     common: dict[str, Any] = {"clock": clock, "trading_mode": TradingMode.PAPER}
     t_stop = t_up = 0.0
-    db_up_at = datetime.now(UTC)
+    db_up_at = stop_at = datetime.now(UTC)
     try:
         async with open_run(tmp_path, plans, force_slow=True, **common) as run:  # see docstring
             broker = run.broker
@@ -273,9 +272,9 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
             t0 = time.perf_counter()
 
             async def outage() -> None:
-                nonlocal t_stop, t_up, db_up_at
+                nonlocal t_stop, t_up, db_up_at, stop_at
                 await asyncio.sleep(STOP_AT_S)
-                t_stop = time.perf_counter()
+                t_stop, stop_at = time.perf_counter(), datetime.now(UTC)
                 out = await asyncio.to_thread(compose, "stop", "postgres")
                 assert out.returncode == 0, out.stderr
                 await asyncio.sleep(max(sc.FAILOVER_DOWN_S - (time.perf_counter() - t_stop), 0))
@@ -304,11 +303,25 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
             ]
             first_new_s = min(new_done) - t_stop if new_done else None
             errors_a = Counter(e.split(":")[0] for _, e in run.timing.errors)
+            recovery = [w for w in await block_windows(run) if w[0] > stop_at]
+            released_at = recovery[0][1] if recovery else None
+
+            def before_release(at: datetime) -> bool:
+                return at > stop_at and (released_at is None or at < released_at)
+
             approvable_a = [
-                at
-                for t, at, _ in await entry_cards(run)
-                if t in APPROVABLE and at > db_up_at  # after the DB came back, no reconcile ran
+                at for t, at, _ in await entry_cards(run) if t in APPROVABLE and before_release(at)
             ]
+            async with run.factory() as db:
+                entry_orders_a = [
+                    at
+                    for at in (
+                        await db.scalars(
+                            select(col(Order.created_at)).where(col(Order.kind) == OrderKind.ENTRY)
+                        )
+                    ).all()
+                    if before_release(at)
+                ]
             unacked_committed = sum(not s.accepted for s in sent)  # committed, ack lost, resent
 
         # --- phase B: restart through the TRD §9 startup sequence ---
@@ -374,9 +387,11 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
         Check("duplicate cards", str(dup_cards), "== 0", dup_cards == 0),
         info("cards without a signal", str(no_signal)),
         info("processing exceptions during the outage (retried)", str(dict(errors_a))),
-        info(
+        Check(
             "dispatcher worker tasks ended by a DB error (claim / mark)",
             f"{len(deaths)} {dict(Counter(deaths))}",
+            "== 0",
+            not deaths,
         ),
         Check(
             "A. in-process: stop -> pipeline processes new messages again",
@@ -391,9 +406,21 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
             "== 0",
             not unfinished_a,
         ),
+        Check(
+            "A. in-process: failover recovery blocked entries, reconciled, released",
+            "never" if not recovery else f"released={released_at is not None}",
+            "released=True",
+            released_at is not None,
+        ),
+        Check(
+            "A. in-process: entry orders before the failover recovery reconciled and released",
+            str(len(entry_orders_a)),
+            "== 0",
+            not entry_orders_a,
+        ),
         info(
-            "A. in-process: approvable entry cards after the DB returned, no reconcile yet",
-            f"{len(approvable_a)} (see notes: AC-23 gap without a restart)",
+            "A. in-process: entry cards carded approvable in that window (in flight at the stop)",
+            f"{len(approvable_a)} (approval revalidates `entries_blocked`)",
         ),
         Check(
             "B. startup reconciliation clean",
@@ -441,22 +468,14 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
                 f"sequence'); {len(RESTART_GAP)} entries posted while the process was down are "
                 "backfilled at step 7. RTO is measured from the stop to B's end, so it also "
                 "contains phase A's wait: an upper bound.",
-                "AC-23 note: in phase A the process keeps carding entries as approvable as soon "
-                "as the DB is back, before any reconciliation (only the 60 s periodic run or a "
-                "restart reconciles). Reconcile-before-entries holds only through the startup "
-                "sequence (B), i.e. when the app is restarted after a failover.",
+                "AC-23 in-process: on a connection error the dispatcher holds its workers and "
+                "runs `recover_after_failover` once the DB answers (block entries, reconcile, "
+                "backfill, due timers, release if clean, resume approvals); a failed event is "
+                "released back to `received` with retries, so it is never left `processing`.",
                 "Slow path forced for the burst (as test 3) so model calls are in flight when "
-                "the DB stops. Known app bug behind a phase-A FAIL: `Dispatcher._failed` "
-                "(app/dispatcher/service.py) marks the failed event `received` in a new "
-                "transaction with no error handling; with the DB down that raises, the provider's "
-                "worker task ends and the row stays `processing`. Only `Dispatcher.start()` "
-                "(restart) resets `processing` rows, so the event waits for a restart and the "
-                "provider's later events overtake it (processed `late` after the restart: the "
-                "`relink` review cards). The test xfails on exactly this check.",
+                "the DB stops.",
             ),
         ),
     )
     failed = [c for c in checks if c.ok is False]
-    if failed and all(c.metric == STUCK_CHECK for c in failed):
-        pytest.xfail(f"known app bug (module docstring): {failed[0].value}")
     assert not failed, failed

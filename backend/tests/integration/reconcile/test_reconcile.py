@@ -29,7 +29,7 @@ from app.runtime_config.schema import TradingMode
 from app.system.flags import FlagService
 from app.system.models import FlagName
 from tests.integration.conftest import _url
-from tests.integration.execution.test_submit_order import GOOGL, World
+from tests.integration.execution.test_submit_order import GOOGL, World, restarted
 from tests.integration.pipeline.harness import Factory, Harness, option_entry
 from tests.messages import PROVIDER_A
 
@@ -213,6 +213,28 @@ async def test_working_order_the_broker_filled_is_applied_once(
     assert await count(db_session, Fill) == 1
     lot = await db_session.get(Lot, w.lot_id)
     assert lot is not None and lot.qty == 1
+
+
+async def test_orphan_intent_the_broker_never_saw_is_voided(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    w = await world(factory, db_session)
+
+    async def died(*_a: object) -> Order:
+        raise RuntimeError("process died")
+
+    w.service._send = died  # type: ignore[method-assign,assignment]  # dies after the intent
+    with pytest.raises(RuntimeError):
+        await w.service.submit_order(w.sell(), w.approval)
+    report = await reconciler(w).run()  # startup: nothing in flight
+    assert report.clean and report.orders_synced == 1
+    order = await db_session.scalar(select(Order))
+    assert order is not None and order.status == "rejected"
+    kinds = (await db_session.scalars(select(Alert.kind))).all()
+    assert kinds == [AlertKind.ORDER_FAILED]
+    retried = await restarted(w).submit_order(w.sell(), w.approval)
+    assert retried.status == "rejected"  # the retry sees the void, never a bare intent
+    assert "submit" not in [c for c, _ in w.broker.calls]
 
 
 async def test_open_exit_roots_are_found_for_restart(

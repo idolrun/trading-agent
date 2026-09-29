@@ -3,19 +3,30 @@
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.db import create_session_factory
-from app.evalkit.models import EvalRun, EvalRunKind
+from app.evalkit.models import EvalRun, EvalRunKind, Split
 from app.runtime_config.models import Actor
-from app.runtime_config.schema import ChainEntry, LlmConfig, LlmRoles, RoleConfig, RuntimeConfig
+from app.runtime_config.schema import (
+    ChainEntry,
+    LlmConfig,
+    LlmRoles,
+    Price,
+    RoleConfig,
+    RuntimeConfig,
+)
 from app.runtime_config.service import ConfigInvalid, ConfigService
 from tests.integration.conftest import _url
 
 NOW = datetime(2026, 9, 28, tzinfo=UTC)
+PRICE = Price(
+    input_per_mtok=Decimal(1), output_per_mtok=Decimal(2), cached_input_per_mtok=Decimal("0.1")
+)
 
 
 @pytest.fixture
@@ -29,7 +40,8 @@ async def gate_run(db: AsyncSession, model_ref: str, passed: bool = True) -> uui
     run = EvalRun(
         kind=EvalRunKind.REPLAY_GATE,
         model_ref=model_ref,
-        metrics={},
+        split=Split.TEST,
+        metrics={"checks": [{"name": "wrong_contracts", "need": "== 0", "passed": passed}]},
         gate_passed=passed,
         started_at=NOW,
         finished_at=NOW,
@@ -40,7 +52,12 @@ async def gate_run(db: AsyncSession, model_ref: str, passed: bool = True) -> uui
 
 
 def config(*entries: ChainEntry) -> RuntimeConfig:
-    return RuntimeConfig(llm=LlmConfig(roles=LlmRoles(extract=RoleConfig(chain=list(entries)))))
+    return RuntimeConfig(
+        llm=LlmConfig(
+            roles=LlmRoles(extract=RoleConfig(chain=list(entries))),
+            prices={e.model_key: PRICE for e in entries},
+        )
+    )
 
 
 async def update(service: ConfigService, cfg: RuntimeConfig) -> None:

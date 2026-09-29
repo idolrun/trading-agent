@@ -3,6 +3,8 @@
 import type { UseInfiniteQueryResult } from "@tanstack/react-query"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
+import { StepUpDialog } from "@/features/auth/step-up-dialog"
+import { useStepUp } from "@/features/auth/use-step-up"
 import { CardActions } from "@/features/cards/card-actions"
 import { CardSummary } from "@/features/cards/card-summary"
 import { decisionStateFor, generalDecisionError, useDecideCard } from "@/features/cards/mutations"
@@ -79,7 +81,8 @@ function DisabledCards({ decide }: { decide: Decide }) {
 
 export function CardInbox() {
   const query = useCardList(PENDING)
-  const decide = useDecideCard()
+  const stepUp = useStepUp()
+  const decide = useDecideCard(stepUp.withStepUp)
   const failure = generalDecisionError(decide)
 
   return (
@@ -107,6 +110,7 @@ export function CardInbox() {
         {(data) => <CardList query={query} items={data.items} decide={decide} />}
       </QueryState>
       <DisabledCards decide={decide} />
+      <StepUpDialog {...stepUp.dialogProps} />
     </section>
   )
 }

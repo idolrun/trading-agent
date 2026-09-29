@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AuditLog } from "@/features/users/audit-log"
 import { UserManager } from "@/features/users/user-manager"
 import { server } from "@/test/msw"
@@ -63,12 +63,80 @@ describe("user manager", () => {
     )
     renderWithQuery(<UserManager />)
     const mine = (await screen.findByText("me@example.com")).closest("li")!
+    await waitFor(() => expect(within(mine).getByRole("button", { name: "Reset password" })).toBeDisabled())
     expect(within(mine).getByRole("button", { name: "Deactivate" })).toBeDisabled()
     const other = screen.getByText("b@example.com").closest("li")!
+    expect(within(other).getByRole("button", { name: "Reset password" })).toBeEnabled()
     await userEvent.click(within(other).getByRole("button", { name: "Deactivate" }))
     await waitFor(() => expect(calls).toEqual(["deactivate"]))
     await userEvent.click(within(other).getByRole("button", { name: "Reset password" }))
     expect(await screen.findByText("Again-456")).toBeInTheDocument()
+  })
+
+  describe("copying the temporary password", () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>()
+
+    beforeEach(() => {
+      writeText.mockReset()
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    })
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, "clipboard")
+    })
+
+    const issueFor = async (email: string) => {
+      await userEvent.type(screen.getByLabelText("Add a user by email"), email)
+      await userEvent.click(screen.getByRole("button", { name: "Add user" }))
+      return screen.findByRole("dialog")
+    }
+
+    const mount = () => {
+      let n = 0
+      server.use(
+        http.get("*/api/v1/auth/session", () => HttpResponse.json(session)),
+        http.get("*/api/v1/users", () => HttpResponse.json([user()])),
+        http.post("*/api/v1/users", async ({ request }) => {
+          const { email } = (await request.json()) as { email: string }
+          n += 1
+          return HttpResponse.json(
+            { user: user({ userId: `u-${n + 1}`, email }), temporaryPassword: `Tmp-${n}` },
+            { status: 201 },
+          )
+        }),
+      )
+      renderWithQuery(<UserManager />)
+    }
+
+    it("shows Copied only after the clipboard write succeeds, and not for the next password", async () => {
+      writeText.mockResolvedValue(undefined)
+      mount()
+      await screen.findByText("me@example.com")
+
+      let dialog = await issueFor("a@example.com")
+      await userEvent.click(within(dialog).getByRole("button", { name: "Copy" }))
+      expect(writeText).toHaveBeenCalledWith("Tmp-1")
+      expect(await within(dialog).findByRole("button", { name: "Copied" })).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole("button", { name: "Done" }))
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+
+      dialog = await issueFor("b@example.com")
+      expect(within(dialog).getByText("Tmp-2")).toBeInTheDocument()
+      expect(within(dialog).getByRole("button", { name: "Copy" })).toBeInTheDocument()
+      expect(within(dialog).queryByRole("button", { name: "Copied" })).not.toBeInTheDocument()
+    })
+
+    it("does not show Copied when the clipboard write fails", async () => {
+      writeText.mockRejectedValue(new Error("denied"))
+      mount()
+      await screen.findByText("me@example.com")
+
+      const dialog = await issueFor("a@example.com")
+      await userEvent.click(within(dialog).getByRole("button", { name: "Copy" }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("Tmp-1"))
+      await Promise.resolve()
+      expect(within(dialog).getByRole("button", { name: "Copy" })).toBeInTheDocument()
+      expect(within(dialog).queryByRole("button", { name: "Copied" })).not.toBeInTheDocument()
+    })
   })
 })
 
