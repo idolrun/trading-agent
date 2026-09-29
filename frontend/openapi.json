@@ -748,6 +748,34 @@
         "title": "ConfigResponse",
         "type": "object"
       },
+      "ContextMessageOut": {
+        "properties": {
+          "atEt": {
+            "title": "Atet",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isReplyParent": {
+            "default": false,
+            "title": "Isreplyparent",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "atEt",
+          "text"
+        ],
+        "title": "ContextMessageOut",
+        "type": "object"
+      },
       "ContractIn": {
         "properties": {
           "expiry": {
@@ -1665,6 +1693,249 @@
         "title": "KillSwitchRequest",
         "type": "object"
       },
+      "Label": {
+        "additionalProperties": false,
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabelLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/LabelSignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "signals"
+        ],
+        "title": "Label",
+        "type": "object"
+      },
+      "LabelDetail": {
+        "properties": {
+          "context": {
+            "items": {
+              "$ref": "#/components/schemas/ContextMessageOut"
+            },
+            "title": "Context",
+            "type": "array"
+          },
+          "eventKey": {
+            "title": "Eventkey",
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/LabelRecord"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "postedAt": {
+            "format": "date-time",
+            "title": "Postedat",
+            "type": "string"
+          },
+          "prelabel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Label"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerId": {
+            "title": "Providerid",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventKey",
+          "providerId",
+          "postedAt",
+          "text",
+          "context",
+          "prelabel",
+          "labels"
+        ],
+        "title": "LabelDetail",
+        "type": "object"
+      },
+      "LabelLink": {
+        "additionalProperties": false,
+        "properties": {
+          "idx": {
+            "minimum": 0.0,
+            "title": "Idx",
+            "type": "integer"
+          },
+          "providerPositionId": {
+            "format": "uuid",
+            "title": "Providerpositionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idx",
+          "providerPositionId"
+        ],
+        "title": "LabelLink",
+        "type": "object"
+      },
+      "LabelPut": {
+        "properties": {
+          "label": {
+            "$ref": "#/components/schemas/Label"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The label this replaces; must be the current one (default: the current).",
+            "title": "Supersedes"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "LabelPut",
+        "type": "object"
+      },
+      "LabelRecord": {
+        "properties": {
+          "label": {
+            "$ref": "#/components/schemas/Label"
+          },
+          "labelId": {
+            "format": "uuid",
+            "title": "Labelid",
+            "type": "string"
+          },
+          "labeledAt": {
+            "format": "date-time",
+            "title": "Labeledat",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LabelSource"
+          },
+          "split": {
+            "$ref": "#/components/schemas/Split"
+          },
+          "supersedesLabelId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedeslabelid"
+          },
+          "tradingDay": {
+            "format": "date",
+            "title": "Tradingday",
+            "type": "string"
+          }
+        },
+        "required": [
+          "labelId",
+          "label",
+          "source",
+          "split",
+          "tradingDay",
+          "labeledAt",
+          "supersedesLabelId"
+        ],
+        "title": "LabelRecord",
+        "type": "object"
+      },
+      "LabelSignal": {
+        "additionalProperties": false,
+        "properties": {
+          "corrected": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "default": {},
+            "description": "Expected plain values by SignalFields name; omit what is unset.",
+            "title": "Fields",
+            "type": "object"
+          },
+          "idx": {
+            "minimum": 0.0,
+            "title": "Idx",
+            "type": "integer"
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "enum": [
+                  "option",
+                  "stock",
+                  "unclear"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          },
+          "msgType": {
+            "$ref": "#/components/schemas/MsgType"
+          }
+        },
+        "required": [
+          "idx",
+          "msgType"
+        ],
+        "title": "LabelSignal",
+        "type": "object"
+      },
+      "LabelSource": {
+        "enum": [
+          "prelabel_corrected",
+          "manual",
+          "provider_correction"
+        ],
+        "title": "LabelSource",
+        "type": "string"
+      },
       "LinkOut": {
         "properties": {
           "confidence": {
@@ -2094,6 +2365,32 @@
         ],
         "title": "ManualResultOut",
         "type": "object"
+      },
+      "MsgType": {
+        "description": "FR-5 message types, plus `unparsed` (raw review card: poison / parser degraded).",
+        "enum": [
+          "entry",
+          "add",
+          "trim",
+          "full_exit",
+          "soft_exit",
+          "stop_set",
+          "stop_move",
+          "stop_cancel",
+          "tp_set",
+          "tp_hit_notice",
+          "correction",
+          "watch",
+          "conditional",
+          "commentary_pnl",
+          "stock_entry",
+          "stock_exit",
+          "out_of_scope_strategy",
+          "chatter",
+          "unparsed"
+        ],
+        "title": "MsgType",
+        "type": "string"
       },
       "OrderDetail": {
         "properties": {
@@ -2600,6 +2897,34 @@
           "nextCursor"
         ],
         "title": "Page[PositionOut]",
+        "type": "object"
+      },
+      "Page_QueueItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "title": "Page[QueueItem]",
         "type": "object"
       },
       "PositionDetail": {
@@ -3191,6 +3516,54 @@
           "auth"
         ],
         "title": "PushKeys",
+        "type": "object"
+      },
+      "QueueItem": {
+        "properties": {
+          "context": {
+            "items": {
+              "$ref": "#/components/schemas/ContextMessageOut"
+            },
+            "title": "Context",
+            "type": "array"
+          },
+          "eventKey": {
+            "title": "Eventkey",
+            "type": "string"
+          },
+          "postedAt": {
+            "format": "date-time",
+            "title": "Postedat",
+            "type": "string"
+          },
+          "prelabel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Label"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerId": {
+            "title": "Providerid",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventKey",
+          "providerId",
+          "postedAt",
+          "text",
+          "context",
+          "prelabel"
+        ],
+        "title": "QueueItem",
         "type": "object"
       },
       "RegisterOptionsRequest": {
@@ -3858,6 +4231,14 @@
         ],
         "title": "SourceMessage",
         "type": "object"
+      },
+      "Split": {
+        "enum": [
+          "dev",
+          "test"
+        ],
+        "title": "Split",
+        "type": "string"
       },
       "StepUpResponse": {
         "properties": {
@@ -5155,6 +5536,175 @@
         "summary": "Kill Switch",
         "tags": [
           "manual"
+        ]
+      }
+    },
+    "/api/v1/labels/queue": {
+      "get": {
+        "operationId": "queue_api_v1_labels_queue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_QueueItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Queue",
+        "tags": [
+          "labels"
+        ]
+      }
+    },
+    "/api/v1/labels/{event_key}": {
+      "get": {
+        "operationId": "get_label_api_v1_labels__event_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_key",
+            "required": true,
+            "schema": {
+              "title": "Event Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Label",
+        "tags": [
+          "labels"
+        ]
+      },
+      "put": {
+        "operationId": "put_label_api_v1_labels__event_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_key",
+            "required": true,
+            "schema": {
+              "title": "Event Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Label",
+        "tags": [
+          "labels"
         ]
       }
     },

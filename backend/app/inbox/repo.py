@@ -31,15 +31,14 @@ def _key_filter(model: type[InboxItem] | type[MessageEvent], key: EventKey) -> C
     )
 
 
-async def accept(db: AsyncSession, env: Envelope) -> bool:
-    """T1: store the event exactly once + queue it + NOTIFY. False = duplicate (no-op)."""
-    message_id, event_type, event_seq = env.key
+async def store_event(db: AsyncSession, env: Envelope) -> bool:
+    """Store the event exactly once (no queueing). False = duplicate (no-op)."""
     inserted = await db.scalar(
         insert(MessageEvent)
         .values(
-            message_id=message_id,
-            event_type=event_type,
-            event_seq=event_seq,
+            message_id=env.key.message_id,
+            event_type=env.key.event_type,
+            event_seq=env.key.event_seq,
             provider_id=env.provider_id,
             channel_id=env.channel_id,
             posted_at=env.posted_at,
@@ -54,8 +53,14 @@ async def accept(db: AsyncSession, env: Envelope) -> bool:
         .on_conflict_do_nothing()
         .returning(col(MessageEvent.message_id))
     )
-    if inserted is None:
+    return inserted is not None
+
+
+async def accept(db: AsyncSession, env: Envelope) -> bool:
+    """T1: store the event exactly once + queue it + NOTIFY. False = duplicate (no-op)."""
+    if not await store_event(db, env):
         return False
+    message_id, event_type, event_seq = env.key
     db.add(
         InboxItem(
             message_id=message_id,

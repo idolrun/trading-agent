@@ -64,8 +64,10 @@ async def load_context(
     recent_n: int,
     now: datetime,
     profile: dict[str, list[str]] | None = None,
+    book: list[BookEntry] | None = None,
 ) -> ProviderContext:
-    """`recent_n` = config.context_recent_messages (caller decides the fallback)."""
+    """`recent_n` = config.context_recent_messages (caller decides the fallback). `book`
+    replaces the provider's stored book (evalkit replay: the label ledger, F048)."""
     cutoff = env.posted_at  # post time, never arrival order: replay-deterministic
     parent = None
     if env.reply_to_id is not None:
@@ -81,7 +83,11 @@ async def load_context(
                 db, author, cutoff, env.key.message_id, recent_n
             )
             mentioned += [_message(*row) for row in rows]
-    book = await context_repo.open_book(db, env.provider_id)
+    if book is None:
+        book = [
+            BookEntry(id=p.provider_position_id, summary=summarize(p))
+            for p in await context_repo.open_book(db, env.provider_id)
+        ]
     return ProviderContext(
         now_et=_et(now),
         message=CurrentMessage(
@@ -96,7 +102,7 @@ async def load_context(
         reply_parent=parent,
         recent_author_messages=[_message(*row) for row in recent],
         mentioned_messages=mentioned,
-        provider_book=[BookEntry(id=p.provider_position_id, summary=summarize(p)) for p in book],
+        provider_book=book,
         provider_profile=profile or {},
     )
 

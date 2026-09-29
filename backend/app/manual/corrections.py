@@ -17,10 +17,10 @@ from sqlmodel import col
 
 from app.cards.approval_service import ApprovalService
 from app.db import in_transaction
-from app.evalkit.models import EvalLabel, LabelSource
-from app.evalkit.split import split_for
+from app.evalkit.labels import add_label
+from app.evalkit.models import LabelSource
 from app.graph.message_graph import PROFILE_KEYS
-from app.inbox.models import MessageEvent
+from app.inbox.envelope import EventKey
 from app.interpret.models import LinkMethod, Signal
 from app.ledger import repo as ledger
 from app.ledger.models import PositionChange, PositionStatus, ProviderPosition
@@ -28,7 +28,7 @@ from app.ledger.positions import PositionState, PositionUpdate, apply_correction
 from app.ledger.relink import RelinkFailed, RelinkService
 from app.manual.models import CorrectionTarget, ManualCorrection
 from app.manual.service import ManualInvalid, ManualNotFound
-from app.markettime import Clock, to_et
+from app.markettime import Clock
 from app.pipeline.apply import BookChanged
 
 
@@ -258,30 +258,5 @@ async def _label(
     db: AsyncSession, sig: Signal, label: dict[str, Any], session_id: uuid.UUID
 ) -> None:
     """The corrected interpretation of the signal's message event; supersedes an earlier label."""
-    event = await db.get(MessageEvent, (sig.message_id, sig.event_type, sig.event_seq))
-    assert event is not None  # noqa: S101 — FK
-    day = to_et(event.posted_at).date()
-    previous = await db.scalar(
-        select(col(EvalLabel.label_id))
-        .where(
-            col(EvalLabel.message_id) == sig.message_id,
-            col(EvalLabel.event_type) == sig.event_type,
-            col(EvalLabel.event_seq) == sig.event_seq,
-        )
-        .order_by(col(EvalLabel.labeled_at).desc())
-        .limit(1)
-    )
-    db.add(
-        EvalLabel(
-            message_id=sig.message_id,
-            event_type=sig.event_type,
-            event_seq=sig.event_seq,
-            label=label,
-            trading_day=day,
-            split=split_for(day),
-            source=LabelSource.PROVIDER_CORRECTION,
-            supersedes_label_id=previous,
-            session_id=session_id,
-        )
-    )
-    await db.flush()
+    key = EventKey(sig.message_id, sig.event_type, sig.event_seq)
+    await add_label(db, key, label, source=LabelSource.PROVIDER_CORRECTION, session_id=session_id)

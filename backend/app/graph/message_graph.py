@@ -7,6 +7,8 @@
     llm_extract (exhausted / rejected) | decide_apply (span mismatch) -> raw_review
     decide_apply | raw_review -> notify -> END
     recheck mode (F037): after interpretation -> END (no apply, no notify)
+    replay mode (F048): as recheck, and additionally no stage_timings, no system flags, no user
+    lots, the provider book from `GraphDeps.book` (evalkit's label ledger) and `now` = post time
 
 Nodes are thin adapters over the existing services. Side effects: only `decide_apply` /
 `raw_review` (one DB transaction each) and `notify` (post-commit). Models are side-effect free
@@ -17,6 +19,7 @@ approval graphs (F036).
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,10 +37,11 @@ from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
 from app.graph.state import MessageState
 from app.inbox import repo as inbox
+from app.inbox.envelope import Envelope
 from app.inbox.models import EventType, InboxStatus, Stage
 from app.interpret import context_repo
 from app.interpret.candidates import Candidates, find_candidates
-from app.interpret.context import ProviderContext, load_context
+from app.interpret.context import BookEntry, ProviderContext, load_context
 from app.interpret.interpreter import Interpreter, InterpreterUnavailable
 from app.interpret.jev.client import JevInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
@@ -78,6 +82,7 @@ class GraphDeps:
     approvals: ApprovalService | None = None  # None: cards wait (tests of the graph alone)
     relink: RelinkService | None = None  # F037: re-check later follow-ups after a late event
     corrections: CorrectionService | None = None  # F038; None: edits/deletes are feed-only
+    book: Callable[[Envelope], list[BookEntry]] | None = None  # replay only: the label ledger
     background: set[asyncio.Task[Any]] = field(default_factory=set)
 
     def cfg(self) -> RuntimeConfig:
@@ -123,7 +128,7 @@ def _raw_review_or(next_node: str) -> Any:
 
 
 def _after_interpret(s: MessageState) -> str:
-    if s["recheck"]:
+    if s["recheck"] or s["replay"]:
         return END
     return "raw_review" if s["raw_reason"] else "decide_apply"
 
@@ -135,8 +140,9 @@ class _Nodes:
     async def load_context(self, state: MessageState) -> dict[str, Any]:
         ctx = _processing(state)
         env = ctx.envelope
+        replay = state["replay"]
         if env.key.event_type == EventType.DELETE or (
-            env.key.event_type == EventType.EDIT and self.d.corrections is None
+            env.key.event_type == EventType.EDIT and self.d.corrections is None and not replay
         ):
             invalidated: list[uuid.UUID] = []
             async with in_transaction(self.d.sessions, None) as db:
@@ -151,11 +157,13 @@ class _Nodes:
                 db,
                 env,
                 recent_n=cfg.context_recent_messages or 0,
-                now=self.d.clock.now(),
+                now=env.posted_at if replay else self.d.clock.now(),
                 profile=profile,
+                book=self.d.book(env) if replay and self.d.book else None,
             )
-            lots = await ledger.open_lots(db)
-            await record_stage(db, env.key, ctx.attempt, Stage.CONTEXT)
+            lots = [] if replay else await ledger.open_lots(db)  # the user's lots: never replayed
+            if not replay:
+                await record_stage(db, env.key, ctx.attempt, Stage.CONTEXT)
         return {
             "context": context.model_dump(mode="json"),
             "lot_ids": [str(lot.lot_id) for lot in lots],
@@ -184,7 +192,7 @@ class _Nodes:
                 ref=_ref(ctx),
                 lot_ids=frozenset(state["lot_ids"]),
             )
-            await self._stage(ctx, Stage.JEV)
+            await self._stage(state, ctx, Stage.JEV)
         decision = route(result, self.d.cfg())
         return {
             "route": decision.path,
@@ -208,18 +216,22 @@ class _Nodes:
                 )
         except TimeoutError:
             result = None
-        await self._stage(ctx, Stage.LLM)
+        await self._stage(state, ctx, Stage.LLM)
         if result is None or result.status == "exhausted":  # FR-9
-            await self.d.flags.set(
-                FlagName.PARSER_DEGRADED,
-                True,
-                "LLM chain exhausted or timed out: messages become raw review cards",
-                Actor.SYSTEM,
-            )
+            if not state["replay"]:
+                await self.d.flags.set(
+                    FlagName.PARSER_DEGRADED,
+                    True,
+                    "LLM chain exhausted or timed out: messages become raw review cards",
+                    Actor.SYSTEM,
+                )
             return {"raw_reason": "parser_degraded"}
         if result.status == "content_rejected":  # no answer shopping (TRD §4.8 rule 3)
             return {"raw_reason": f"llm_content_rejected:{result.reason or ''}"[:200]}
-        await self.d.flags.set(FlagName.PARSER_DEGRADED, False, "LLM answered again", Actor.SYSTEM)
+        if not state["replay"]:
+            await self.d.flags.set(
+                FlagName.PARSER_DEGRADED, False, "LLM answered again", Actor.SYSTEM
+            )
         assert result.value is not None  # noqa: S101 — status ok
         return {
             "parsed": result.value.model_dump(mode="json"),
@@ -252,7 +264,7 @@ class _Nodes:
         )  # F038: edits and `correction` signals correct the original's position
         now = self.d.clock.now()
         outcomes = await planner.plan(ctx, parsed, cfg, book, parents, now)
-        await self._stage(ctx, Stage.VALIDATED)
+        await self._stage(state, ctx, Stage.VALIDATED)
         async with in_transaction(self.d.sessions, None) as db:
             result = await apply_event(
                 db,
@@ -331,7 +343,9 @@ class _Nodes:
                 profile[key] = [str(v) for v in item.value["items"]]
         return profile
 
-    async def _stage(self, ctx: ProcessingContext, stage: Stage) -> None:
+    async def _stage(self, state: MessageState, ctx: ProcessingContext, stage: Stage) -> None:
+        if state["replay"]:
+            return
         async with in_transaction(self.d.sessions, None) as db:
             await record_stage(db, ctx.envelope.key, ctx.attempt, stage)
 

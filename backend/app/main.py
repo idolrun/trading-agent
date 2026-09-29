@@ -21,6 +21,7 @@ from app.api.routes import events as events_routes
 from app.api.routes import feed as feed_routes
 from app.api.routes import health as health_routes
 from app.api.routes import ingest as ingest_routes
+from app.api.routes import labels as labels_routes
 from app.api.routes import lots as lots_routes
 from app.api.routes import manual as manual_routes
 from app.api.routes import orders as orders_routes
@@ -383,6 +384,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(read.router, prefix="/api/v1")
     app.include_router(alerts_routes.router, prefix="/api/v1")
     app.include_router(manual_routes.router, prefix="/api/v1")
+    app.include_router(labels_routes.router, prefix="/api/v1")
     app.include_router(health_routes.router, prefix="/api/v1")
     app.include_router(push_routes.router, prefix="/api/v1")
     app.include_router(ingest_routes.router)

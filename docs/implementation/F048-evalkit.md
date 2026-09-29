@@ -31,9 +31,21 @@ Measure interpretation quality before real money: LLM pre-labels, user-corrected
 ## Files to create
 | File | Why / owns | Must NOT contain |
 |---|---|---|
-| `backend/app/evalkit/cli.py`, `split.py`, `replay.py`, `metrics.py`, `gate.py`, `labels.py` | as named | live order paths |
-| `backend/app/api/routes/labels.py`, `backend/app/api/schemas/labels.py` | labeling API | — |
-| `backend/tests/unit/evalkit/test_metrics.py`, `backend/tests/integration/evalkit/test_replay.py` | tests with fixture corpus | real data |
+| `backend/app/evalkit/cli.py`, `__main__.py`, `split.py`, `replay.py`, `metrics.py`, `gate.py` (gate + sweep), `labels.py`, `import_export.py` | as named | live order paths |
+| `backend/app/api/routes/labels.py`, `backend/app/api/schemas/labels.py` | labeling API; the one `Label` shape | — |
+| `backend/app/interpret/prompts/prelabel_v1.md` | prelabel prompt | user trade data |
+| `backend/tests/unit/evalkit/test_metrics.py`, `backend/tests/integration/evalkit/{conftest,test_replay,test_labels}.py`, `backend/tests/integration/api/test_labels_api.py` | tests with fixture corpus | real data |
+
+## Files modified
+`app/graph/message_graph.py` + `state.py` (`replay` mode, `GraphDeps.book`), `app/interpret/context.py` (`book` override), `app/inbox/repo.py` (`store_event`, used by `accept` and import), `app/manual/corrections.py` (label insert via `add_label`), `app/main.py` (router), `frontend/openapi.json`.
+
+## Decisions made in implementation
+- **Label shape:** `{signals: [{idx, msg_type, instrument?, fields?, corrected?}], link?}`; see `database-schema.md` decision 29. F047's provider-correction labels validate unchanged; their `corrected` part is not scored.
+- **Event key:** `<message_id>.<event_type>.<event_seq>`.
+- **Replay** ends after interpretation (`replay` implies the `recheck` END edge) and writes no stage timings, flags, lots or cards; `now` is the post time; the book is an in-memory ledger built from labels (opens and full exits only). Replay/prelabel `model_calls` have no `eval_run_id` (insert-only `eval_runs`).
+- **Gate `model_ref`** pins the slow-path chain to that one entry, so the run judges exactly that `(provider, model, prompt)`; a "test set" is the set of test trading days (hash stored in `metrics.test_set`), refreshed by labeling new days.
+- **Sweep** covers `t_chat` x `t_field`; `t_link` acts at correlation, after the point where a replay stops, so it is recorded, not swept.
+- **Normal card** in replay = every field literal or resolved (validation is `skipped`).
 
 ## Security
 Never reads `docs/data/` (C87); replay never calls the broker (assert).
