@@ -48,7 +48,7 @@ from app.execution.models import (
     StopStatus,
     TimeInForce,
 )
-from app.execution.submit import OrderService
+from app.execution.submit import InvariantViolation, OrderService
 from app.ledger.models import Instrument, Lot, LotStatus
 
 logger = logging.getLogger(__name__)
@@ -313,7 +313,10 @@ class BracketService:
                     )
                     return None
                 auth = Approved(approval)
-            order = await self._orders.submit_order(intent, auth)
+            try:
+                order = await self._orders.submit_order(intent, auth)
+            except InvariantViolation:
+                return None  # alerted by submit_order; the broker read disagrees: never oversell
             if order.status in (OrderStatus.REJECTED, OrderStatus.CANCELLED):
                 return order  # alerted by submit_order; the leg stays unplaced
         async with in_transaction(self._sessions, None) as db:

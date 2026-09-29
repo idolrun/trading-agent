@@ -39,6 +39,7 @@ from app.execution.brackets import BracketService
 from app.execution.card_executor import CardExecutor
 from app.execution.consumer import BrokerEventConsumer
 from app.execution.entry import EntryPolicy
+from app.execution.exit import ExitPolicy
 from app.execution.submit import OrderService
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.message_graph import GraphDeps
@@ -168,6 +169,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             marketdata=marketdata,
             entry=entry,
             brackets=brackets,
+            exit=ExitPolicy(
+                session_factory,
+                orders=app.state.orders,
+                brackets=brackets,
+                marketdata=marketdata,
+                config=config_service,
+                alerts=app.state.alerts,
+            ),
         ),
         marketdata=marketdata,
         config=config_service,

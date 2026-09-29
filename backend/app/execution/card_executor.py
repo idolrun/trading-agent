@@ -1,14 +1,13 @@
 """`CardExecutor`: an approved card -> `OrderIntent`s -> `submit_order()` (F036).
 
 Minimal policies; F041 (entries) and F042 (stops / TPs / brackets) replace them:
-entry/add = one limit at the approved limit; trim/exit/close = one limit at the mid;
+entry/add = one limit at the approved limit (F041); trim/exit/close = F043 `ExitPolicy`;
 stop / tp cards = the lot's bracket (F042 `BracketService`).
 Every order carries the approval (AC-2); ids derive from (card, action_seq) (AC-7).
 """
 
 import uuid
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -16,12 +15,12 @@ from app.cards.models import Card, CardAction
 from app.decide.types import ProposedAction
 from app.execution.brackets import BracketService
 from app.execution.entry import EntryPolicy
+from app.execution.exit import ExitBlocked, ExitPolicy
 from app.execution.intent import Approved, OrderIntent
 from app.execution.models import Order, OrderKind, OrderType, Side, TimeInForce
 from app.execution.submit import OrderService
 from app.instruments import Instrument
 from app.marketdata.port import MarketData
-from app.validate.normalize import mid_price
 
 SELLS = frozenset({CardAction.TRIM, CardAction.EXIT, CardAction.CLOSE})
 
@@ -46,12 +45,14 @@ class CardExecutor:
         marketdata: MarketData,
         entry: EntryPolicy | None = None,
         brackets: BracketService | None = None,
+        exit: ExitPolicy | None = None,
     ) -> None:
         self._sessions = sessions
         self._orders = orders
         self._md = marketdata
         self.entry = entry
         self.brackets = brackets
+        self.exit = exit
 
     async def execute(
         self, card: Card, proposal: ProposedAction, approval_id: uuid.UUID, target: Target
@@ -66,6 +67,15 @@ class CardExecutor:
                 return await self.brackets.protect(target.lot_id, card.card_id, stop=proposal.stop)
             levels = [leg.level for leg in proposal.tp_legs]
             return await self.brackets.protect(target.lot_id, card.card_id, tp_levels=levels)
+        if proposal.action in SELLS:  # F043: reduce protection, mid, re-price, restore
+            qty = proposal.qty or (target.lot_qty if proposal.action == CardAction.CLOSE else None)
+            if self.exit is None or target.lot_id is None or qty is None:
+                raise ExecutionBlocked("exit needs an open lot and a qty")
+            try:
+                root = await self.exit.execute(target.lot_id, qty, auth, card_id=card.card_id)
+            except ExitBlocked as exc:
+                raise ExecutionBlocked(str(exc)) from exc
+            return [root] if root is not None else []
         orders = []
         for intent in await self.intents(card, proposal, target):
             order = await self._orders.submit_order(intent, auth)
@@ -96,32 +106,4 @@ class CardExecutor:
                     tif=TimeInForce.DAY,
                 )
             ]
-        if a in SELLS:
-            qty = p.qty if a != CardAction.CLOSE else (p.qty or t.lot_qty)
-            if qty is None:
-                raise ExecutionBlocked("exit needs qty")
-            return [
-                OrderIntent(
-                    **base,
-                    kind=OrderKind.EXIT,
-                    side=Side.SELL,
-                    qty=qty,
-                    order_type=OrderType.LIMIT,
-                    limit_price=await self._mid(t.instrument),
-                    tif=TimeInForce.DAY,
-                )
-            ]
         return []  # review cards place nothing; stop/TP cards go through brackets
-
-    async def _mid(self, instrument: Instrument) -> Decimal:
-        """C25: exits start at the mid, on the tick grid. No quote / tick -> blocked (OD-12)."""
-        try:
-            mid = mid_price(await self._md.quote(instrument))
-            if mid is None:
-                raise ExecutionBlocked("no quote for the exit price")
-            tick = await self._md.tick_size(instrument, mid)
-        except ExecutionBlocked:
-            raise
-        except Exception as exc:
-            raise ExecutionBlocked(f"market data unavailable: {exc}") from exc
-        return (mid / tick).to_integral_value(ROUND_HALF_UP) * tick

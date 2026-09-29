@@ -335,9 +335,8 @@ class ApprovalService:
                 risk = None
             option = isinstance(target.instrument, OptionContract)
             return entry_block_reason(cfg, flags, risk, p, option=option)
-        assert loaded.position is not None  # noqa: S101 — target() needs it
-        closed = loaded.position.status == PositionStatus.CLOSED
-        if r := check_exit(p, closed, now):
+        # the provider closing P is what an "all out" card is about: what dies is the USER's lot
+        if r := check_exit(p, target.lot_qty is None, now):
             return r.value
         if p.action in SELLS | {CardAction.STOP, CardAction.TP} and target.lot_qty is None:
             return "no_open_lot"

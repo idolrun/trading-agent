@@ -1,5 +1,6 @@
 """Graph fixtures: the harness with approvals over a shadow broker and a pooled checkpointer."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -88,6 +89,16 @@ class World:
             for event in events:
                 await consumer.handle(event)
 
+    async def elapse(self, seconds: float) -> None:
+        await self.consume()
+
+    async def exits_done(self) -> None:
+        """Let every running exit re-price loop finish."""
+        exit_policy = self.approvals._executor.exit
+        if exit_policy is not None:
+            await asyncio.gather(*list(exit_policy.loops.values()))
+        await self.consume()
+
     async def thread_next(self, card_id: uuid.UUID) -> tuple[str, ...]:
         graph = self.approvals._graph
         snap = await graph.aget_state(thread_config(card_id))
@@ -111,7 +122,7 @@ async def w(factory: Factory, tmp_path: Path, db_session: AsyncSession) -> Async
         h = await Harness.create(factory, tmp_path)
         broker = SimulatedBroker(h.md, h.clock)
         approvals = h.approval_service(saver, broker)
-        yield World(
+        world = World(
             h,
             broker,
             approvals,
@@ -119,5 +130,13 @@ async def w(factory: Factory, tmp_path: Path, db_session: AsyncSession) -> Async
             saver,
             await add_session(db_session),
         )
+        exit_policy = approvals._executor.exit
+        if exit_policy is not None:
+            exit_policy.sleep = world.elapse  # time passing = broker events delivered
+        yield world
+        if exit_policy is not None:  # no re-price loop outlives its test
+            for task in list(exit_policy.loops.values()):
+                task.cancel()
+            await asyncio.gather(*exit_policy.loops.values(), return_exceptions=True)
     finally:
         await pool.close()

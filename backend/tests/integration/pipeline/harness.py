@@ -19,6 +19,7 @@ from app.dispatcher.types import ProcessingContext
 from app.execution.brackets import BracketService
 from app.execution.card_executor import CardExecutor
 from app.execution.entry import EntryPolicy
+from app.execution.exit import ExitPolicy
 from app.execution.submit import OrderService
 from app.graph.message_graph import GraphDeps
 from app.graph.processor import GraphProcessor
@@ -172,6 +173,7 @@ class Harness:
             config=self.config,
             clock=self.clock,
         )
+        brackets = BracketService(self.factory, orders=orders)
         approvals = ApprovalService(
             self.factory,
             checkpointer=checkpointer,
@@ -186,7 +188,15 @@ class Harness:
                     alerts=self.alerts,
                     clock=self.clock,
                 ),
-                brackets=BracketService(self.factory, orders=orders),
+                brackets=brackets,
+                exit=ExitPolicy(
+                    self.factory,
+                    orders=orders,
+                    brackets=brackets,
+                    marketdata=self.md,
+                    config=self.config,
+                    alerts=self.alerts,
+                ),
             ),
             marketdata=self.md,
             config=self.config,
