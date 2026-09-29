@@ -459,11 +459,11 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 - [ ] Jev fast path wired; routing thresholds configurable; OD-8 bench result recorded (go or LLM-only).
 - [ ] LangGraph: message graph + approval graph with `AsyncPostgresSaver`; interrupt/resume tests for every resume value; crash-mid-node tests.
 - [ ] Validation + error handling: no silent drops (FR-1e), raw review cards, alerts for every degraded state.
-- [ ] Authentication: passkey-only, step-up, rate limiting, `logins` audit, no password path (AC-10).
-- [ ] Observability: stage timings, `/health` heartbeat, health metrics endpoint.
+- [x] Authentication: passkey-only, step-up, rate limiting, `logins` audit, no password path (AC-10).
+- [x] Observability: stage timings, `/health` heartbeat, health metrics endpoint.
 - [ ] Scenario tests from TRD §12 tables (real-trade patterns, sequencing/context) all green.
 - [ ] AC coverage (§9): every backend-provable AC has a passing test.
-- [ ] `uv run pytest`, ruff, mypy clean; no `TODO` without an OD reference.
+- [x] `uv run pytest`, ruff, mypy clean; no `TODO` without an OD reference.
 
 ---
 
