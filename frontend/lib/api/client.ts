@@ -37,10 +37,11 @@ function toApiError(error: unknown): ApiError {
   return new ApiError(data?.message || axiosError.message, status, data?.code)
 }
 
-function fail(error: unknown): never {
+function fail(error: unknown, notifyUnauthorized: boolean): never {
   const apiError = toApiError(error)
-  if (apiError.status === 401) handlers.unauthorized?.(apiError)
-  else if (apiError.status === 403 && apiError.code === "step_up_required") {
+  if (apiError.status === 401) {
+    if (notifyUnauthorized) handlers.unauthorized?.(apiError)
+  } else if (apiError.status === 403 && apiError.code === "step_up_required") {
     handlers.stepUpRequired?.(apiError)
   }
   throw apiError
@@ -53,15 +54,23 @@ export async function apiGet<T>(path: string, filters?: object): Promise<T> {
     })
     return response.data
   } catch (error) {
-    return fail(error)
+    return fail(error, true)
   }
 }
 
-export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+/**
+ * `notifyUnauthorized: false` is for sign-in and step-up calls, where a 401
+ * means "passkey rejected", not "session expired".
+ */
+export async function apiPost<T>(
+  path: string,
+  body?: unknown,
+  { notifyUnauthorized = true }: { notifyUnauthorized?: boolean } = {},
+): Promise<T> {
   try {
     const response = await http.post<T>(path, body)
     return response.data
   } catch (error) {
-    return fail(error)
+    return fail(error, notifyUnauthorized)
   }
 }
