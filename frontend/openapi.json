@@ -4630,6 +4630,13 @@
             "title": "Postedat",
             "type": "string"
           },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/SpanOut"
+            },
+            "title": "Spans",
+            "type": "array"
+          },
           "text": {
             "anyOf": [
               {
@@ -4646,9 +4653,34 @@
           "messageId",
           "authorId",
           "postedAt",
-          "text"
+          "text",
+          "spans"
         ],
         "title": "SourceMessage",
+        "type": "object"
+      },
+      "SpanOut": {
+        "description": "A literal span of a message: `text[start:end]` in Unicode code points (FR-7, C31).",
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "integer"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "field",
+          "start",
+          "end"
+        ],
+        "title": "SpanOut",
         "type": "object"
       },
       "Split": {

@@ -123,7 +123,10 @@ export const healthFixture = {
 } satisfies Schemas["HealthDetails"]
 
 export const handlers = [
-  http.get("*/api/v1/cards", () => HttpResponse.json(page([cardFixture]))),
+  http.get("*/api/v1/cards", ({ request }) => {
+    const state = new URL(request.url).searchParams.get("state")
+    return HttpResponse.json(page(state && state !== cardFixture.state ? [] : [cardFixture]))
+  }),
   http.get("*/api/v1/alerts", () => HttpResponse.json(page([alertFixture]))),
   http.get("*/api/v1/orders", () => HttpResponse.json(page([orderFixture]))),
   http.get("*/api/v1/lots", () => HttpResponse.json(page([lotFixture]))),

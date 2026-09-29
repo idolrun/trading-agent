@@ -2220,8 +2220,22 @@ export interface components {
              * Format: date-time
              */
             postedAt: string;
+            /** Spans */
+            spans: components["schemas"]["SpanOut"][];
             /** Text */
             text: string | null;
+        };
+        /**
+         * SpanOut
+         * @description A literal span of a message: `text[start:end]` in Unicode code points (FR-7, C31).
+         */
+        SpanOut: {
+            /** End */
+            end: number;
+            /** Field */
+            field: string;
+            /** Start */
+            start: number;
         };
         /**
          * Split

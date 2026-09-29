@@ -1,4 +1,4 @@
-import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query"
+import { infiniteQueryOptions, queryOptions, useInfiniteQuery, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
 import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
@@ -6,23 +6,25 @@ import type { CardDetail, CardListFilters } from "@/features/cards/types"
 
 export const cardKeys = domainKeys("cards")
 
-export type CardList = Schemas["Page_CardOut_"]
+export type CardPage = Schemas["Page_CardOut_"]
 
-export function fetchCardList(filters: CardListFilters): Promise<CardList> {
-  return apiGet<CardList>("/api/v1/cards", filters)
+export function fetchCardPage(filters: CardListFilters, cursor?: string): Promise<CardPage> {
+  return apiGet<CardPage>("/api/v1/cards", { ...filters, cursor })
 }
 
 export function fetchCard(cardId: string): Promise<CardDetail> {
   return apiGet<CardDetail>(`/api/v1/cards/${encodeURIComponent(cardId)}`)
 }
 
+/** Pages are followed by "Load more"; a refetch (SSE, poll) reloads every loaded page. */
 export function cardListQuery(filters: CardListFilters) {
-  return queryOptions({
+  return infiniteQueryOptions({
     queryKey: cardKeys.list(filters),
-    queryFn: () => fetchCardList(filters),
+    queryFn: ({ pageParam }) => fetchCardPage(filters, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 4_000,
     refetchInterval: 8_000,
-    placeholderData: keepPreviousData,
   })
 }
 
@@ -37,7 +39,12 @@ export function cardDetailQuery(cardId: string) {
 }
 
 export function useCardList(filters: CardListFilters) {
-  return useQuery(cardListQuery(filters))
+  return useInfiniteQuery({
+    ...cardListQuery(filters),
+    select: (data) => ({
+      items: data.pages.flatMap((page) => page.items),
+    }),
+  })
 }
 
 export function useCard(cardId: string) {

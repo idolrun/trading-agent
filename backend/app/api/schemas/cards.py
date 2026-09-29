@@ -47,11 +47,20 @@ class ProposalOut(CamelModel):
     disabled_reason: str | None
 
 
+class SpanOut(CamelModel):
+    """A literal span of a message: `text[start:end]` in Unicode code points (FR-7, C31)."""
+
+    field: str
+    start: int
+    end: int
+
+
 class SourceMessage(CamelModel):
     message_id: DiscordId
     author_id: DiscordId
     posted_at: datetime
     text: str | None
+    spans: list[SpanOut]  # the card's signal's literal fields in this message; else empty
 
 
 class InferredField(CamelModel):

@@ -118,6 +118,15 @@ async def test_cards_positions_lots(seeded: tuple[Api, Harness]) -> None:
     assert entry["underlying"] == "GOOGL" and entry["contract"]["strike"] == "357.5"
     assert entry["proposal"]["qty"] == 13 and entry["proposal"]["price"] == "0.74"
     assert entry["sourceMessages"][0]["text"] == "Bought GOOGL 357.5C 10/2 @ 0.71"
+    text = entry["sourceMessages"][0]["text"]
+    spans = {s["field"]: text[s["start"] : s["end"]] for s in entry["sourceMessages"][0]["spans"]}
+    assert spans == {
+        "underlying": "GOOGL",
+        "expiry_token": "10/2",
+        "strike": "357.5",
+        "right": "357.5C",
+        "entry_price": "0.71",
+    }
     assert entry["state"] == "invalidated"  # superseded by the trim (7.2)
     assert by_action["trim"]["proposal"]["qty"] == 2 and by_action["trim"]["lotId"]
 

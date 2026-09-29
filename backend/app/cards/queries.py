@@ -18,6 +18,7 @@ from app.api.schemas.cards import (
     InferredField,
     ProposalOut,
     SourceMessage,
+    SpanOut,
     StopOut,
     TpLegOut,
 )
@@ -109,6 +110,8 @@ async def _outs(db: AsyncSession, cards: list[Card]) -> list[CardOut]:
         if sig is not None:
             own = messages.get((sig.message_id, sig.event_type, sig.event_seq))
             refs = {f.source_message_id for f in inferred[sig.signal_id]}
+            if own is not None:
+                own = own.model_copy(update={"spans": _spans(sig.fields)})
             sources = [
                 m for m in [own, *(messages.get((r, EventType.CREATE, 0)) for r in refs)] if m
             ]
@@ -163,7 +166,11 @@ async def _messages(
     )
     return {
         (m.message_id, m.event_type, m.event_seq): SourceMessage(
-            message_id=m.message_id, author_id=m.provider_id, posted_at=m.posted_at, text=m.text
+            message_id=m.message_id,
+            author_id=m.provider_id,
+            posted_at=m.posted_at,
+            text=m.text,
+            spans=[],
         )
         for m in rows
     }
@@ -179,6 +186,19 @@ def _inferred(fields: dict[str, Any]) -> list[InferredField]:
                 found.append(
                     InferredField(field=name, source_message_id=source["source_message_id"])
                 )
+    return found
+
+
+def _spans(fields: dict[str, Any]) -> list[SpanOut]:
+    """Literal provenance with offsets (`verify_literal_spans` fills them before storage)."""
+    found = []
+    for name, value in fields.items():
+        for item in value if isinstance(value, list) else [value]:
+            source = item.get("source") if isinstance(item, dict) else None
+            if isinstance(source, dict) and source.get("kind") == "literal":
+                start, end = source.get("start"), source.get("end")
+                if isinstance(start, int) and isinstance(end, int):
+                    found.append(SpanOut(field=name, start=start, end=end))
     return found
 
 
