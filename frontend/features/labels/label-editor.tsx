@@ -1,0 +1,190 @@
+"use client"
+
+import { useEffect, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { highlightSpans } from "@/features/cards/source-messages"
+import { words } from "@/features/cards/types"
+import { useSaveLabel } from "@/features/labels/mutations"
+import {
+  BOOLEAN_FIELDS, ENUM_FIELDS, FIELD_NAMES, INSTRUMENTS, MSG_TYPES,
+  cleanLabel, emptyValue, fieldSpans, keyIgnored, removeSignal,
+} from "@/features/labels/types"
+import type { LabelLink, LabelSignal, MsgType, QueueItem } from "@/features/labels/types"
+import { usePositionList } from "@/features/positions/queries"
+import { formatTime } from "@/lib/format"
+
+const CONTROL = "h-11 rounded-md border border-input bg-background px-2 text-sm"
+
+function FieldInput({ name, value, onChange }: { name: string; value: unknown; onChange: (value: unknown) => void }) {
+  if (BOOLEAN_FIELDS.includes(name)) {
+    return <input type="checkbox" aria-label={words(name)} checked={value === true} onChange={(e) => onChange(e.target.checked)} className="size-5" />
+  }
+  const options = ENUM_FIELDS[name]
+  if (options) {
+    return (
+      <select aria-label={words(name)} data-field-input value={String(value)} onChange={(e) => onChange(e.target.value)} className={CONTROL}>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    )
+  }
+  return (
+    <input
+      aria-label={words(name)}
+      data-field-input
+      autoComplete="off"
+      className={`${CONTROL} w-full`}
+      value={Array.isArray(value) ? value.join(", ") : String(value ?? "")}
+      onChange={(e) => onChange(name === "tp_levels" ? e.target.value.split(",").map((v) => v.trimStart()) : e.target.value)}
+    />
+  )
+}
+
+function SignalEditor({ signal, onChange, onRemove }: { signal: LabelSignal; onChange: (signal: LabelSignal) => void; onRemove: () => void }) {
+  const names = Object.keys(signal.fields)
+  const remaining = FIELD_NAMES.filter((name) => !names.includes(name))
+  const setFields = (fields: Record<string, unknown>) => onChange({ ...signal, fields })
+  return (
+    <fieldset className="flex flex-col gap-2 rounded-md border border-border p-3">
+      <legend className="px-1 text-sm font-medium">Signal {signal.idx + 1}</legend>
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label={`Type ${signal.idx + 1}`} value={signal.msgType} onChange={(e) => onChange({ ...signal, msgType: e.target.value as MsgType })} className={CONTROL}>
+          {MSG_TYPES.map((type) => <option key={type} value={type}>{words(type)}</option>)}
+        </select>
+        <select aria-label={`Instrument ${signal.idx + 1}`} value={signal.instrument ?? ""} onChange={(e) => onChange({ ...signal, instrument: (e.target.value || null) as LabelSignal["instrument"] })} className={CONTROL}>
+          <option value="">Instrument: none</option>
+          {INSTRUMENTS.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}
+        </select>
+        <Button type="button" variant="outline" className="ml-auto h-11" onClick={onRemove}>Remove signal {signal.idx + 1}</Button>
+      </div>
+      {names.map((name) => (
+        <div key={name} className="flex items-center gap-2 text-sm">
+          <span className="w-40 shrink-0">{words(name)}</span>
+          <FieldInput name={name} value={signal.fields[name]} onChange={(value) => setFields({ ...signal.fields, [name]: value })} />
+          <Button type="button" variant="ghost" className="h-11" aria-label={`Remove ${words(name)}`} onClick={() => setFields(Object.fromEntries(Object.entries(signal.fields).filter(([key]) => key !== name)))}>×</Button>
+        </div>
+      ))}
+      <select aria-label={`Add field ${signal.idx + 1}`} value="" onChange={(e) => e.target.value && setFields({ ...signal.fields, [e.target.value]: emptyValue(e.target.value) })} className={`${CONTROL} self-start`}>
+        <option value="">Add field…</option>
+        {remaining.map((name) => <option key={name} value={name}>{words(name)}</option>)}
+      </select>
+    </fieldset>
+  )
+}
+
+/** Only this provider's positions that existed when the message was posted. */
+function LinkPicker({ item, link, count, onChange }: { item: QueueItem; link: LabelLink | null; count: number; onChange: (link: LabelLink | null) => void }) {
+  const positions = usePositionList({ providerId: item.providerId as unknown as number })
+  const posted = new Date(item.postedAt).getTime()
+  const candidates = (positions.data?.items ?? []).filter(
+    (p) => p.providerId === item.providerId && new Date(p.openedAt).getTime() <= posted,
+  )
+  return (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="text-sm font-medium">Link to position</legend>
+      {positions.isPending ? <p className="text-sm text-muted-foreground">Loading positions</p> : null}
+      {positions.isError ? <p role="alert" className="text-sm text-destructive">{positions.error.message}</p> : null}
+      <label className="flex min-h-11 items-center gap-3 text-sm">
+        <input type="radio" name="link" checked={link == null} onChange={() => onChange(null)} />
+        No link
+      </label>
+      {candidates.map((p) => (
+        <label key={p.id} className="flex min-h-11 items-center gap-3 text-sm">
+          <input type="radio" name="link" checked={link?.providerPositionId === p.id} onChange={() => onChange({ idx: link?.idx ?? 0, providerPositionId: p.id })} />
+          <span>
+            {[p.underlying, p.expiry, p.strike, p.optionRight].filter(Boolean).join(" ")}
+            <span className="block text-xs text-muted-foreground">{p.status}, opened {formatTime(p.openedAt)}</span>
+          </span>
+        </label>
+      ))}
+      {link && count > 1 ? (
+        <label className="flex items-center gap-2 text-sm">
+          Link belongs to signal
+          <select value={link.idx} onChange={(e) => onChange({ ...link, idx: Number(e.target.value) })} className={CONTROL}>
+            {Array.from({ length: count }, (_, i) => <option key={i} value={i}>{i + 1}</option>)}
+          </select>
+        </label>
+      ) : null}
+    </fieldset>
+  )
+}
+
+/**
+ * One queue item. Render with `key={item.eventKey}` so edits never leak between messages.
+ * Keys: c / Enter confirm the prelabel, n no signal, e edit the first field.
+ */
+export function LabelEditor({ item, onDone }: { item: QueueItem; onDone: () => void }) {
+  const [signals, setSignals] = useState<LabelSignal[]>(item.prelabel?.signals ?? [])
+  const [link, setLink] = useState<LabelLink | null>(item.prelabel?.link ?? null)
+  const root = useRef<HTMLDivElement>(null)
+  const save = useSaveLabel()
+
+  const submit = (label: ReturnType<typeof cleanLabel>) => {
+    if (!save.isPending) save.mutate({ eventKey: item.eventKey, label }, { onSuccess: onDone })
+  }
+  const confirm = () => item.prelabel && submit(item.prelabel)
+  const noSignal = () => submit({ signals: [], link: null })
+
+  const latest = useRef({ confirm, noSignal })
+  useEffect(() => {
+    latest.current = { confirm, noSignal }
+  })
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (keyIgnored(event)) return
+      const key = event.key.toLowerCase()
+      if (key === "c" || key === "enter") latest.current.confirm()
+      else if (key === "n") latest.current.noSignal()
+      else if (key === "e") {
+        event.preventDefault() // else the "e" lands in the field just focused
+        root.current?.querySelector<HTMLElement>("[data-field-input]")?.focus()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
+  const parent = item.context.filter((m) => m.isReplyParent)
+  const context = [...parent, ...item.context.filter((m) => !m.isReplyParent)]
+
+  return (
+    <div ref={root} className="flex flex-col gap-4">
+      <section aria-label="Message" className="flex flex-col gap-2">
+        <p className="text-xs text-muted-foreground">Provider {item.providerId} · {formatTime(item.postedAt)}</p>
+        {context.map((m) => (
+          <p key={m.id} className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm break-words whitespace-pre-wrap">
+            <span className="block text-xs text-muted-foreground">{m.isReplyParent ? "Replied to" : "Earlier"} · {m.atEt}</span>
+            {m.text}
+          </p>
+        ))}
+        <p data-testid="message-text" className="rounded-md border border-foreground/30 px-3 py-2 text-base break-words whitespace-pre-wrap">
+          {highlightSpans(item.text, fieldSpans(item.text, signals))}
+        </p>
+      </section>
+
+      {item.prelabel == null ? <p className="text-sm text-muted-foreground">No prelabel for this message.</p> : null}
+      {signals.map((signal) => (
+        <SignalEditor
+          key={signal.idx}
+          signal={signal}
+          onChange={(next) => setSignals(signals.map((s) => (s.idx === next.idx ? next : s)))}
+          onRemove={() => {
+            const next = removeSignal(signals, link, signal.idx)
+            setSignals(next.signals)
+            setLink(next.link)
+          }}
+        />
+      ))}
+      <Button type="button" variant="outline" className="h-11 self-start" onClick={() => setSignals([...signals, { idx: signals.length, msgType: "entry", fields: {} }])}>
+        Add signal
+      </Button>
+      <LinkPicker item={item} link={link} count={signals.length} onChange={setLink} />
+
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" className="h-12 text-base" aria-keyshortcuts="C Enter" disabled={item.prelabel == null || save.isPending} onClick={confirm}>Confirm</Button>
+        <Button type="button" variant="outline" className="h-12 text-base" aria-keyshortcuts="N" disabled={save.isPending} onClick={noSignal}>No signal</Button>
+        <Button type="button" variant="outline" className="h-12 text-base" disabled={save.isPending} onClick={() => submit(cleanLabel(signals, link))}>Save correction</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Keys: C or Enter confirm, N no signal, E edit fields, J / K next / previous.</p>
+    </div>
+  )
+}

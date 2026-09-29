@@ -8,9 +8,11 @@ from fastapi import APIRouter, Query
 from app.api.deps import ConfigServiceDep, SessionDep, SessionFactoryDep
 from app.api.errors import ApiError
 from app.api.pagination import Cursor, Page
-from app.api.schemas.labels import LabelDetail, LabelPut, QueueItem
+from app.api.schemas.labels import LabelDetail, LabelProgress, LabelPut, QueueItem
 from app.db import transaction
 from app.evalkit import labels
+from app.evalkit.gate import MIN_ACTIONABLE, MIN_NON_ACTIONABLE, MIN_PROVIDERS
+from app.evalkit.metrics import is_actionable
 from app.evalkit.models import LabelSource
 from app.inbox.envelope import EventKey
 from app.inbox.models import MessageEvent
@@ -47,6 +49,24 @@ async def queue(
         )
         items = [await labels.queue_item(db, e, _recent_n(config)) for e in events]
     return Page(items=items, next_cursor=nxt)
+
+
+@router.get("/labels/progress")
+async def progress(sessions: SessionFactoryDep, _ctx: SessionDep) -> LabelProgress:
+    async with sessions() as db:
+        labeled = await labels.latest_labels(db)
+    actionable = sum(
+        any(is_actionable(sig["msg_type"]) for sig in item.label.get("signals", []))
+        for item in labeled
+    )
+    return LabelProgress(
+        actionable=actionable,
+        non_actionable=len(labeled) - actionable,
+        providers=len({item.envelope.provider_id for item in labeled}),
+        min_actionable=MIN_ACTIONABLE,
+        min_non_actionable=MIN_NON_ACTIONABLE,
+        min_providers=MIN_PROVIDERS,
+    )
 
 
 async def _detail(sessions: SessionFactoryDep, config: ConfigService, key: EventKey) -> LabelDetail:

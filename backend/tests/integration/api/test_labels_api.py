@@ -56,6 +56,7 @@ async def suggest(api: Api, env: Envelope, label: dict[str, Any]) -> None:
     ("method", "path"),
     [
         ("GET", "/api/v1/labels/queue"),
+        ("GET", "/api/v1/labels/progress"),
         ("GET", "/api/v1/labels/1.create.0"),
         ("PUT", "/api/v1/labels/1.create.0"),
     ],
@@ -164,3 +165,24 @@ async def test_bad_requests(signed_in: Api) -> None:
     assert r.status_code == 422 and "unknown signal fields: strke" in r.json()["message"]
     r = await api.client.put(path, json={"label": {"signals": [{"idx": 0, "msgType": "nope"}]}})
     assert r.status_code == 422
+
+
+async def test_progress_counts_current_labels_toward_the_gate_minimums(signed_in: Api) -> None:
+    api = signed_in
+    empty = (await api.client.get("/api/v1/labels/progress")).json()
+    assert (empty["actionable"], empty["nonActionable"], empty["providers"]) == (0, 0, 0)
+    assert empty["minActionable"] > 0 and empty["minProviders"] > 0
+
+    entry = await store(api, "Bought GOOGL 357.5C 10/2 @ 0.71", 1)
+    chatter = await store(api, "gm", 2, author=PROVIDER_B)
+    for env, signals in ((entry, [ENTRY]), (chatter, [])):
+        r = await api.client.put(
+            f"/api/v1/labels/{event_key(env.key)}", json={"label": {"signals": signals}}
+        )
+        assert r.status_code == 200, r.text
+    got = (await api.client.get("/api/v1/labels/progress")).json()
+    assert (got["actionable"], got["nonActionable"], got["providers"]) == (1, 1, 2)
+    # a correction supersedes: the event is still counted once
+    await api.client.put(f"/api/v1/labels/{event_key(entry.key)}", json={"label": {"signals": []}})
+    got = (await api.client.get("/api/v1/labels/progress")).json()
+    assert (got["actionable"], got["nonActionable"]) == (0, 2)

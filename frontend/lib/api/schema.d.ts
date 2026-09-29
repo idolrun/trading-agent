@@ -370,6 +370,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/labels/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Progress */
+        get: operations["progress_api_v1_labels_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/labels/queue": {
         parameters: {
             query?: never;
@@ -1340,6 +1357,24 @@ export interface components {
              * Format: uuid
              */
             providerPositionId: string;
+        };
+        /**
+         * LabelProgress
+         * @description Labeled events toward the PRD §17 replay-gate minimums (current labels only).
+         */
+        LabelProgress: {
+            /** Actionable */
+            actionable: number;
+            /** Minactionable */
+            minActionable: number;
+            /** Minnonactionable */
+            minNonActionable: number;
+            /** Minproviders */
+            minProviders: number;
+            /** Nonactionable */
+            nonActionable: number;
+            /** Providers */
+            providers: number;
         };
         /** LabelPut */
         LabelPut: {
@@ -3109,6 +3144,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KillSwitchOut"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    progress_api_v1_labels_progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelProgress"];
                 };
             };
             /** @description Client Error */

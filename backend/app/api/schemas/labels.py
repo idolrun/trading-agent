@@ -91,3 +91,14 @@ class LabelPut(CamelModel):
         default=None,
         description="The label this replaces; must be the current one (default: the current).",
     )
+
+
+class LabelProgress(CamelModel):
+    """Labeled events toward the PRD §17 replay-gate minimums (current labels only)."""
+
+    actionable: int
+    non_actionable: int
+    providers: int
+    min_actionable: int
+    min_non_actionable: int
+    min_providers: int

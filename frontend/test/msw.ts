@@ -234,6 +234,30 @@ export const configChangesFixture: Schemas["Page_ConfigChangeOut_"] = {
   nextCursor: null,
 }
 
+export const queueItemFixture: Schemas["QueueItem"] = {
+  eventKey: "1234567890123456789.create.0",
+  providerId: "1",
+  postedAt: "2026-09-29T14:00:00Z",
+  text: "BTO SPY 550c 1.20",
+  context: [
+    { id: "11", atEt: "09:55", text: "earlier chatter", isReplyParent: false },
+    { id: "12", atEt: "09:58", text: "watching SPY", isReplyParent: true },
+  ],
+  prelabel: {
+    signals: [{ idx: 0, msgType: "entry", instrument: "option", fields: { underlying: "SPY", strike: "550", right: "call", entry_price: "1.20" } }],
+    link: null,
+  },
+}
+
+export const labelProgressFixture: Schemas["LabelProgress"] = {
+  actionable: 12,
+  nonActionable: 30,
+  providers: 2,
+  minActionable: 500,
+  minNonActionable: 2000,
+  minProviders: 5,
+}
+
 export const handlers = [
   http.get("*/api/v1/config", () => HttpResponse.json(configFixture)),
   http.put("*/api/v1/config", async ({ request }) => {
@@ -266,6 +290,12 @@ export const handlers = [
   http.get("*/api/v1/positions", () => HttpResponse.json(page([positionFixture]))),
   http.get("*/api/v1/positions/:id", () => HttpResponse.json(positionDetailFixture)),
   http.get("*/api/v1/providers/:id/profile", () => HttpResponse.json(profileFixture)),
+  http.get("*/api/v1/labels/queue", () => HttpResponse.json(page([queueItemFixture]))),
+  http.get("*/api/v1/labels/progress", () => HttpResponse.json(labelProgressFixture)),
+  http.put("*/api/v1/labels/:eventKey", async ({ request, params }) => {
+    const body = (await request.json()) as { label: Schemas["Label"] }
+    return HttpResponse.json({ ...queueItemFixture, eventKey: params.eventKey, labels: [], prelabel: body.label })
+  }),
   http.get("*/api/v1/feed", () => HttpResponse.json(page([feedFixture]))),
   http.get("*/api/v1/health/details", ({ request }) =>
     HttpResponse.json({ ...healthFixture, window: new URL(request.url).searchParams.get("window") }),

@@ -1965,6 +1965,45 @@
         "title": "LabelLink",
         "type": "object"
       },
+      "LabelProgress": {
+        "description": "Labeled events toward the PRD \u00a717 replay-gate minimums (current labels only).",
+        "properties": {
+          "actionable": {
+            "title": "Actionable",
+            "type": "integer"
+          },
+          "minActionable": {
+            "title": "Minactionable",
+            "type": "integer"
+          },
+          "minNonActionable": {
+            "title": "Minnonactionable",
+            "type": "integer"
+          },
+          "minProviders": {
+            "title": "Minproviders",
+            "type": "integer"
+          },
+          "nonActionable": {
+            "title": "Nonactionable",
+            "type": "integer"
+          },
+          "providers": {
+            "title": "Providers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "actionable",
+          "nonActionable",
+          "providers",
+          "minActionable",
+          "minNonActionable",
+          "minProviders"
+        ],
+        "title": "LabelProgress",
+        "type": "object"
+      },
       "LabelPut": {
         "properties": {
           "label": {
@@ -6234,6 +6273,37 @@
         "summary": "Kill Switch",
         "tags": [
           "manual"
+        ]
+      }
+    },
+    "/api/v1/labels/progress": {
+      "get": {
+        "operationId": "progress_api_v1_labels_progress_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelProgress"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Progress",
+        "tags": [
+          "labels"
         ]
       }
     },
