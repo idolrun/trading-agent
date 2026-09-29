@@ -34,12 +34,12 @@ from app.inbox.models import MessageEvent
 from app.inbox.repo import to_envelope_row
 from app.interpret import context_repo
 from app.interpret.models import LinkMethod, LinkOutcome, MessageLink, Signal
-from app.interpret.signal import ParsedSignal, ParsedSignals, SignalFields
+from app.interpret.signal import ParsedSignals
 from app.ledger import repo as ledger
 from app.ledger.correlation import FOLLOW_UPS, ParentLink
 from app.ledger.positions import state_of
 from app.markettime import Clock
-from app.pipeline.apply import BookChanged, SignalOutcome, insert_card
+from app.pipeline.apply import BookChanged, SignalOutcome, insert_card, stored_signal
 from app.pipeline.plan import Planner
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
@@ -111,13 +111,7 @@ class RelinkService:
             event = await _event(db, sig)
         ctx = self._ctx(event)
         parsed = ParsedSignals(
-            signals=[
-                ParsedSignal(
-                    msg_type=sig.msg_type,
-                    instrument=sig.instrument,
-                    fields=SignalFields.model_validate(sig.fields),
-                )
-            ],
+            signals=[stored_signal(sig)],
             interpreter="llm",
         )
         # the user's choice acts like a reply to the position's message: one parent -> linked

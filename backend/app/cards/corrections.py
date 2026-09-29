@@ -28,14 +28,14 @@ from app.dispatcher.types import ProcessingContext
 from app.inbox.envelope import Envelope
 from app.inbox.models import EventType, MessageEvent
 from app.interpret.models import LinkMethod, LinkOutcome, MsgType, Signal
-from app.interpret.signal import ParsedSignal, ParsedSignals, SignalFields
+from app.interpret.signal import ParsedSignal, ParsedSignals
 from app.ledger import repo as ledger
 from app.ledger.correlation import LinkDecision, ParentLink
 from app.ledger.lots import OPTION_MULTIPLIER
 from app.ledger.models import Instrument, ProviderPosition
 from app.ledger.positions import OPENING, PositionState, PositionUpdate, apply_correction
 from app.marketdata.port import MarketData
-from app.pipeline.apply import Correction, SignalOutcome, raise_alert
+from app.pipeline.apply import Correction, SignalOutcome, raise_alert, stored_signal
 from app.pipeline.plan import Book, Planner
 from app.runtime_config.schema import RuntimeConfig
 from app.validate.normalize import mid_price
@@ -307,7 +307,7 @@ async def _message_target(
     return Target(
         signal_ids=ids,
         position_id=position.provider_position_id if position else None,
-        opening=_parsed(opening) if opening else None,
+        opening=stored_signal(opening) if opening else None,
         text=event.text if event else None,
     )
 
@@ -320,11 +320,3 @@ async def _position_target(db: AsyncSession, position_id: uuid.UUID) -> Target |
     if sig is None:
         return None
     return await _message_target(db, sig.provider_id, sig.message_id, None)
-
-
-def _parsed(sig: Signal) -> ParsedSignal:
-    return ParsedSignal(
-        msg_type=sig.msg_type,
-        instrument=sig.instrument,
-        fields=SignalFields.model_validate(sig.fields),
-    )

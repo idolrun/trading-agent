@@ -59,6 +59,7 @@ from app.notify.bus import EventBus
 from app.notify.push import PushService
 from app.pipeline.plan import Planner
 from app.pipeline.processor import RawReviewPoisonHandler
+from app.pipeline.release import ReleaseService
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -126,6 +127,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         flags=app.state.flags,
         alerts=app.state.alerts,
         config=config_service,
+        clock=app.state.clock,
     )
     # LangGraph checkpointer + store (schema langgraph): approval threads live here (F036).
     graph_pool = open_pool(libpq_dsn(str(settings.database_url)))
@@ -184,6 +186,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         listen_dsn=libpq_dsn(str(settings.database_url)),
     )
     app.state.timers.register(TimerKind.CARD_EXPIRY, app.state.approvals.on_card_expiry)
+    release = ReleaseService(
+        session_factory,
+        planner=planner,
+        config=config_service,
+        clock=app.state.clock,
+        approvals=app.state.approvals,
+    )
+    app.state.timers.register(TimerKind.OFFHOURS_RELEASE, release.on_release)
     app.state.bus = EventBus()
     background = [
         config_listener,

@@ -1,7 +1,8 @@
 """`submit_order()`: the only way an order reaches a broker (TRD §1.5, FR-20, FR-22, AC-7).
 
 1. Deterministic client order id; an existing order with that id is returned, never resent.
-2. Entries refused while the kill switch / entries-blocked flag is on.
+2. Approved orders only in regular hours (7.7); entries refused while the kill switch /
+   entries-blocked flag is on.
 3. Fresh broker position read, then (T5a) lock the lot and check the invariants.
 4. Commit the `intent` BEFORE calling the broker; the broker call runs outside any transaction.
 5. Timeout -> query by client id: adopt what exists, else void the intent. Never a blind retry.
@@ -24,6 +25,7 @@ from app.execution.models import Mode, Order, OrderEventSource, OrderKind, Order
 from app.instruments import OptionContract, broker_symbol
 from app.ledger import repo as ledger
 from app.ledger.models import Instrument, LotStatus
+from app.markettime import Clock, is_regular_hours
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -33,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 class EntriesBlocked(Exception):
     pass
+
+
+class OutsideRegularHours(Exception):
+    """PRD 7.7 / C59: approved orders are submitted in regular hours only."""
 
 
 class InvariantViolation(Exception):
@@ -51,8 +57,10 @@ class OrderService:
         flags: FlagService,
         alerts: AlertService,
         config: ConfigService,
+        clock: Clock,
     ) -> None:
         self._sessions = sessions
+        self._clock = clock
         self._brokers = {Mode.SHADOW: simulated, Mode.PAPER: broker, Mode.LIVE: broker}
         self._flags = flags
         self._alerts = alerts
@@ -60,6 +68,8 @@ class OrderService:
 
     async def submit_order(self, intent: OrderIntent, auth: Approved | Auto) -> Order:
         coid = client_order_id(intent, auth)
+        if isinstance(auth, Approved) and not is_regular_hours(self._clock.now()):
+            raise OutsideRegularHours("orders are submitted during regular hours only")
         async with self._sessions() as db:
             if (existing := await repo.by_client_id(db, coid)) is not None:
                 return existing  # AC-7: re-executed node, same id, no second order

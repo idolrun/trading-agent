@@ -3,7 +3,7 @@
 from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, select, tuple_
+from sqlalchemy import ColumnElement, and_, exists, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -12,8 +12,20 @@ from app.api.schemas.feed import FeedItem
 from app.cards.models import Card
 from app.inbox.models import InboxItem, InboxStatus, MessageEvent, SkipReason
 from app.interpret.models import Signal
+from app.timers.models import Timer, TimerKind, TimerStatus
 
+# F039: an off-hours event whose cards wait for the next regular open
+HELD = exists(
+    select(col(Timer.timer_id)).where(
+        col(Timer.message_id) == col(MessageEvent.message_id),
+        col(Timer.event_type) == col(MessageEvent.event_type),
+        col(Timer.event_seq) == col(MessageEvent.event_seq),
+        col(Timer.kind) == TimerKind.OFFHOURS_RELEASE,
+        col(Timer.status) == TimerStatus.SCHEDULED,
+    )
+)
 LABELS: dict[str, ColumnElement[bool]] = {
+    "held_until_open": HELD,
     "stale": col(InboxItem.status) == InboxStatus.STALE,
     "late": col(InboxItem.late).is_(True),
     "backfilled": col(MessageEvent.backfilled).is_(True),
@@ -26,7 +38,7 @@ LABELS: dict[str, ColumnElement[bool]] = {
 async def list_feed(
     db: AsyncSession, *, provider_id: int | None, label: str | None, cursor: str | None, limit: int
 ) -> tuple[list[FeedItem], str | None]:
-    query: Any = select(MessageEvent, InboxItem).outerjoin(
+    query: Any = select(MessageEvent, InboxItem, HELD.label("held")).outerjoin(
         InboxItem,
         and_(
             col(InboxItem.message_id) == col(MessageEvent.message_id),
@@ -42,7 +54,7 @@ async def list_feed(
     rows = (await db.execute(keyset(query, at, key, cursor, limit, int))).all()
     page, nxt = cut(rows, limit, lambda r: (r[0].posted_at, r[0].message_id))
 
-    keys = [(m.message_id, m.event_type, m.event_seq) for m, _ in page]
+    keys = [(m.message_id, m.event_type, m.event_seq) for m, _, _ in page]
     msg_types: defaultdict[tuple[int, str, int], list[str]] = defaultdict(list)
     card_ids: defaultdict[tuple[int, str, int], list[Any]] = defaultdict(list)
     if keys:
@@ -62,12 +74,15 @@ async def list_feed(
             if card_id is not None:
                 card_ids[k].append(card_id)
     return [
-        _item(m, i, msg_types[k], card_ids[k]) for (m, i), k in zip(page, keys, strict=True)
+        _item(m, i, held, msg_types[k], card_ids[k])
+        for (m, i, held), k in zip(page, keys, strict=True)
     ], nxt
 
 
-def _item(m: MessageEvent, inbox: InboxItem | None, types: list[str], cards: list[Any]) -> FeedItem:
-    labels = []
+def _item(
+    m: MessageEvent, inbox: InboxItem | None, held: bool, types: list[str], cards: list[Any]
+) -> FeedItem:
+    labels = ["held_until_open"] if held else []
     if inbox is not None:
         if inbox.status == InboxStatus.STALE:
             labels.append("stale")

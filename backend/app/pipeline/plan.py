@@ -18,7 +18,7 @@ from app.dispatcher.types import ProcessingContext
 from app.interpret.models import LinkMethod, LinkOutcome, MsgType
 from app.interpret.signal import ParsedSignal, ParsedSignals
 from app.ledger import repo as ledger
-from app.ledger.correlation import LinkInputs, ParentLink, resolve_link
+from app.ledger.correlation import LinkDecision, LinkInputs, ParentLink, resolve_link
 from app.ledger.positions import (
     OPENING,
     InvalidTransition,
@@ -71,10 +71,7 @@ class Planner:
     ) -> list[SignalOutcome]:
         env = ctx.envelope
         method = LinkMethod.JEV if parsed.interpreter == "jev" else LinkMethod.LLM
-        flags = FlagsView(
-            kill_switch=await self._flags.is_active(FlagName.KILL_SWITCH),
-            entries_blocked=await self._flags.is_active(FlagName.ENTRIES_BLOCKED),
-        )
+        flags = await self._flags_view()
         risk = None
         if any(s.msg_type in SIZED_TYPES for s in parsed.signals):
             risk = await self._risk(now)
@@ -154,6 +151,47 @@ class Planner:
                 )
             )
         return outcomes
+
+    async def redecide(
+        self,
+        ctx: ProcessingContext,
+        sig: ParsedSignal,
+        link: LinkDecision | None,
+        position_id: uuid.UUID | None,
+        position: PositionState | None,
+        config: RuntimeConfig,
+        *,
+        posted_at: datetime,
+        now: datetime,
+    ) -> list[ProposedAction]:
+        """Decide an already-applied signal again against today's ledger (off-hours release,
+        F039): fresh validation, quotes, flags and risk; no ledger effect. `posted_at` is the
+        validity origin (OD-29: the release time)."""
+        v = await self._validation.validate(sig, ctx.envelope, config=config, now=now)
+        norm = v.normalized
+        if position is not None and position.instrument == "option" and norm is not None:
+            v = await self._scale_follow_up(v, norm, position, config)
+            norm = v.normalized
+        return decide(
+            DecisionInputs(
+                signal=sig,
+                validation=v,
+                link=link,
+                position=position,
+                lot=await self._lot(position_id) if position is not None else None,
+                config=config,
+                tick=await self._tick(sig, v, position, norm),
+                posted_at=posted_at,
+                flags=await self._flags_view(),
+                risk=await self._risk(now) if sig.msg_type in SIZED_TYPES else None,
+            )
+        )
+
+    async def _flags_view(self) -> FlagsView:
+        return FlagsView(
+            kill_switch=await self._flags.is_active(FlagName.KILL_SWITCH),
+            entries_blocked=await self._flags.is_active(FlagName.ENTRIES_BLOCKED),
+        )
 
     async def _scale_follow_up(
         self,

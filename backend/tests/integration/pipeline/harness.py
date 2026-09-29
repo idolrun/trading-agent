@@ -168,6 +168,7 @@ class Harness:
             flags=flags,
             alerts=self.alerts,
             config=self.config,
+            clock=self.clock,
         )
         approvals = ApprovalService(
             self.factory,

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from app.db import notify
+from app.inbox.envelope import EventKey
 from app.timers.models import Timer, TimerKind, TimerStatus
 
 
@@ -21,6 +22,7 @@ async def schedule(
     card_id: uuid.UUID | None = None,
     lot_id: uuid.UUID | None = None,
     order_id: uuid.UUID | None = None,
+    event: EventKey | None = None,
 ) -> bool:
     """False = a timer with this key already exists (re-run). Wakes the scheduler on commit."""
     inserted = await db.scalar(
@@ -33,6 +35,9 @@ async def schedule(
             card_id=card_id,
             lot_id=lot_id,
             order_id=order_id,
+            message_id=event.message_id if event else None,
+            event_type=event.event_type if event else None,
+            event_seq=event.event_seq if event else None,
             status=TimerStatus.SCHEDULED,
         )
         .on_conflict_do_nothing()

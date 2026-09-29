@@ -79,6 +79,7 @@ class World:
             flags=self.flags,
             alerts=self.alerts,
             config=self.config,
+            clock=self.clock,
         )
         sig = await add_signal(db_session, provider_id=provider_id, message_id=message_id)
         entry = NormalizedSignal(

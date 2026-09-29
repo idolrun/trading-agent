@@ -39,7 +39,7 @@ from app.decide.risk import entry_block_reason
 from app.decide.risk_snapshot import build_risk_snapshot, lot_contract
 from app.decide.types import FlagsView, ProposedAction
 from app.execution.card_executor import SELLS, CardExecutor, ExecutionBlocked, Target
-from app.execution.submit import EntriesBlocked, InvariantViolation
+from app.execution.submit import EntriesBlocked, InvariantViolation, OutsideRegularHours
 from app.graph.approval_graph import build_approval_graph, thread_config
 from app.instruments import OptionContract
 from app.ledger import repo as ledger
@@ -47,7 +47,7 @@ from app.ledger.models import Lot, LotStatus, PositionStatus, ProviderPosition
 from app.ledger.positions import contract_of, state_of
 from app.ledger.relink import RelinkFailed, RelinkService
 from app.marketdata.port import MarketData
-from app.markettime import Clock
+from app.markettime import Clock, is_regular_hours
 from app.pipeline.apply import BookChanged
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
@@ -311,6 +311,8 @@ class ApprovalService:
     async def _revalidation_failure(self, loaded: _Loaded, p: ProposedAction) -> str | None:
         if p.action == CardAction.REVIEW:
             return None
+        if not is_regular_hours(self._clock.now()):
+            return "outside_regular_hours"  # 7.7: no order outside regular hours
         target = loaded.target()
         if target is None:
             return "no_contract"
@@ -358,7 +360,7 @@ class ApprovalService:
             orders = await self._executor.execute(
                 loaded.card, proposal, approval.approval_id, target
             )
-        except (ExecutionBlocked, EntriesBlocked, InvariantViolation) as exc:
+        except (ExecutionBlocked, EntriesBlocked, InvariantViolation, OutsideRegularHours) as exc:
             await self._fail(card_id, f"execution: {exc}")
             return []
         async with in_transaction(self._sessions, None) as db:

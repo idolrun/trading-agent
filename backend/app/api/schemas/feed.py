@@ -16,6 +16,8 @@ class FeedItem(CamelModel):
     text: str | None
     reply_to_id: DiscordId | None
     status: str | None  # inbox status; None = not queued (never happens for accepted events)
-    labels: list[str]  # stale, late, backfilled, muted, channel_not_configured, failed
+    labels: list[
+        str
+    ]  # held_until_open, stale, late, backfilled, muted, channel_not_configured, failed
     msg_types: list[str]
     card_ids: list[uuid.UUID]

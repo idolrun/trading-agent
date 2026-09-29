@@ -50,7 +50,7 @@ from app.ledger import repo as ledger
 from app.ledger.positions import state_of
 from app.ledger.relink import RelinkService
 from app.llm.usage import CallRef
-from app.markettime import Clock
+from app.markettime import Clock, is_regular_hours, next_regular_open
 from app.pipeline.apply import ApplyInput, apply_event, apply_raw_review, record_stage
 from app.pipeline.plan import Planner
 from app.runtime_config.models import Actor
@@ -250,7 +250,8 @@ class _Nodes:
             if self.d.corrections is not None and self.d.corrections.applies(env, parsed)
             else self.d.planner
         )  # F038: edits and `correction` signals correct the original's position
-        outcomes = await planner.plan(ctx, parsed, cfg, book, parents, self.d.clock.now())
+        now = self.d.clock.now()
+        outcomes = await planner.plan(ctx, parsed, cfg, book, parents, now)
         await self._stage(ctx, Stage.VALIDATED)
         async with in_transaction(self.d.sessions, None) as db:
             result = await apply_event(
@@ -261,6 +262,7 @@ class _Nodes:
                     version,
                     outcomes,
                     model_call_id=state["model_call_id"],
+                    hold_until=None if is_regular_hours(now) else next_regular_open(now),
                 ),
             )
         return {

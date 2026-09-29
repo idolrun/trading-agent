@@ -35,7 +35,7 @@ from app.inbox import repo as inbox
 from app.inbox.envelope import EventKey
 from app.inbox.models import InboxStatus, Stage, StageTiming
 from app.interpret.models import Interpreter, LinkOutcome, MessageLink, MsgType, Signal
-from app.interpret.signal import ParsedSignal
+from app.interpret.signal import ParsedSignal, SignalFields
 from app.ledger import repo as ledger
 from app.ledger.correlation import LinkDecision
 from app.ledger.models import ProviderPosition
@@ -90,6 +90,7 @@ class ApplyInput:
     book_version: dict[uuid.UUID, datetime]  # position id -> updated_at the plan was built on
     outcomes: list[SignalOutcome]
     model_call_id: int | None = None  # the Jev call / LLM attempt that produced the signals
+    hold_until: datetime | None = None  # off-hours (7.7): cards wait for this open (F039)
 
 
 @dataclass
@@ -180,6 +181,15 @@ async def _apply_signal(
             result.superseded_card_ids.append(card.card_id)
             await notify(db, "cards", _event("card.updated", card.card_id))
 
+    if inp.hold_until is not None and o.cards:  # C59: ledger now, the card at the open
+        await timers.schedule(
+            db,
+            TimerKind.OFFHOURS_RELEASE,
+            inp.hold_until,
+            f"release:{env.key.message_id}:{env.key.event_type}:{env.key.event_seq}",
+            event=env.key,
+        )
+        return
     for proposal in o.cards:
         card_id = await insert_card(
             db,
@@ -351,6 +361,15 @@ async def _insert_signal(db: AsyncSession, inp: ApplyInput, o: SignalOutcome) ->
         .returning(col(Signal.signal_id))
     )
     return inserted is not None
+
+
+def stored_signal(sig: Signal) -> ParsedSignal:
+    """A `signals` row back as the contract it was written from (fields keep span kinds)."""
+    return ParsedSignal(
+        msg_type=sig.msg_type,
+        instrument=sig.instrument,
+        fields=SignalFields.model_validate(sig.fields),
+    )
 
 
 async def record_stage(db: AsyncSession, key: EventKey, attempt: int, stage: Stage) -> None:
