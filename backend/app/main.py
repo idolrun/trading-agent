@@ -36,6 +36,7 @@ from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.dispatcher.service import Dispatcher
 from app.execution.card_executor import CardExecutor
+from app.execution.consumer import BrokerEventConsumer
 from app.execution.submit import OrderService
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.message_graph import GraphDeps
@@ -119,11 +120,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.broker = broker
     app.state.broker_events = broker_events
     app.state.marketdata = marketdata
+    simulated = SimulatedBroker(marketdata, app.state.clock)
+    # Fills of both (paper/live broker and the shadow simulator) move the lot ledger (F040).
+    app.state.broker_consumer = BrokerEventConsumer(session_factory, [broker_events, simulated])
     # Every order goes through here (TRD §1.5); shadow mode never touches `broker`.
     app.state.orders = OrderService(
         session_factory,
         broker=broker,
-        simulated=SimulatedBroker(marketdata, app.state.clock),
+        simulated=simulated,
         flags=app.state.flags,
         alerts=app.state.alerts,
         config=config_service,
@@ -237,6 +241,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         background.append(asyncio.create_task(feed_health.run(), name="feed-health"))
         background.append(asyncio.create_task(app.state.timers.run(), name="timers"))
+        background.append(
+            asyncio.create_task(app.state.broker_consumer.run(), name="broker-events")
+        )
         push = PushService(session_factory, app.state.bus, settings)
         background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))

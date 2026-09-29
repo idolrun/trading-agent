@@ -12,7 +12,9 @@ from sqlmodel import col
 from app.cards.approval_service import DecisionConflict
 from app.cards.models import Approval, CardState
 from app.execution.card_executor import CardExecutor
+from app.execution.consumer import BrokerEventConsumer
 from app.instruments import OptionContract
+from app.ledger.models import Lot
 from app.timers.models import Timer, TimerKind
 from app.timers.service import TimerService
 from tests.integration.graph.conftest import World
@@ -131,3 +133,18 @@ async def _timer(w: World, card_id: uuid.UUID) -> Timer:
         timer = await db.scalar(select(Timer).where(col(Timer.card_id) == card_id))
     assert timer is not None
     return timer
+
+
+async def test_m4_message_to_lot_in_shadow_mode(w: World) -> None:
+    """Message -> card -> approval -> shadow order filled at the ask -> lot (F040)."""
+    env, card_id = await w.entry()
+    await w.decide(card_id)
+    consumer = BrokerEventConsumer(w.h.factory, [w.broker])
+    for event in w.broker.pending_events():
+        await consumer.handle(event)
+    [order] = await w.orders()
+    assert order.status == "filled" and order.lot_id is not None
+    async with w.h.factory() as db:
+        lot = await db.get(Lot, order.lot_id)
+    assert lot is not None and lot.qty == 13 and lot.avg_price == Decimal("0.71")
+    assert lot.provider_position_id == opened_position(env)

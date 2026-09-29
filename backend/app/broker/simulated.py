@@ -2,6 +2,7 @@
 ones fill immediately at the live quote, so lots, exits and stops are exercised. It never
 calls a real broker."""
 
+import uuid
 from decimal import Decimal
 
 from app.broker.fake import FakeBroker
@@ -15,6 +16,10 @@ class SimulatedBroker(FakeBroker):
     def __init__(self, marketdata: MarketData, clock: Clock | None = None) -> None:
         super().__init__(clock)
         self._md = marketdata
+
+    def _next(self, prefix: str) -> str:
+        """Unique across restarts: ids are persisted (orders.broker_order_id, fills dedupe)."""
+        return f"sim-{prefix}-{uuid.uuid4()}"
 
     async def submit(self, req: OrderRequest) -> BrokerOrder:
         order = await super().submit(req)  # default script: working, never fills by itself
