@@ -3,6 +3,20 @@
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+
+class ErrorBody(BaseModel):
+    """What every error body looks like (README §1.2); codes: not_found, conflict, invalid,
+    unauthorized, step_up_required, forbidden, rate_limited, unavailable (503; `/health` has
+    its own body)."""
+
+    message: str
+    code: str
+
+
+# App-wide OpenAPI declaration; it also replaces FastAPI's default `{detail: [...]}` 422 schema.
+ERROR_RESPONSES: dict[int | str, dict[str, object]] = {"4XX": {"model": ErrorBody}}
 
 
 class ApiError(Exception):

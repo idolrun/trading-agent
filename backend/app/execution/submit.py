@@ -25,6 +25,7 @@ from app.execution.models import Mode, Order, OrderEventSource, OrderKind, Order
 from app.instruments import OptionContract, broker_symbol
 from app.ledger import repo as ledger
 from app.ledger.models import Instrument, LotStatus
+from app.logging import bind
 from app.markettime import Clock, is_regular_hours
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
@@ -68,6 +69,10 @@ class OrderService:
 
     async def submit_order(self, intent: OrderIntent, auth: Approved | Auto) -> Order:
         coid = client_order_id(intent, auth)
+        with bind(client_order_id=coid):
+            return await self._submit(intent, auth, coid)
+
+    async def _submit(self, intent: OrderIntent, auth: Approved | Auto, coid: str) -> Order:
         if isinstance(auth, Approved) and not is_regular_hours(self._clock.now()):
             raise OutsideRegularHours("orders are submitted during regular hours only")
         async with self._sessions() as db:

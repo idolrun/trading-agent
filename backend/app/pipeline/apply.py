@@ -40,6 +40,7 @@ from app.ledger import repo as ledger
 from app.ledger.correlation import LinkDecision
 from app.ledger.models import ProviderPosition
 from app.ledger.positions import PositionUpdate
+from app.logging import bind
 from app.timers import repo as timers
 from app.timers.models import TimerKind
 
@@ -115,7 +116,8 @@ async def apply_event(db: AsyncSession, inp: ApplyInput) -> ApplyOutcome:
         for o in inp.outcomes[1:]:
             await _insert_signal(db, inp, o)
         for o in inp.outcomes:
-            await _apply_signal(db, inp, o, rows, result)
+            with bind(signal_id=str(o.signal_id)):
+                await _apply_signal(db, inp, o, rows, result)
 
     stale = inp.ctx.stale and any(
         o.parsed.msg_type in (MsgType.ENTRY, MsgType.STOCK_ENTRY, MsgType.ADD) for o in inp.outcomes

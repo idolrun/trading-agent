@@ -13,10 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 from sqlmodel import col
 
+from app.alerts.models import Alert
+from app.alerts.service import AlertService
 from app.config import Settings
 from app.db import create_session_factory
 from app.llm.chain import Attempt, AttemptFailed, ContentRejected, LlmChain
 from app.llm.models import CallOutcome, ModelCall
+from app.llm.registry import alert_missing_keys
 from app.llm.usage import CallRef
 from app.markettime import FixedClock
 from app.runtime_config.schema import ChainEntry, LlmConfig, LlmRoles, Price, RoleConfig
@@ -167,3 +170,18 @@ async def test_provider_without_api_key_is_skipped(
     )
     assert result.status == "ok"
     assert await calls(db_session) == [(2, "openai", CallOutcome.OK)]
+
+
+async def test_startup_alerts_for_a_configured_provider_without_a_key(
+    sessions: async_sessionmaker[AsyncSession], settings: Settings, db_session: AsyncSession
+) -> None:
+    only_openai = settings.model_copy(
+        update={"anthropic_api_key": None, "openai_api_key": SecretStr("k2")}
+    )
+    await alert_missing_keys(only_openai, llm_config(), AlertService(sessions))
+    alert = (await db_session.scalars(select(Alert))).one()
+    assert (alert.kind, alert.severity, alert.details) == (
+        "provider_disabled",
+        "warning",
+        {"provider": "anthropic"},
+    )

@@ -17,6 +17,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
+from app.logging import bind
+
 
 class ApprovalState(TypedDict, total=False):
     card_id: str
@@ -42,10 +44,12 @@ def build_approval_graph(
         return {"decision": interrupt({"card_id": state["card_id"]})}
 
     async def revalidate(state: ApprovalState) -> dict[str, Any]:
-        return {"revalidation": await steps.revalidate(uuid.UUID(state["card_id"]))}
+        with bind(card_id=state["card_id"]):
+            return {"revalidation": await steps.revalidate(uuid.UUID(state["card_id"]))}
 
     async def execute(state: ApprovalState) -> dict[str, Any]:
-        ids = await steps.execute(uuid.UUID(state["card_id"]))
+        with bind(card_id=state["card_id"]):
+            ids = await steps.execute(uuid.UUID(state["card_id"]))
         return {"order_ids": [str(i) for i in ids]}
 
     g = StateGraph(ApprovalState)

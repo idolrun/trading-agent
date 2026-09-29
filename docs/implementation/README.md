@@ -451,18 +451,23 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 ## 7. Backend Completion Checklist (gate before F052)
 - [x] Database: all tables in `database-schema.md` exist via Alembic migrations; `alembic upgrade head` and `downgrade -1/upgrade` work on an empty DB; runtime role grants verified by test.
 - [x] Local Docker environment: `docker compose up -d postgres` + documented commands work on a clean checkout.
-- [ ] Repositories: every table has only the queries features need; no business decisions in `repo.py`.
-- [ ] Domain rules: `decide`, invariants, validity, pricing, sizing are pure and unit/property tested (hypothesis for no-short/no-oversell).
-- [ ] Services own transactions T1–T8 (`database-schema.md` §7); no transaction spans a model/broker call.
-- [ ] API contracts: every endpoint in §1.3 exists, typed request/response models, error mapping, OpenAPI exported (`uv run python -m app.api.export_openapi > openapi.json`) and committed.
-- [ ] LangChain: LLM registry, fallback chain, middleware guardrails, structured output, `model_calls` with cost — tests from TRD §12 "LLM provider tests" green.
+- [x] Repositories: every table has only the queries features need; no business decisions in `repo.py`.
+- [x] Domain rules: `decide`, invariants, validity, pricing, sizing are pure and unit/property tested (hypothesis for no-short/no-oversell).
+- [x] Services own transactions T1–T8 (`database-schema.md` §7); no transaction spans a model/broker call.
+  - Proven by `tests/unit/test_transaction_boundaries.py` (AST scan: no broker/model/quote call inside a session or transaction block). T1 (`inbox.accept`), the push-subscription writes and the label PUT open their transaction in the route (thin adapters, no rules there); the rest live in services.
+- [x] API contracts: every endpoint in §1.3 exists, typed request/response models, error mapping, OpenAPI exported (`uv run python -m app.api.export_openapi > openapi.json`) and committed.
+  - `frontend/openapi.json` is the snapshot (`tests/api/test_openapi_snapshot.py`); every 4xx is declared as `ErrorBody {message, code}`. The WebAuthn `*/options` responses and `/events` (SSE) are deliberately untyped.
+- [x] LangChain: LLM registry, fallback chain, middleware guardrails, structured output, `model_calls` with cost — tests from TRD §12 "LLM provider tests" green.
+  - Only the first table row (the same 50 messages on each provider:model, accuracy per model) is `live` (`tests/live/test_llm_providers.py`, 5 synthetic messages, needs keys; excluded from default runs). Its 50-message labeled corpus and per-model accuracy come from the F048 replay once labels exist.
 - [ ] Jev fast path wired; routing thresholds configurable; OD-8 bench result recorded (go or LLM-only).
-- [ ] LangGraph: message graph + approval graph with `AsyncPostgresSaver`; interrupt/resume tests for every resume value; crash-mid-node tests.
-- [ ] Validation + error handling: no silent drops (FR-1e), raw review cards, alerts for every degraded state.
+  - Wired (`app/main.py`, `route`) and `t_chat`/`t_field`/`t_link` + `jev` are runtime config, tested. **Missing: the OD-8 bench result** — `tests/live/test_jev_bench.py` needs TypeSafe access; nothing is recorded yet. Until then the LLM-only path is the go-live default.
+- [x] LangGraph: message graph + approval graph with `AsyncPostgresSaver`; interrupt/resume tests for every resume value; crash-mid-node tests.
+- [x] Validation + error handling: no silent drops (FR-1e), raw review cards, alerts for every degraded state.
 - [x] Authentication: passkey-only, step-up, rate limiting, `logins` audit, no password path (AC-10).
 - [x] Observability: stage timings, `/health` heartbeat, health metrics endpoint.
-- [ ] Scenario tests from TRD §12 tables (real-trade patterns, sequencing/context) all green.
-- [ ] AC coverage (§9): every backend-provable AC has a passing test.
+- [x] Scenario tests from TRD §12 tables (real-trade patterns, sequencing/context) all green.
+- [x] AC coverage (§9): every backend-provable AC has a passing test.
+  - Not backend-provable here: AC-1 p95 and AC-22 (measured in shadow/F063), AC-12 stage passage (F064; the gate is computed and recorded, F048), AC-21 with the real Message API (F050 blocked; backfill and catch-up are proven on the fake), AC-23 failover (F063/F064; reconcile-before-entries is proven, F046).
 - [x] `uv run pytest`, ruff, mypy clean; no `TODO` without an OD reference.
 
 ---

@@ -1,5 +1,6 @@
 """F036: the per-card approval graph — every resume value, revalidation, AC-2, AC-4, AC-7."""
 
+import logging
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -48,6 +49,23 @@ async def test_approve_revalidates_and_submits_one_approved_order(w: World) -> N
     assert approval is not None and order.approval_id == approval.approval_id  # AC-2
     assert order.card_id == card_id and order.qty == 13 and order.limit_price == Decimal("0.74")
     assert await w.thread_next(card_id) == ()
+
+
+async def test_broker_call_lines_carry_card_and_client_order_ids(
+    w: World, log_lines: list[dict[str, Any]]
+) -> None:
+    submit = w.broker.submit
+
+    async def logged(request: Any) -> Any:
+        logging.getLogger("test").info("broker submit")
+        return await submit(request)
+
+    w.broker.submit = logged  # type: ignore[method-assign]
+    _, card_id = await w.entry()
+    await w.decide(card_id)
+    [order] = await w.orders()
+    [line] = [x for x in log_lines if x["msg"] == "broker submit"]
+    assert (line["card_id"], line["client_order_id"]) == (str(card_id), order.client_order_id)
 
 
 async def test_reject_ends_the_thread_without_order(w: World) -> None:

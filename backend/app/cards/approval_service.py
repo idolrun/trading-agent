@@ -46,6 +46,7 @@ from app.ledger import repo as ledger
 from app.ledger.models import Lot, LotStatus, PositionStatus, ProviderPosition
 from app.ledger.positions import contract_of, state_of
 from app.ledger.relink import RelinkFailed, RelinkService
+from app.logging import bind
 from app.marketdata.port import MarketData
 from app.markettime import Clock, is_regular_hours
 from app.pipeline.apply import BookChanged
@@ -215,41 +216,42 @@ class ApprovalService:
         consume_step_up: Callable[[], Awaitable[bool]],
         stepped_up: bool = False,  # the caller already held a passkey step-up (flatten, F047)
     ) -> None:
-        resume: dict[str, Any] | None = None
-        async with in_transaction(self._sessions, None) as db:
-            card = await cards.lock(db, card_id)
-            if card is None:
-                raise CardNotFound(str(card_id))
-            if card.state != CardState.PENDING:
-                raise DecisionConflict(f"card is {card.state}")
-            if card.version != version:
-                raise DecisionConflict("card changed since this version; reload")
-            proposal = ProposedAction.model_validate(card.proposal)
-            if decision == "edit":
-                await self._edit(db, card, proposal, edits)
-            elif decision == "reject":
-                db.add(
-                    Approval(
-                        card_id=card.card_id,
-                        decision=Decision.REJECT,
-                        edits=edits.model_dump(mode="json", exclude_none=True),
-                        card_version=card.version,
-                        session_id=session_id,
+        with bind(card_id=str(card_id)):
+            resume: dict[str, Any] | None = None
+            async with in_transaction(self._sessions, None) as db:
+                card = await cards.lock(db, card_id)
+                if card is None:
+                    raise CardNotFound(str(card_id))
+                if card.state != CardState.PENDING:
+                    raise DecisionConflict(f"card is {card.state}")
+                if card.version != version:
+                    raise DecisionConflict("card changed since this version; reload")
+                proposal = ProposedAction.model_validate(card.proposal)
+                if decision == "edit":
+                    await self._edit(db, card, proposal, edits)
+                elif decision == "reject":
+                    db.add(
+                        Approval(
+                            card_id=card.card_id,
+                            decision=Decision.REJECT,
+                            edits=edits.model_dump(mode="json", exclude_none=True),
+                            card_version=card.version,
+                            session_id=session_id,
+                        )
                     )
-                )
-                await db.flush()
-                await cards.transition(
-                    db, card, CardState.REJECTED, CardReason.REJECTED, CardActor.USER
-                )
-                resume = {"decision": "reject"}
-            else:
-                approval = await self._approve(
-                    db, card, proposal, edits, session_id, consume_step_up, stepped_up
-                )
-                resume = {"decision": "approve", "approval_id": str(approval.approval_id)}
-            await notify(db, "cards", _event(card.card_id))
-        if resume is not None:  # approvals are written before resuming (AC-2)
-            await self._safely(self.resume(card_id, resume), card_id)
+                    await db.flush()
+                    await cards.transition(
+                        db, card, CardState.REJECTED, CardReason.REJECTED, CardActor.USER
+                    )
+                    resume = {"decision": "reject"}
+                else:
+                    approval = await self._approve(
+                        db, card, proposal, edits, session_id, consume_step_up, stepped_up
+                    )
+                    resume = {"decision": "approve", "approval_id": str(approval.approval_id)}
+                await notify(db, "cards", _event(card.card_id))
+            if resume is not None:  # approvals are written before resuming (AC-2)
+                await self._safely(self.resume(card_id, resume), card_id)
 
     async def _approve(
         self,

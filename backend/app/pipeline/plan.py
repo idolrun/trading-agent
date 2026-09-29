@@ -27,6 +27,7 @@ from app.ledger.positions import (
     apply_to_position,
     contract_of,
 )
+from app.logging import bind
 from app.marketdata.port import MarketData
 from app.pipeline.apply import SignalOutcome, position_id_for, signal_id_for
 from app.runtime_config.schema import RuntimeConfig
@@ -79,77 +80,78 @@ class Planner:
         outcomes = []
         for idx, sig in enumerate(parsed.signals):  # in order: later signals see earlier effects
             signal_id = signal_id_for(env.key, idx)
-            v = await self._validation.validate(sig, env, config=config, now=now)
-            norm = v.normalized
-            link = None
-            if norm is not None:
-                link = resolve_link(
-                    norm,
-                    sig.link_hint,
-                    LinkInputs(env.provider_id, dict(book), parents),
-                    t_link=config.t_link,
-                    hint_method=method,
-                )
-            position_id = position = None
-            if link is not None and link.outcome == LinkOutcome.LINKED:
-                position_id = link.position_id
-                position = book[position_id] if position_id else None
-            elif link is not None and link.outcome == LinkOutcome.NEW_POSITION:
-                position_id = position_id_for(signal_id)
-            if position is not None and position.instrument == "option" and norm is not None:
-                v = await self._scale_follow_up(v, norm, position, config)
+            with bind(signal_id=str(signal_id)):
+                v = await self._validation.validate(sig, env, config=config, now=now)
                 norm = v.normalized
-
-            update: PositionUpdate | None = None
-            ledger_error = None
-            if position_id is not None and v.status == "ok" and norm is not None:
-                try:
-                    update = apply_to_position(position, norm)
-                except InvalidTransition as exc:
-                    ledger_error = str(exc)
-
-            lot = await self._lot(position_id) if position is not None else None
-            proposals = decide(
-                DecisionInputs(
-                    signal=sig,
-                    validation=v,
-                    link=link,
-                    position=position,
-                    lot=lot,
-                    config=config,
-                    tick=await self._tick(sig, v, position, norm),
-                    posted_at=env.posted_at,
-                    stale=ctx.stale,
-                    late=ctx.late,
-                    flags=flags,
-                    risk=risk,
-                )
-            )
-            if ledger_error is not None:  # F020: an illegal ledger change is never applied
-                proposals = [
-                    ProposedAction(
-                        action=proposals[0].action if proposals else CardAction.REVIEW,
-                        card_type=CardType.REVIEW,
-                        review_reasons=[f"ledger:{ledger_error}"],
+                link = None
+                if norm is not None:
+                    link = resolve_link(
+                        norm,
+                        sig.link_hint,
+                        LinkInputs(env.provider_id, dict(book), parents),
+                        t_link=config.t_link,
+                        hint_method=method,
                     )
-                ]
-            if update is not None and position_id is not None:
-                if update.after.status == "closed":
-                    book.pop(position_id, None)
-                else:
-                    book[position_id] = update.after
-            outcomes.append(
-                SignalOutcome(
-                    idx=idx,
-                    signal_id=signal_id,
-                    parsed=sig,
-                    link=link,
-                    position_id=position_id,
-                    update=update,
-                    lot_id=lot.lot_id if lot else None,
-                    cards=proposals,
+                position_id = position = None
+                if link is not None and link.outcome == LinkOutcome.LINKED:
+                    position_id = link.position_id
+                    position = book[position_id] if position_id else None
+                elif link is not None and link.outcome == LinkOutcome.NEW_POSITION:
+                    position_id = position_id_for(signal_id)
+                if position is not None and position.instrument == "option" and norm is not None:
+                    v = await self._scale_follow_up(v, norm, position, config)
+                    norm = v.normalized
+
+                update: PositionUpdate | None = None
+                ledger_error = None
+                if position_id is not None and v.status == "ok" and norm is not None:
+                    try:
+                        update = apply_to_position(position, norm)
+                    except InvalidTransition as exc:
+                        ledger_error = str(exc)
+
+                lot = await self._lot(position_id) if position is not None else None
+                proposals = decide(
+                    DecisionInputs(
+                        signal=sig,
+                        validation=v,
+                        link=link,
+                        position=position,
+                        lot=lot,
+                        config=config,
+                        tick=await self._tick(sig, v, position, norm),
+                        posted_at=env.posted_at,
+                        stale=ctx.stale,
+                        late=ctx.late,
+                        flags=flags,
+                        risk=risk,
+                    )
                 )
-            )
+                if ledger_error is not None:  # F020: an illegal ledger change is never applied
+                    proposals = [
+                        ProposedAction(
+                            action=proposals[0].action if proposals else CardAction.REVIEW,
+                            card_type=CardType.REVIEW,
+                            review_reasons=[f"ledger:{ledger_error}"],
+                        )
+                    ]
+                if update is not None and position_id is not None:
+                    if update.after.status == "closed":
+                        book.pop(position_id, None)
+                    else:
+                        book[position_id] = update.after
+                outcomes.append(
+                    SignalOutcome(
+                        idx=idx,
+                        signal_id=signal_id,
+                        parsed=sig,
+                        link=link,
+                        position_id=position_id,
+                        update=update,
+                        lot_id=lot.lot_id if lot else None,
+                        cards=proposals,
+                    )
+                )
         return outcomes
 
     async def redecide(

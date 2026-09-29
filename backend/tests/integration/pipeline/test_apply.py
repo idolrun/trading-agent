@@ -1,9 +1,11 @@
 """F026: message event -> one apply transaction (signals, links, ledger, cards, timers)."""
 
+import logging
 from collections.abc import AsyncIterator
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select
@@ -21,8 +23,10 @@ from app.interpret.models import MessageLink, Signal
 from app.ledger import repo as ledger
 from app.ledger.lots import apply_fill
 from app.ledger.models import ProviderPosition, ProviderPositionEvent
+from app.pipeline.apply import signal_id_for
 from app.system.models import FlagName, SystemFlag
 from app.timers.models import Timer
+from app.validate.service import ValidationService
 from tests.integration.conftest import _url
 from tests.integration.pipeline.harness import (
     T0,
@@ -60,6 +64,22 @@ async def googl(h: Harness) -> Envelope:
         [option_entry("GOOGL", "357.5", "357.5C", "10/2", "0.71")],
         author=PROVIDER_A,
     )
+
+
+async def test_planning_lines_carry_the_signal_id(
+    h: Harness, monkeypatch: pytest.MonkeyPatch, log_lines: list[dict[str, Any]]
+) -> None:
+    validate = ValidationService.validate
+
+    async def logged(self: ValidationService, *args: Any, **kwargs: Any) -> Any:
+        logging.getLogger("test").info("validating")
+        return await validate(self, *args, **kwargs)
+
+    monkeypatch.setattr(ValidationService, "validate", logged)
+    env = await googl(h)
+    await h.process(env)
+    [line] = [x for x in log_lines if x["msg"] == "validating"]
+    assert line["signal_id"] == str(signal_id_for(env.key, 0))
 
 
 async def test_ac18_links_stay_within_each_provider(h: Harness, db_session: AsyncSession) -> None:

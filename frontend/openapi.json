@@ -1234,6 +1234,25 @@
         "title": "EntryRequest",
         "type": "object"
       },
+      "ErrorBody": {
+        "description": "What every error body looks like (README \u00a71.2); codes: not_found, conflict, invalid,\nunauthorized, step_up_required, forbidden, rate_limited, unavailable (503; `/health` has\nits own body).",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "code"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
       "ExitRequest": {
         "properties": {
           "idempotencyKey": {
@@ -1495,19 +1514,6 @@
           "blocked"
         ],
         "title": "FlattenedLot",
-        "type": "object"
-      },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
         "type": "object"
       },
       "HealthDetails": {
@@ -4965,46 +4971,6 @@
         "title": "UpdateConfigRequest",
         "type": "object"
       },
-      "ValidationError": {
-        "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
-        "type": "object"
-      },
       "VapidKeyResponse": {
         "properties": {
           "publicKey": {
@@ -5102,15 +5068,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "List Alerts",
@@ -5145,15 +5111,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Acknowledge",
@@ -5177,6 +5143,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Login Options",
@@ -5209,15 +5185,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Login Verify",
@@ -5232,6 +5208,16 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Logout",
@@ -5266,15 +5252,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Register Options",
@@ -5307,15 +5293,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Register Verify",
@@ -5337,6 +5323,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Session",
@@ -5360,6 +5356,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Step Up Options",
@@ -5392,15 +5398,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Step Up Verify",
@@ -5485,15 +5491,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "List Cards",
@@ -5528,15 +5534,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Get Card",
@@ -5581,15 +5587,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Decide Card",
@@ -5611,6 +5617,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Get Config",
@@ -5641,15 +5657,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Put Config",
@@ -5687,6 +5703,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Events",
@@ -5779,15 +5805,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Feed",
@@ -5874,15 +5900,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "List Fills",
@@ -5915,15 +5941,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Flatten",
@@ -5964,15 +5990,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Details",
@@ -6005,15 +6031,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Kill Switch",
@@ -6082,15 +6108,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Queue",
@@ -6124,15 +6150,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Get Label",
@@ -6174,15 +6200,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Put Label",
@@ -6215,15 +6241,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Relink",
@@ -6308,15 +6334,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "List Lots",
@@ -6351,15 +6377,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Get Lot",
@@ -6404,15 +6430,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Adjust Lot",
@@ -6445,15 +6471,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Manual Entry",
@@ -6486,15 +6512,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Manual Exit",
@@ -6527,15 +6553,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Manual Stop",
@@ -6621,15 +6647,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "List Orders",
@@ -6664,15 +6690,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Get Order",
@@ -6757,15 +6783,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "List Positions",
@@ -6796,15 +6822,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Add Position",
@@ -6839,15 +6865,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Get Position",
@@ -6890,15 +6916,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Edit Position",
@@ -6943,15 +6969,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Put Profile",
@@ -6985,15 +7011,15 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Subscribe",
@@ -7022,15 +7048,15 @@
           "204": {
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
           }
         },
         "summary": "Unsubscribe",
@@ -7052,6 +7078,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Vapid Public Key",
@@ -7072,6 +7108,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           },
           "503": {
             "description": "Database down or heartbeat stale"
@@ -7096,6 +7142,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Ingest",
@@ -7111,6 +7167,16 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
           }
         },
         "summary": "Heartbeat",

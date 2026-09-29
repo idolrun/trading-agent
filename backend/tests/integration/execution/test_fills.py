@@ -1,11 +1,13 @@
 """F040: broker status / fill intake -> orders + lot ledger, exactly once (FakeBroker, paper)."""
 
+import logging
 import random
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
 from itertools import count
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select
@@ -195,6 +197,27 @@ async def test_entry_fill_creates_the_lot_linked_to_the_position(b: Books) -> No
         ).all()
     assert event.fill_id is not None
     assert [a.order.order_id for a in b.hooked] == [order.order_id]  # on_fill after commit
+
+
+async def test_submit_and_fill_lines_carry_the_client_order_id(
+    b: Books, log_lines: list[dict[str, Any]]
+) -> None:
+    log, submit = logging.getLogger("test"), b.broker.submit
+
+    async def logged(request: Any) -> Any:
+        log.info("broker submit")
+        return await submit(request)
+
+    async def on_fill(applied: Applied) -> None:
+        log.info("fill hook")
+
+    b.broker.submit = logged  # type: ignore[method-assign]
+    b.consumer.on_fill.append(on_fill)
+    order = await b.order(await b.position(), 2)
+    b.broker.fill(order.broker_order_id or "", price=Decimal("0.70"))
+    await b.drain()
+    seen = {x["msg"]: x["client_order_id"] for x in log_lines if x["logger"] == "test"}
+    assert seen == {"broker submit": order.client_order_id, "fill hook": order.client_order_id}
 
 
 async def test_add_fill_grows_the_lot_and_recomputes_the_average(b: Books) -> None:

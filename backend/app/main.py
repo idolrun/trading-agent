@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import make_url, text
 
 from app.alerts.service import AlertService
-from app.api.errors import ApiError, api_error_handler, validation_error_handler
+from app.api.errors import ERROR_RESPONSES, ApiError, api_error_handler, validation_error_handler
 from app.api.origin_check import origin_check
 from app.api.routes import alerts as alerts_routes
 from app.api.routes import auth as auth_routes
@@ -398,7 +398,7 @@ def _fixture(settings: Settings) -> Interpreter | None:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    app = FastAPI(title="Trading Agent", lifespan=lifespan)
+    app = FastAPI(title="Trading Agent", lifespan=lifespan, responses=ERROR_RESPONSES)
     settings = settings or get_settings()
     app.state.settings = settings
     app.state.clock = SystemClock()
