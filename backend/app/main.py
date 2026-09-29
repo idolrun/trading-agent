@@ -202,6 +202,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         clock=app.state.clock,
     )
     app.state.approvals.relink = relink
+    app.state.approvals.planner = planner  # AC-14: a confirmed underlying re-plans the card
 
     feed_health = FeedHealthMonitor(
         session_factory,

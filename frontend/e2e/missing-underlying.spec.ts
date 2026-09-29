@@ -47,18 +47,17 @@ test('missing underlying "1000c": review card, approve disabled until confirmati
   expect(await driver.orders()).toEqual([]) // confirming is not approving
 })
 
-// Known app gap (reported with F062): confirming only clears `missingFields`. The card keeps no
-// contract / qty / price, Approve stays blocked on a blank qty, and approving with a typed qty
-// is invalidated at revalidation with `no_contract` (backend/app/cards/edits.py apply_edits never
-// applies `confirmed_underlying`; approval_service.py `_revalidation_failure` -> "no_contract").
-// Expected to pass once a confirmed underlying re-plans the card; `test.fail` flags that moment.
-test.fail("confirmed underlying: the card becomes tradable on MU", async ({ page, driver }) => {
-  const { review, card, approve } = await reviewCard(page, driver)
+// Confirming re-plans the card on the confirmed underlying (contract, size, legs) and opens the
+// provider position the pipeline skipped while the underlying was unknown.
+test("confirmed underlying: the card becomes tradable on MU", async ({ page, driver }) => {
+  const { review, card } = await reviewCard(page, driver)
   await card.getByLabel("I confirm the underlying is MU").check()
   await card.getByRole("button", { name: "Complete review" }).click()
   const confirmed = await driver.waitFor(() => driver.card(review.id), (c) => (c.version === 2 ? c : null), "version 2")
-  expect(confirmed.underlying).toBe("MU")
+  expect(confirmed).toMatchObject({ underlying: "MU", cardType: "normal" })
   expect(confirmed.proposal.qty).not.toBeNull()
+  // the card is now titled with its underlying
+  const approve = cardOnDesk(page, PROVIDER_A, "entry", "MU").getByRole("button", { name: "Approve" })
   await expect(approve).toBeEnabled()
   await approve.click()
   const order = await driver.waitFor(

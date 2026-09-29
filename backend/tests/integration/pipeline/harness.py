@@ -206,6 +206,7 @@ class Harness:
         approvals.relink = RelinkService(
             self.factory, planner=self.planner(flags), config=self.config, clock=self.clock
         )
+        approvals.planner = self.planner(flags)
         return approvals
 
     async def message(

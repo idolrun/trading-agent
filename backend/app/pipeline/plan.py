@@ -189,6 +189,41 @@ class Planner:
             )
         )
 
+    async def confirm_underlying(
+        self,
+        ctx: ProcessingContext,
+        sig: ParsedSignal,
+        link: LinkDecision | None,
+        config: RuntimeConfig,
+        *,
+        now: datetime,
+    ) -> tuple[list[ProposedAction], PositionUpdate | None]:
+        """AC-14 / FR-14: an opening whose underlying the user just confirmed (`sig` carries
+        it). Validated and decided again, plus the provider-ledger opening the pipeline skipped
+        while the underlying was unknown (validation was not ok, so no position was written)."""
+        v = await self._validation.validate(sig, ctx.envelope, config=config, now=now)
+        update = None
+        if v.status == "ok" and v.normalized is not None:
+            try:
+                update = apply_to_position(None, v.normalized)
+            except InvalidTransition:
+                logger.warning("confirmed opening has no ledger effect", exc_info=True)
+        proposals = decide(
+            DecisionInputs(
+                signal=sig,
+                validation=v,
+                link=link,
+                position=None,
+                lot=None,
+                config=config,
+                tick=await self._tick(sig, v, None, v.normalized),
+                posted_at=ctx.envelope.posted_at,
+                flags=await self._flags_view(),
+                risk=await self._risk(now),
+            )
+        )
+        return proposals, update
+
     async def _flags_view(self) -> FlagsView:
         return FlagsView(
             kill_switch=await self._flags.is_active(FlagName.KILL_SWITCH),

@@ -39,18 +39,24 @@ from app.db import in_transaction, notify
 from app.decide.risk import entry_block_reason
 from app.decide.risk_snapshot import build_risk_snapshot, lot_contract
 from app.decide.types import FlagsView, ProposedAction
+from app.dispatcher.types import ProcessingContext
 from app.execution.card_executor import SELLS, CardExecutor, ExecutionBlocked, Target
 from app.execution.submit import EntriesBlocked, InvariantViolation, OutsideRegularHours
 from app.graph.approval_graph import build_approval_graph, thread_config
+from app.inbox.models import MessageEvent
+from app.inbox.repo import to_envelope_row
 from app.instruments import OptionContract
+from app.interpret.models import Signal
+from app.interpret.signal import F, ResolvedSource
 from app.ledger import repo as ledger
 from app.ledger.models import Lot, LotStatus, PositionStatus, ProviderPosition
-from app.ledger.positions import contract_of, state_of
+from app.ledger.positions import PositionUpdate, contract_of, state_of
 from app.ledger.relink import RelinkFailed, RelinkService
 from app.logging import bind
 from app.marketdata.port import MarketData
 from app.markettime import Clock, is_regular_hours
-from app.pipeline.apply import BookChanged
+from app.pipeline.apply import BookChanged, position_id_for, stored_signal
+from app.pipeline.plan import Planner
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -104,6 +110,17 @@ class _Loaded:
         )
 
 
+@dataclass(frozen=True)
+class _Confirmed:
+    """AC-14: the card re-planned with the user's confirmed underlying (built outside the
+    card lock: it fetches market data)."""
+
+    proposal: ProposedAction
+    opening: PositionUpdate | None  # the provider position the pipeline could not open
+    position_id: uuid.UUID
+    channel_id: int
+
+
 class ApprovalService:
     def __init__(
         self,
@@ -123,6 +140,7 @@ class ApprovalService:
         self._flags = flags
         self._clock = clock
         self.relink: RelinkService | None = None  # approval of re-link cards (F037)
+        self.planner: Planner | None = None  # AC-14: re-plan on underlying confirmation
         self.unblock_poll_s = 5.0
         self._deferred: asyncio.Task[None] | None = None
         self._graph: CompiledStateGraph[Any, Any, Any, Any] = build_approval_graph(
@@ -250,6 +268,9 @@ class ApprovalService:
     ) -> None:
         with bind(card_id=str(card_id)):
             resume: dict[str, Any] | None = None
+            confirmed = None
+            if decision == "edit" and edits.confirmed_underlying is not None:
+                confirmed = await self._confirmed_plan(card_id, edits.confirmed_underlying)
             async with in_transaction(self._sessions, None) as db:
                 card = await cards.lock(db, card_id)
                 if card is None:
@@ -260,7 +281,7 @@ class ApprovalService:
                     raise DecisionConflict("card changed since this version; reload")
                 proposal = ProposedAction.model_validate(card.proposal)
                 if decision == "edit":
-                    await self._edit(db, card, proposal, edits)
+                    await self._edit(db, card, proposal, edits, confirmed)
                 elif decision == "reject":
                     db.add(
                         Approval(
@@ -330,11 +351,36 @@ class ApprovalService:
         return approval
 
     async def _edit(
-        self, db: AsyncSession, card: Card, proposal: ProposedAction, edits: Edits
+        self,
+        db: AsyncSession,
+        card: Card,
+        proposal: ProposedAction,
+        edits: Edits,
+        confirmed: _Confirmed | None = None,
     ) -> None:
         if not edits.given():
             raise DecisionInvalid("an edit needs at least one field")
-        edited = _edited(proposal, edits)
+        edited = _edited(proposal, edits)  # checks the confirmation against the suggestion
+        if confirmed is not None and "underlying_confirmation" in proposal.missing_fields:
+            # AC-14: the card becomes the confirmed signal's card: contract, size, legs. Its
+            # validity window stays the one its expiry timer was scheduled with.
+            replanned = confirmed.proposal.model_copy(update={"valid_until": proposal.valid_until})
+            rest = edits.model_copy(update={"confirmed_underlying": None})
+            edited = _edited(replanned, rest) if rest.given() else replanned
+            card.card_type = edited.card_type
+            if confirmed.opening is not None and card.provider_id is not None:
+                if await db.get(ProviderPosition, confirmed.position_id) is None:
+                    await ledger.record(
+                        db,
+                        provider_id=card.provider_id,
+                        row=None,
+                        update=confirmed.opening,
+                        signal_id=card.signal_id,
+                        channel_id=confirmed.channel_id,
+                        position_id=confirmed.position_id,
+                        at=self._clock.now(),
+                    )
+                card.provider_position_id = confirmed.position_id
         if edits.chosen_position_id is not None:
             # ponytail: the chosen position is recorded on the card; the provider link row and
             # ledger effect of a user relink are F037/F047 (relink approval path)
@@ -454,6 +500,40 @@ class ApprovalService:
             return
         await self.invalidated(superseded, None)
         await self.start_many(created)
+
+    async def _confirmed_plan(self, card_id: uuid.UUID, underlying: str) -> _Confirmed | None:
+        """The entry signal validated and decided again with the confirmed underlying; None
+        when there is nothing to re-plan (not an entry from a signal, no planner wired)."""
+        if self.planner is None:
+            return None
+        async with self._sessions() as db:
+            card = await db.get(Card, card_id)
+            if card is None or card.action != CardAction.ENTRY or card.signal_id is None:
+                return None
+            sig = await db.get(Signal, card.signal_id)
+            event = (
+                await db.get(MessageEvent, (sig.message_id, sig.event_type, sig.event_seq))
+                if sig is not None
+                else None
+            )
+        if sig is None or event is None:
+            return None
+        parsed = stored_signal(sig)
+        value = F[str](value=underlying, source=ResolvedSource(rule="user_confirmed_underlying"))
+        parsed = parsed.model_copy(
+            update={"fields": parsed.fields.model_copy(update={"underlying": value})}
+        )
+        now, env = self._clock.now(), to_envelope_row(event)
+        ctx = ProcessingContext(
+            envelope=env, attempt=1, started_at=now, age_s=0, stale=False, late=False
+        )
+        proposals, opening = await self.planner.confirm_underlying(
+            ctx, parsed, None, self._cfg(), now=now
+        )
+        entry = next((p for p in proposals if p.action == CardAction.ENTRY), None)
+        if entry is None:
+            return None
+        return _Confirmed(entry, opening, position_id_for(sig.signal_id), env.channel_id)
 
     # --- helpers ---------------------------------------------------------------------
 
