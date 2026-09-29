@@ -16,6 +16,7 @@ from app.cards.corrections import CorrectionService
 from app.config import get_settings
 from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
+from app.execution.brackets import BracketService
 from app.execution.card_executor import CardExecutor
 from app.execution.entry import EntryPolicy
 from app.execution.submit import OrderService
@@ -185,6 +186,7 @@ class Harness:
                     alerts=self.alerts,
                     clock=self.clock,
                 ),
+                brackets=BracketService(self.factory, orders=orders),
             ),
             marketdata=self.md,
             config=self.config,

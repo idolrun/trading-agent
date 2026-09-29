@@ -18,6 +18,7 @@ from app.cards.approval_service import ApprovalService
 from app.cards.edits import Edits
 from app.cards.models import Card, CardAction, CardState
 from app.db import create_session_factory
+from app.execution.consumer import BrokerEventConsumer
 from app.execution.models import Order
 from app.graph.approval_graph import thread_config
 from app.graph.checkpointer import open_pool, saver_and_store
@@ -76,6 +77,16 @@ class World:
     async def orders(self) -> list[Order]:
         async with self.h.factory() as db:
             return list((await db.scalars(select(Order))).all())
+
+    async def consume(self) -> None:
+        """Apply every broker event (fills -> lots), with the bracket hook (F042), until quiet."""
+        consumer = BrokerEventConsumer(self.h.factory, [self.broker])
+        brackets = self.approvals._executor.brackets
+        if brackets is not None:
+            consumer.on_fill.append(brackets.on_fill)
+        while events := self.broker.pending_events():
+            for event in events:
+                await consumer.handle(event)
 
     async def thread_next(self, card_id: uuid.UUID) -> tuple[str, ...]:
         graph = self.approvals._graph

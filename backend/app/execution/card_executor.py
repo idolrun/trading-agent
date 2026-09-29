@@ -2,7 +2,7 @@
 
 Minimal policies; F041 (entries) and F042 (stops / TPs / brackets) replace them:
 entry/add = one limit at the approved limit; trim/exit/close = one limit at the mid;
-stop = broker stop (underlying stops are system-held, F044); tp = one limit per leg.
+stop / tp cards = the lot's bracket (F042 `BracketService`).
 Every order carries the approval (AC-2); ids derive from (card, action_seq) (AC-7).
 """
 
@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cards.models import Card, CardAction
 from app.decide.types import ProposedAction
-from app.execution import repo
+from app.execution.brackets import BracketService
 from app.execution.entry import EntryPolicy
 from app.execution.intent import Approved, OrderIntent
 from app.execution.models import Order, OrderKind, OrderType, Side, TimeInForce
@@ -45,18 +45,27 @@ class CardExecutor:
         orders: OrderService,
         marketdata: MarketData,
         entry: EntryPolicy | None = None,
+        brackets: BracketService | None = None,
     ) -> None:
         self._sessions = sessions
         self._orders = orders
         self._md = marketdata
         self.entry = entry
+        self.brackets = brackets
 
     async def execute(
         self, card: Card, proposal: ProposedAction, approval_id: uuid.UUID, target: Target
     ) -> list[Order]:
         auth = Approved(approval_id)
-        if proposal.action == CardAction.STOP and proposal.stop and proposal.stop.cancel:
-            return await self._cancel_stops(target)
+        if proposal.action in (CardAction.STOP, CardAction.TP):  # F042: the lot's bracket
+            if self.brackets is None or target.lot_id is None:
+                raise ExecutionBlocked("stop / take-profit needs an open lot")
+            if proposal.action == CardAction.STOP:
+                if proposal.stop is None:
+                    raise ExecutionBlocked("stop card without a stop")
+                return await self.brackets.protect(target.lot_id, card.card_id, stop=proposal.stop)
+            levels = [leg.level for leg in proposal.tp_legs]
+            return await self.brackets.protect(target.lot_id, card.card_id, tp_levels=levels)
         orders = []
         for intent in await self.intents(card, proposal, target):
             order = await self._orders.submit_order(intent, auth)
@@ -102,38 +111,7 @@ class CardExecutor:
                     tif=TimeInForce.DAY,
                 )
             ]
-        if a == CardAction.STOP:
-            stop = p.stop
-            if stop is None or stop.level is None or t.lot_qty is None:
-                raise ExecutionBlocked("stop needs a level and an open lot")
-            if stop.held_by == "system":
-                return []  # ponytail: underlying stops are system-held; F044 watches them
-            return [
-                OrderIntent(
-                    **base,
-                    kind=OrderKind.STOP,
-                    side=Side.SELL,
-                    qty=t.lot_qty,
-                    order_type=OrderType.STOP,
-                    stop_price=stop.level,
-                    tif=TimeInForce.GTC,
-                )
-            ]
-        if a == CardAction.TP:
-            return [
-                OrderIntent(
-                    **base,
-                    action_seq=n,
-                    kind=OrderKind.TP,
-                    side=Side.SELL,
-                    qty=leg.qty,
-                    order_type=OrderType.LIMIT,
-                    limit_price=leg.level,
-                    tif=TimeInForce.GTC,
-                )
-                for n, leg in enumerate(p.tp_legs)
-            ]
-        return []  # review cards place nothing
+        return []  # review cards place nothing; stop/TP cards go through brackets
 
     async def _mid(self, instrument: Instrument) -> Decimal:
         """C25: exits start at the mid, on the tick grid. No quote / tick -> blocked (OD-12)."""
@@ -147,10 +125,3 @@ class CardExecutor:
         except Exception as exc:
             raise ExecutionBlocked(f"market data unavailable: {exc}") from exc
         return (mid / tick).to_integral_value(ROUND_HALF_UP) * tick
-
-    async def _cancel_stops(self, t: Target) -> list[Order]:
-        if t.lot_id is None:
-            return []
-        async with self._sessions() as db:
-            working = await repo.open_orders(db, t.lot_id, OrderKind.STOP)
-        return [await self._orders.cancel_order(o.order_id, "stop cancelled") for o in working]

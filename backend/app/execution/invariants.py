@@ -3,7 +3,7 @@ provider's lot; working sells never over-commit the lot. The broker read is the 
 (PRD §11: the broker is the source of truth)."""
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.execution.intent import OrderIntent
 from app.execution.models import OrderKind, Side
@@ -26,7 +26,26 @@ class WorkingSells:
     """Unfilled qty of this lot's working sell orders."""
 
     exits: int = 0
-    protective: int = 0  # stops + take-profits
+    protective: int = 0  # stops + take-profits outside any OCO group
+    # OD-30: one bracket's legs (stop vs TPs) cancel each other: group -> (stop qty, TP qty)
+    groups: dict[uuid.UUID, tuple[int, int]] = field(default_factory=dict)
+
+
+def protective_exposure(working: WorkingSells, intent: OrderIntent | None = None) -> int:
+    """Contracts the protective orders can sell at most: ungrouped legs add up; within an OCO
+    group the stop and the TP legs are alternatives, so the group counts max(stop, sum TP)."""
+    ungrouped, groups = working.protective, dict(working.groups)
+    if intent is not None:
+        if intent.oco_group_id is None:
+            ungrouped += intent.qty
+        else:
+            stop, tp = groups.get(intent.oco_group_id, (0, 0))
+            groups[intent.oco_group_id] = (
+                (stop + intent.qty, tp)
+                if intent.kind == OrderKind.STOP
+                else (stop, tp + intent.qty)
+            )
+    return ungrouped + sum(max(stop, tp) for stop, tp in groups.values())
 
 
 def violations(
@@ -47,7 +66,7 @@ def violations(
     ):
         found.append("other_providers_lot")  # (2) that provider's lot only (C24)
     if intent.kind in PROTECTIVE:
-        if working.protective + intent.qty > lot.qty:
+        if protective_exposure(working, intent) > lot.qty:
             found.append("protective_exceeds_lot")
     elif working.exits + intent.qty > lot.qty:
         found.append("sell_exceeds_lot")

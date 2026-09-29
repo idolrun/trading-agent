@@ -52,6 +52,8 @@ def client_order_id(intent: OrderIntent, auth: Approved | Auto) -> str:
         if intent.card_id is None:
             raise ValueError("an approved order needs its card")
         key = f"{intent.card_id}:{intent.action_seq}"
+        if intent.parent_order_id is not None:  # a replacement (bracket resize, stop move)
+            key += f":{intent.parent_order_id}"
     else:
         anchor = intent.parent_order_id or intent.lot_id or intent.card_id
         if anchor is None:

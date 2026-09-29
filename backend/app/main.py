@@ -35,6 +35,7 @@ from app.cards.corrections import CorrectionService
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.dispatcher.service import Dispatcher
+from app.execution.brackets import BracketService
 from app.execution.card_executor import CardExecutor
 from app.execution.consumer import BrokerEventConsumer
 from app.execution.entry import EntryPolicy
@@ -149,6 +150,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     relink = RelinkService(
         session_factory, planner=planner, config=config_service, clock=app.state.clock
     )
+    brackets = BracketService(session_factory, orders=app.state.orders)
+    app.state.broker_consumer.on_fill.append(brackets.on_fill)  # F041 bracket / F042 linkage
     entry = EntryPolicy(
         session_factory,
         orders=app.state.orders,
@@ -160,7 +163,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         session_factory,
         checkpointer=checkpointer,
         executor=CardExecutor(
-            session_factory, orders=app.state.orders, marketdata=marketdata, entry=entry
+            session_factory,
+            orders=app.state.orders,
+            marketdata=marketdata,
+            entry=entry,
+            brackets=brackets,
         ),
         marketdata=marketdata,
         config=config_service,

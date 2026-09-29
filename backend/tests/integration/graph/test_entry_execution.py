@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlmodel import col
 
 from app.alerts.models import Alert, AlertKind
-from app.execution.consumer import BrokerEventConsumer
 from app.execution.models import OrderStatus
 from app.ledger.models import Lot
 from app.timers.models import TimerKind
@@ -19,12 +18,6 @@ from tests.integration.graph.test_approval_graph import GOOGL
 
 pytestmark = pytest.mark.graph
 NOT_MARKETABLE = (Decimal("0.73"), Decimal("0.745"))  # inside the C22 band, above the 0.74 limit
-
-
-async def consume(w: World) -> None:
-    consumer = BrokerEventConsumer(w.h.factory, [w.broker])
-    for event in w.broker.pending_events():
-        await consumer.handle(event)
 
 
 def timers(w: World) -> TimerService:
@@ -43,7 +36,7 @@ async def lots(w: World) -> list[Lot]:
 async def test_marketable_entry_fills_in_full(w: World) -> None:
     _, card_id = await w.entry()
     await w.decide(card_id)
-    await consume(w)
+    await w.consume()
     [order] = await w.orders()
     assert order.status == OrderStatus.FILLED and order.limit_price == Decimal("0.74")
     [lot] = await lots(w)
@@ -75,7 +68,7 @@ async def test_partial_fill_keeps_the_partial_and_cancels_the_rest(w: World) -> 
     [order] = await w.orders()
     assert order.broker_order_id is not None
     w.broker.fill(order.broker_order_id, qty=1, price=Decimal("0.74"))
-    await consume(w)
+    await w.consume()
     w.h.clock.advance(timedelta(seconds=120))
     await timers(w).run_due()
     [order] = await w.orders()

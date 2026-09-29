@@ -43,19 +43,27 @@ async def insert_intent(db: AsyncSession, values: dict[str, Any]) -> Order | Non
 async def working_sells(db: AsyncSession, lot_id: uuid.UUID) -> WorkingSells:
     remaining = func.coalesce(func.sum(col(Order.qty) - col(Order.filled_qty)), 0)
     rows = await db.execute(
-        select(col(Order.kind), remaining)
+        select(col(Order.kind), col(Order.oco_group_id), remaining)
         .where(
             col(Order.lot_id) == lot_id,
             col(Order.side) == Side.SELL,
             col(Order.status).in_(OPEN_ORDER_STATUSES),
         )
-        .group_by(col(Order.kind))
+        .group_by(col(Order.kind), col(Order.oco_group_id))
     )
-    by_kind = {kind: int(qty) for kind, qty in rows.all()}
-    return WorkingSells(
-        exits=sum(q for k, q in by_kind.items() if k not in PROTECTIVE),
-        protective=sum(q for k, q in by_kind.items() if k in PROTECTIVE),
-    )
+    exits = ungrouped = 0
+    groups: dict[uuid.UUID, tuple[int, int]] = {}
+    for kind, group, qty in rows.all():
+        if kind not in PROTECTIVE:
+            exits += int(qty)
+        elif group is None:
+            ungrouped += int(qty)
+        else:
+            stop, tp = groups.get(group, (0, 0))
+            groups[group] = (
+                (stop + int(qty), tp) if kind == OrderKind.STOP else (stop, tp + int(qty))
+            )
+    return WorkingSells(exits=exits, protective=ungrouped, groups=groups)
 
 
 async def set_status(
