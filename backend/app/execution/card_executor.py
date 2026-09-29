@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.cards.models import Card, CardAction
 from app.decide.types import ProposedAction
 from app.execution import repo
+from app.execution.entry import EntryPolicy
 from app.execution.intent import Approved, OrderIntent
 from app.execution.models import Order, OrderKind, OrderType, Side, TimeInForce
 from app.execution.submit import OrderService
@@ -43,10 +44,12 @@ class CardExecutor:
         *,
         orders: OrderService,
         marketdata: MarketData,
+        entry: EntryPolicy | None = None,
     ) -> None:
         self._sessions = sessions
         self._orders = orders
         self._md = marketdata
+        self.entry = entry
 
     async def execute(
         self, card: Card, proposal: ProposedAction, approval_id: uuid.UUID, target: Target
@@ -54,8 +57,13 @@ class CardExecutor:
         auth = Approved(approval_id)
         if proposal.action == CardAction.STOP and proposal.stop and proposal.stop.cancel:
             return await self._cancel_stops(target)
-        intents = await self.intents(card, proposal, target)
-        return [await self._orders.submit_order(i, auth) for i in intents]
+        orders = []
+        for intent in await self.intents(card, proposal, target):
+            order = await self._orders.submit_order(intent, auth)
+            if intent.kind == OrderKind.ENTRY and self.entry is not None:
+                await self.entry.watch(order)  # F041: cancel the remainder after M s
+            orders.append(order)
+        return orders
 
     async def intents(self, card: Card, p: ProposedAction, t: Target) -> list[OrderIntent]:
         base = {

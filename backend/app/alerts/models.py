@@ -37,6 +37,7 @@ class AlertKind(StrEnum):
     MESSAGE_API = "message_api"  # unmappable webhook payload, history unavailable (F011, F014)
     TIMER_FAILED = "timer_failed"  # a timer handler raised (F027)
     ORDER_FAILED = "order_failed"  # broker rejected / unavailable / timeout-not-found (F028)
+    ENTRY_PARTIAL = "entry_partial"  # entry remainder cancelled after M s, some filled (F041)
 
 
 class Alert(SQLModel, table=True):

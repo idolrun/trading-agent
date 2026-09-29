@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
 from app.execution.card_executor import CardExecutor
+from app.execution.entry import EntryPolicy
 from app.execution.submit import OrderService
 from app.graph.message_graph import GraphDeps
 from app.graph.processor import GraphProcessor
@@ -173,7 +174,18 @@ class Harness:
         approvals = ApprovalService(
             self.factory,
             checkpointer=checkpointer,
-            executor=CardExecutor(self.factory, orders=orders, marketdata=self.md),
+            executor=CardExecutor(
+                self.factory,
+                orders=orders,
+                marketdata=self.md,
+                entry=EntryPolicy(
+                    self.factory,
+                    orders=orders,
+                    config=self.config,
+                    alerts=self.alerts,
+                    clock=self.clock,
+                ),
+            ),
             marketdata=self.md,
             config=self.config,
             flags=flags,

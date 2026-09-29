@@ -37,6 +37,7 @@ from app.db import create_engine, create_session_factory
 from app.dispatcher.service import Dispatcher
 from app.execution.card_executor import CardExecutor
 from app.execution.consumer import BrokerEventConsumer
+from app.execution.entry import EntryPolicy
 from app.execution.submit import OrderService
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.message_graph import GraphDeps
@@ -148,10 +149,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     relink = RelinkService(
         session_factory, planner=planner, config=config_service, clock=app.state.clock
     )
+    entry = EntryPolicy(
+        session_factory,
+        orders=app.state.orders,
+        config=config_service,
+        alerts=app.state.alerts,
+        clock=app.state.clock,
+    )
     app.state.approvals = ApprovalService(
         session_factory,
         checkpointer=checkpointer,
-        executor=CardExecutor(session_factory, orders=app.state.orders, marketdata=marketdata),
+        executor=CardExecutor(
+            session_factory, orders=app.state.orders, marketdata=marketdata, entry=entry
+        ),
         marketdata=marketdata,
         config=config_service,
         flags=app.state.flags,
@@ -190,6 +200,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         listen_dsn=libpq_dsn(str(settings.database_url)),
     )
     app.state.timers.register(TimerKind.CARD_EXPIRY, app.state.approvals.on_card_expiry)
+    app.state.timers.register(TimerKind.ENTRY_CANCEL, entry.on_entry_cancel)
     release = ReleaseService(
         session_factory,
         planner=planner,
