@@ -46,6 +46,7 @@ from app.runtime_config.service import ConfigService
 
 logger = logging.getLogger(__name__)
 Recheck = Callable[[ProcessingContext], Awaitable[ParsedSignals | None]]
+Audit = Callable[[AsyncSession], Awaitable[None]]
 
 
 class RelinkFailed(Exception):
@@ -100,11 +101,16 @@ class RelinkService:
         return created
 
     async def apply_approved(
-        self, card: Card, signal_id: uuid.UUID
+        self,
+        provider_id: int,
+        position_id: uuid.UUID,
+        signal_id: uuid.UUID,
+        *,
+        audit: Audit | None = None,
     ) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
-        """The user approved a re-link card: (new card ids, superseded card ids)."""
-        position_id = card.provider_position_id
-        assert position_id is not None and card.provider_id is not None  # noqa: S101
+        """The user linked the signal to the position (approved a re-link card, or a manual
+        correction, F047: `audit` then runs in the same transaction): (new card ids,
+        superseded card ids)."""
         async with self._sessions() as db:
             sig = await db.get(Signal, signal_id)
             assert sig is not None  # noqa: S101 — the proposal came from it
@@ -115,7 +121,7 @@ class RelinkService:
             interpreter="llm",
         )
         # the user's choice acts like a reply to the position's message: one parent -> linked
-        [o] = await self._plan(ctx, parsed, parents=(ParentLink(card.provider_id, position_id),))
+        [o] = await self._plan(ctx, parsed, parents=(ParentLink(provider_id, position_id),))
         if o.link is None or o.link.outcome != LinkOutcome.LINKED or o.position_id != position_id:
             raise RelinkFailed("the position is no longer open")
         # C22 for the resulting cards starts now: the user just made them possible
@@ -125,22 +131,24 @@ class RelinkService:
             for p in o.cards
         ]
         async with in_transaction(self._sessions, None) as db:
-            return await self._write(db, card, signal_id, o, proposals)
+            return await self._write(db, provider_id, position_id, signal_id, o, proposals, audit)
 
     async def _write(
         self,
         db: AsyncSession,
-        card: Card,
+        provider_id: int,
+        position_id: uuid.UUID,
         signal_id: uuid.UUID,
         o: SignalOutcome,
         proposals: list[ProposedAction],
+        audit: Audit | None,
     ) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
-        provider_id, position_id = card.provider_id, card.provider_position_id
-        assert provider_id is not None and position_id is not None  # noqa: S101
         rows = {p.provider_position_id: p for p in await ledger.lock_open_book(db, provider_id)}
         if position_id not in rows:
             raise BookChanged("position closed before the re-link was applied")
         latest = await ledger.latest_link(db, signal_id)
+        if audit is not None:  # before the new link, so it can read the one it replaces
+            await audit(db)
         db.add(
             MessageLink(
                 signal_id=signal_id,

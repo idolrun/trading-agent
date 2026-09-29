@@ -1,6 +1,6 @@
 """Tradable instrument value types."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -40,3 +40,13 @@ Instrument = OptionContract | Stock
 def broker_symbol(instrument: Instrument) -> str:
     """OCC symbol for options, ticker for stocks (the `broker_symbol` column)."""
     return instrument.occ_symbol() if isinstance(instrument, OptionContract) else instrument.symbol
+
+
+def option_from_occ(symbol: str) -> OptionContract:
+    """Inverse of `OptionContract.occ_symbol()`."""
+    return OptionContract(
+        underlying=symbol[:6].strip(),
+        expiry=datetime.strptime(symbol[6:12], "%y%m%d").date(),
+        strike=Decimal(symbol[13:]) / 1000,
+        right="call" if symbol[12] == "C" else "put",
+    )

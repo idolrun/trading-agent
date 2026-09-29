@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from app.cards.models import CardAction, CardType
+from app.instruments import Instrument
 from app.interpret.signal import ParsedSignal
 from app.ledger.correlation import LinkDecision
 from app.ledger.positions import PositionState
@@ -58,6 +59,7 @@ class ProposedAction(_Frozen):
     breakeven_options: BreakevenOptions | None = None
     suggested_underlying: str | None = None
     relink_signal_id: uuid.UUID | None = None  # system re-link review card (F037)
+    contract: Instrument | None = None  # manual entry: no provider position names it (F047)
 
 
 @dataclass(frozen=True)

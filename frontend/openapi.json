@@ -1,6 +1,119 @@
 {
   "components": {
     "schemas": {
+      "AddPositionRequest": {
+        "properties": {
+          "entryPrice": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entryprice"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "instrument": {
+            "enum": [
+              "option",
+              "stock"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "providerId": {
+            "exclusiveMinimum": 0.0,
+            "title": "Providerid",
+            "type": "integer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "enum": [
+                  "call",
+                  "put"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          },
+          "underlying": {
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "providerId",
+          "instrument",
+          "reason"
+        ],
+        "title": "AddPositionRequest",
+        "type": "object"
+      },
+      "AdjustRequest": {
+        "properties": {
+          "qty": {
+            "minimum": 0.0,
+            "title": "Qty",
+            "type": "integer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "qty",
+          "reason"
+        ],
+        "title": "AdjustRequest",
+        "type": "object"
+      },
       "AlertOut": {
         "properties": {
           "acknowledged": {
@@ -635,6 +748,70 @@
         "title": "ConfigResponse",
         "type": "object"
       },
+      "ContractIn": {
+        "properties": {
+          "expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "instrument": {
+            "enum": [
+              "option",
+              "stock"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "enum": [
+                  "call",
+                  "put"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          },
+          "underlying": {
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instrument",
+          "underlying"
+        ],
+        "title": "ContractIn",
+        "type": "object"
+      },
       "ContractOut": {
         "properties": {
           "expiry": {
@@ -721,6 +898,154 @@
           "version"
         ],
         "title": "DecisionRequest",
+        "type": "object"
+      },
+      "EditPositionRequest": {
+        "description": "Only the fields sent change; an explicit null clears one (e.g. `stopLevel`).",
+        "properties": {
+          "entryPrice": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entryprice"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "enum": [
+                  "call",
+                  "put"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stopBasis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "premium",
+                  "underlying"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopbasis"
+          },
+          "stopLevel": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stoplevel"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          },
+          "tpLevels": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tplevels"
+          },
+          "underlying": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Underlying"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "EditPositionRequest",
         "type": "object"
       },
       "EditsIn": {
@@ -817,6 +1142,72 @@
           }
         },
         "title": "EditsIn",
+        "type": "object"
+      },
+      "EntryRequest": {
+        "properties": {
+          "idempotencyKey": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "instrument": {
+            "$ref": "#/components/schemas/ContractIn"
+          },
+          "limitPrice": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Limitprice"
+          },
+          "qty": {
+            "minimum": 1.0,
+            "title": "Qty",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instrument",
+          "qty",
+          "limitPrice",
+          "idempotencyKey"
+        ],
+        "title": "EntryRequest",
+        "type": "object"
+      },
+      "ExitRequest": {
+        "properties": {
+          "idempotencyKey": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "lotId": {
+            "format": "uuid",
+            "title": "Lotid",
+            "type": "string"
+          },
+          "qty": {
+            "minimum": 1.0,
+            "title": "Qty",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lotId",
+          "qty",
+          "idempotencyKey"
+        ],
+        "title": "ExitRequest",
         "type": "object"
       },
       "FeedItem": {
@@ -954,6 +1345,105 @@
           "filledAt"
         ],
         "title": "FillOut",
+        "type": "object"
+      },
+      "FlattenOut": {
+        "properties": {
+          "killSwitch": {
+            "title": "Killswitch",
+            "type": "boolean"
+          },
+          "lots": {
+            "items": {
+              "$ref": "#/components/schemas/FlattenedLot"
+            },
+            "title": "Lots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "killSwitch",
+          "lots"
+        ],
+        "title": "FlattenOut",
+        "type": "object"
+      },
+      "FlattenRequest": {
+        "properties": {
+          "idempotencyKey": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "options",
+              "stocks",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "idempotencyKey"
+        ],
+        "title": "FlattenRequest",
+        "type": "object"
+      },
+      "FlattenedLot": {
+        "properties": {
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked"
+          },
+          "cardId": {
+            "format": "uuid",
+            "title": "Cardid",
+            "type": "string"
+          },
+          "lotId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lotid"
+          },
+          "orderIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Orderids",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardId",
+          "state",
+          "orderIds",
+          "lotId",
+          "blocked"
+        ],
+        "title": "FlattenedLot",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1141,6 +1631,38 @@
           }
         },
         "title": "JevConfig",
+        "type": "object"
+      },
+      "KillSwitchOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "KillSwitchOut",
+        "type": "object"
+      },
+      "KillSwitchRequest": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "active",
+          "reason"
+        ],
+        "title": "KillSwitchRequest",
         "type": "object"
       },
       "LinkOut": {
@@ -1544,6 +2066,34 @@
         ],
         "title": "LotStatus",
         "type": "string"
+      },
+      "ManualResultOut": {
+        "properties": {
+          "cardId": {
+            "format": "uuid",
+            "title": "Cardid",
+            "type": "string"
+          },
+          "orderIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Orderids",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardId",
+          "state",
+          "orderIds"
+        ],
+        "title": "ManualResultOut",
+        "type": "object"
       },
       "OrderDetail": {
         "properties": {
@@ -2399,6 +2949,89 @@
         "title": "Price",
         "type": "object"
       },
+      "ProfileOut": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "habits": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Habits",
+            "type": "array"
+          },
+          "lexicon": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lexicon",
+            "type": "array"
+          }
+        },
+        "title": "ProfileOut",
+        "type": "object"
+      },
+      "ProfileRequest": {
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "habits": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Habits"
+          },
+          "lexicon": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lexicon"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ProfileRequest",
+        "type": "object"
+      },
       "ProposalOut": {
         "properties": {
           "breakevenOptions": {
@@ -2612,6 +3245,49 @@
           "credentialId"
         ],
         "title": "RegisterVerifyResponse",
+        "type": "object"
+      },
+      "RelinkOut": {
+        "properties": {
+          "cardIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Cardids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cardIds"
+        ],
+        "title": "RelinkOut",
+        "type": "object"
+      },
+      "RelinkRequest": {
+        "properties": {
+          "providerPositionId": {
+            "format": "uuid",
+            "title": "Providerpositionid",
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "signalId": {
+            "format": "uuid",
+            "title": "Signalid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signalId",
+          "providerPositionId",
+          "reason"
+        ],
+        "title": "RelinkRequest",
         "type": "object"
       },
       "RoleConfig": {
@@ -3249,6 +3925,68 @@
           "candleClose"
         ],
         "title": "StopOut",
+        "type": "object"
+      },
+      "StopRequest": {
+        "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "premium",
+                  "underlying"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "idempotencyKey": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "lotId": {
+            "format": "uuid",
+            "title": "Lotid",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add",
+              "move",
+              "cancel"
+            ],
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lotId",
+          "op",
+          "idempotencyKey"
+        ],
+        "title": "StopRequest",
         "type": "object"
       },
       "StopRowOut": {
@@ -4317,6 +5055,47 @@
         ]
       }
     },
+    "/api/v1/flatten": {
+      "post": {
+        "operationId": "flatten_api_v1_flatten_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlattenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlattenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Flatten",
+        "tags": [
+          "manual"
+        ]
+      }
+    },
     "/api/v1/health/details": {
       "get": {
         "operationId": "details_api_v1_health_details_get",
@@ -4335,6 +5114,88 @@
         "summary": "Details",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/kill-switch": {
+      "post": {
+        "operationId": "kill_switch_api_v1_kill_switch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KillSwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KillSwitchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Kill Switch",
+        "tags": [
+          "manual"
+        ]
+      }
+    },
+    "/api/v1/links": {
+      "post": {
+        "operationId": "relink_api_v1_links_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Relink",
+        "tags": [
+          "manual"
         ]
       }
     },
@@ -4471,6 +5332,182 @@
         "summary": "Get Lot",
         "tags": [
           "lots"
+        ]
+      }
+    },
+    "/api/v1/lots/{lot_id}/adjust": {
+      "post": {
+        "operationId": "adjust_lot_api_v1_lots__lot_id__adjust_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adjust Lot",
+        "tags": [
+          "manual"
+        ]
+      }
+    },
+    "/api/v1/manual/entry": {
+      "post": {
+        "operationId": "manual_entry_api_v1_manual_entry_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manual Entry",
+        "tags": [
+          "manual"
+        ]
+      }
+    },
+    "/api/v1/manual/exit": {
+      "post": {
+        "operationId": "manual_exit_api_v1_manual_exit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manual Exit",
+        "tags": [
+          "manual"
+        ]
+      }
+    },
+    "/api/v1/manual/stops": {
+      "post": {
+        "operationId": "manual_stop_api_v1_manual_stops_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manual Stop",
+        "tags": [
+          "manual"
         ]
       }
     },
@@ -4702,6 +5739,45 @@
         "tags": [
           "positions"
         ]
+      },
+      "post": {
+        "operationId": "add_position_api_v1_positions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddPositionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Position",
+        "tags": [
+          "manual"
+        ]
       }
     },
     "/api/v1/positions/{position_id}": {
@@ -4744,6 +5820,110 @@
         "summary": "Get Position",
         "tags": [
           "positions"
+        ]
+      },
+      "patch": {
+        "operationId": "edit_position_api_v1_positions__position_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "position_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Position Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditPositionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Position",
+        "tags": [
+          "manual"
+        ]
+      }
+    },
+    "/api/v1/providers/{provider_id}/profile": {
+      "put": {
+        "operationId": "put_profile_api_v1_providers__provider_id__profile_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Provider Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Profile",
+        "tags": [
+          "manual"
         ]
       }
     },

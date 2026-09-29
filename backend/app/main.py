@@ -22,6 +22,7 @@ from app.api.routes import feed as feed_routes
 from app.api.routes import health as health_routes
 from app.api.routes import ingest as ingest_routes
 from app.api.routes import lots as lots_routes
+from app.api.routes import manual as manual_routes
 from app.api.routes import orders as orders_routes
 from app.api.routes import positions as positions_routes
 from app.api.routes import push as push_routes
@@ -56,6 +57,8 @@ from app.ledger.relink import RelinkService
 from app.llm.chain import LlmChain
 from app.llm.registry import alert_missing_keys
 from app.logging import configure_logging
+from app.manual.corrections import Corrections
+from app.manual.service import ManualService
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
 from app.markettime import SystemClock
@@ -256,6 +259,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.reconciler = reconciler
     app.state.broker_consumer.on_fill.append(reconciler.on_fill)
+    app.state.store = store  # provider profiles: written only by F047 corrections
+    app.state.manual = ManualService(
+        session_factory,
+        approvals=app.state.approvals,
+        brackets=brackets,
+        reconciler=reconciler,
+        flags=app.state.flags,
+        marketdata=marketdata,
+        clock=app.state.clock,
+    )
+    app.state.manual_corrections = Corrections(
+        session_factory,
+        approvals=app.state.approvals,
+        relink=relink,
+        store=store,
+        clock=app.state.clock,
+    )
     app.state.bus = EventBus()
     background = [
         config_listener,
@@ -362,6 +382,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for read in (feed_routes, cards_routes, positions_routes, lots_routes, orders_routes):
         app.include_router(read.router, prefix="/api/v1")
     app.include_router(alerts_routes.router, prefix="/api/v1")
+    app.include_router(manual_routes.router, prefix="/api/v1")
     app.include_router(health_routes.router, prefix="/api/v1")
     app.include_router(push_routes.router, prefix="/api/v1")
     app.include_router(ingest_routes.router)

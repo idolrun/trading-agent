@@ -22,8 +22,11 @@ from app.broker.port import BrokerEvent
 from app.db import notify
 from app.execution import repo
 from app.execution.models import Fill, Order, OrderEventSource, OrderStatus, Side
+from app.instruments import Instrument as Contract
+from app.instruments import Stock, option_from_occ
 from app.ledger import repo as ledger
 from app.ledger.lots import apply_fill
+from app.ledger.models import Instrument as Kind
 from app.ledger.models import Lot, ProviderPosition
 from app.ledger.positions import contract_of, state_of
 
@@ -178,10 +181,10 @@ async def _apply_to_lot(db: AsyncSession, order: Order, fill: Fill) -> Lot | Non
             if order.provider_position_id
             else None
         )
-        if position is None:
-            logger.error("buy fill without a provider position", extra={"id": str(order.order_id)})
-            return None
-        instrument, provider_id = contract_of(state_of(position)), position.provider_id
+        if position is not None:
+            instrument, provider_id = contract_of(state_of(position)), position.provider_id
+        else:  # a manual entry (F047): no provider position; the order names the contract
+            instrument = _order_contract(order)
         lot = None  # a closed lot is never reopened: a re-entry is a new lot
     row = await ledger.record_lot(
         db,
@@ -196,6 +199,12 @@ async def _apply_to_lot(db: AsyncSession, order: Order, fill: Fill) -> Lot | Non
     if order.lot_id != row.lot_id:
         order.lot_id = row.lot_id
     return row
+
+
+def _order_contract(order: Order) -> Contract:
+    if order.instrument == Kind.OPTION:
+        return option_from_occ(order.broker_symbol)
+    return Stock(symbol=order.broker_symbol)
 
 
 async def _lock_order(db: AsyncSession, event: BrokerEvent) -> Order | None:

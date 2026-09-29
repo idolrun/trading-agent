@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from app.instruments import OptionContract, Stock, broker_symbol
+from app.instruments import OptionContract, Stock, broker_symbol, option_from_occ
 
 
 @pytest.mark.parametrize(
@@ -27,6 +27,7 @@ def test_occ_symbol(underlying: str, expiry: date, strike: str, right: str, occ:
     assert contract.occ_symbol() == occ
     assert len(occ) == 21
     assert broker_symbol(contract) == occ
+    assert option_from_occ(occ) == contract
 
 
 @pytest.mark.parametrize(

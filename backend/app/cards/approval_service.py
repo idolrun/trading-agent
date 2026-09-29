@@ -83,15 +83,20 @@ class _Loaded:
     lot: Lot | None
 
     def target(self) -> Target | None:
-        if self.position is None:
-            return None
         lot_open = self.lot is not None and self.lot.status == LotStatus.OPEN
-        sells_lot = self.lot is not None and self.card.action not in ENTRY_ACTIONS
+        if self.lot is not None and self.card.action not in ENTRY_ACTIONS:
+            instrument = lot_contract(self.lot)  # 7.5: after a provider correction the lot keeps
+        elif self.position is not None:  # its own contract; foreign lots have no position (C47)
+            instrument = contract_of(state_of(self.position))
+        elif self.approval is not None and self.approval.approved_proposal is not None:
+            contract = ProposedAction.model_validate(self.approval.approved_proposal).contract
+            if contract is None:  # a manual entry names its own contract (F047)
+                return None
+            instrument = contract
+        else:
+            return None
         return Target(
-            # 7.5: after a provider correction the lot keeps its own contract
-            instrument=lot_contract(self.lot)
-            if sells_lot and self.lot is not None
-            else contract_of(state_of(self.position)),
+            instrument=instrument,
             lot_id=self.lot.lot_id if self.lot else None,
             lot_qty=self.lot.qty if self.lot and lot_open else None,
         )
@@ -208,6 +213,7 @@ class ApprovalService:
         *,
         session_id: uuid.UUID,
         consume_step_up: Callable[[], Awaitable[bool]],
+        stepped_up: bool = False,  # the caller already held a passkey step-up (flatten, F047)
     ) -> None:
         resume: dict[str, Any] | None = None
         async with in_transaction(self._sessions, None) as db:
@@ -238,7 +244,7 @@ class ApprovalService:
                 resume = {"decision": "reject"}
             else:
                 approval = await self._approve(
-                    db, card, proposal, edits, session_id, consume_step_up
+                    db, card, proposal, edits, session_id, consume_step_up, stepped_up
                 )
                 resume = {"decision": "approve", "approval_id": str(approval.approval_id)}
             await notify(db, "cards", _event(card.card_id))
@@ -253,6 +259,7 @@ class ApprovalService:
         edits: Edits,
         session_id: uuid.UUID,
         consume_step_up: Callable[[], Awaitable[bool]],
+        stepped_up: bool,
     ) -> Approval:
         if extra := edits.given() - APPROVE_EDITS:
             raise DecisionInvalid(f"use an edit first for: {', '.join(sorted(extra))}")
@@ -261,7 +268,7 @@ class ApprovalService:
         lot_qty = lot.qty if lot is not None and lot.status == LotStatus.OPEN else None
         if blockers := approval_blockers(approved, {}, lot_qty):  # AC-14, AC-15
             raise DecisionInvalid("not approvable: " + ", ".join(blockers))
-        step_up = False
+        step_up = stepped_up
         if card.source == CardSource.MANUAL and card.action in ENTRY_ACTIONS:
             if not await consume_step_up():
                 raise StepUpRequired()
@@ -404,7 +411,10 @@ class ApprovalService:
         """F037: the link, ledger change and follow-up cards; places no order itself."""
         assert self.relink is not None  # noqa: S101 — wired whenever re-link cards exist
         try:
-            created, superseded = await self.relink.apply_approved(card, signal_id)
+            assert card.provider_id is not None and card.provider_position_id is not None  # noqa: S101
+            created, superseded = await self.relink.apply_approved(
+                card.provider_id, card.provider_position_id, signal_id
+            )
         except (RelinkFailed, BookChanged) as exc:
             await self._fail(card.card_id, f"relink: {exc}")
             return
