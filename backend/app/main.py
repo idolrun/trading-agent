@@ -41,6 +41,7 @@ from app.execution.consumer import BrokerEventConsumer
 from app.execution.entry import EntryPolicy
 from app.execution.exit import ExitPolicy
 from app.execution.submit import OrderService
+from app.execution.underlying_stops import UnderlyingStopWatcher
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.message_graph import GraphDeps
 from app.graph.processor import GraphProcessor
@@ -153,6 +154,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     brackets = BracketService(session_factory, orders=app.state.orders)
     app.state.broker_consumer.on_fill.append(brackets.on_fill)  # F041 bracket / F042 linkage
+    exits = ExitPolicy(
+        session_factory,
+        orders=app.state.orders,
+        brackets=brackets,
+        marketdata=marketdata,
+        config=config_service,
+        alerts=app.state.alerts,
+    )
     entry = EntryPolicy(
         session_factory,
         orders=app.state.orders,
@@ -169,14 +178,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             marketdata=marketdata,
             entry=entry,
             brackets=brackets,
-            exit=ExitPolicy(
-                session_factory,
-                orders=app.state.orders,
-                brackets=brackets,
-                marketdata=marketdata,
-                config=config_service,
-                alerts=app.state.alerts,
-            ),
+            exit=exits,
         ),
         marketdata=marketdata,
         config=config_service,
@@ -271,6 +273,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         background.append(
             asyncio.create_task(app.state.broker_consumer.run(), name="broker-events")
         )
+        watcher = UnderlyingStopWatcher(
+            session_factory, marketdata=marketdata, exits=exits, alerts=app.state.alerts
+        )
+        background.append(asyncio.create_task(watcher.run(), name="underlying-stops"))
         push = PushService(session_factory, app.state.bus, settings)
         background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))

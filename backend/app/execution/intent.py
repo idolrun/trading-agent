@@ -44,6 +44,7 @@ class Auto:
 
     reason: AutoReason
     seq: int = 0
+    ref: str | None = None  # what triggered it (a fired stop, a cutoff date): one order per ref
 
 
 def client_order_id(intent: OrderIntent, auth: Approved | Auto) -> str:
@@ -59,4 +60,6 @@ def client_order_id(intent: OrderIntent, auth: Approved | Auto) -> str:
         if anchor is None:
             raise ValueError("an automatic order needs a parent order, lot or card")
         key = f"{anchor}:{auth.reason}:{auth.seq}"
+        if auth.ref is not None:
+            key += f":{auth.ref}"
     return "cta-" + str(uuid.uuid5(NAMESPACE, key))

@@ -38,6 +38,7 @@ class AlertKind(StrEnum):
     TIMER_FAILED = "timer_failed"  # a timer handler raised (F027)
     ORDER_FAILED = "order_failed"  # broker rejected / unavailable / timeout-not-found (F028)
     ENTRY_PARTIAL = "entry_partial"  # entry remainder cancelled after M s, some filled (F041)
+    UNDERLYING_STOP = "underlying_stop"  # a system-held underlying stop fired (F044)
 
 
 class Alert(SQLModel, table=True):

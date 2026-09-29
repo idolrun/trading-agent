@@ -522,6 +522,7 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 | OD-29 | (2026-09-29) Off-hours held messages: validity/staleness clock starts at the **9:30 ET release**, not the post time (amends C90 for held messages only) | F039 |
 | OD-30 | (2026-09-29) A bracket's stop and TP legs share one `oco_group_id`; the FR-20 invariant counts a group as max(stop qty, Σ TP qty). System-managed linkage (TP fill → stop resized, stop fill → TPs cancelled) is within the bracket approval. Real adapter (F051) should use native OCO to close the simultaneous-fill race | F028, F042, F051 |
 | OD-20 | (2026-09-29) Exit re-price floor = `exit_floor_pct` below the mid at exit start, never below one tick | F006, F043 |
+| OD-32 | (2026-09-29) Underlying stops trigger on the last trade: calls / long stock at `last ≤ level`, puts at `last ≥ level` | F044 |
 
 ### 10.1a Context-only decision-log entries
 C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple channels), C6 (= C14, approval for every order action — F036), C7 (no prediction), C10 (options; revised by C55 stocks), C3 (trusted providers), C9 (grouping per provider/company — realised as per-provider sequencing, C88), C27 (loss rule dropped), C68/C70 (non-goals: prediction, spreads, short selling, extended hours, multi-user, images) produce no feature. Any feature that would touch a non-goal must stop and ask.
@@ -569,7 +570,6 @@ C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple chan
 | OD-26 | How "X% commons" is extracted (no Appendix A role for position %) | F023, F033 | Not actionable until a Jev role/LLM field is agreed; card = review |
 | OD-27 | Kill switch scope: "pauses new cards and entries" | F024, F047 | Entry/add cards disabled; exit/stop cards still created |
 | OD-31 | Flatten scope vs foreign positions | F047 | Tracked lots only; foreign excluded (C47 read-only) |
-| OD-32 | Price used to trigger underlying stops | F044 | Last trade price |
 
 ---
 
