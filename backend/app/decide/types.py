@@ -57,6 +57,7 @@ class ProposedAction(_Frozen):
     valid_until: datetime | None = None
     breakeven_options: BreakevenOptions | None = None
     suggested_underlying: str | None = None
+    relink_signal_id: uuid.UUID | None = None  # system re-link review card (F037)
 
 
 @dataclass(frozen=True)

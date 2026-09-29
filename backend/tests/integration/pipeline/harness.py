@@ -27,6 +27,7 @@ from app.interpret.jev.client import JevInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.note import NoteWriter
 from app.interpret.signal import F, LinkHint, LiteralSpan, ParsedSignal, ParsedSignals, SignalFields
+from app.ledger.relink import RelinkService
 from app.llm.chain import LlmChain
 from app.marketdata.fake import FakeMarketData
 from app.markettime import FixedClock
@@ -120,6 +121,7 @@ class Harness:
         """The message graph. `fixture=True`: recorded interpretations replace Jev + LLM.
         Otherwise Jev (if given) and the LLM (default: an unconfigured chain -> exhausted)."""
         flags = FlagService(self.factory, self.alerts)
+        planner = self.planner(flags)
         chain = LlmChain(
             self.factory,
             get_settings(),
@@ -130,22 +132,29 @@ class Harness:
             sessions=self.factory,
             config=self.config,
             clock=self.clock,
-            planner=Planner(
-                self.factory,
-                validation=ValidationService(
-                    self.factory, marketdata=self.md, alerts=self.alerts, clock=self.clock
-                ),
-                marketdata=self.md,
-                flags=flags,
-            ),
+            planner=planner,
             flags=flags,
             llm=llm or LlmInterpreter(chain, self.md, self.alerts),
             jev=jev,
             notes=notes,
             fixture=FixtureInterpreter(self.fixtures) if fixture else None,
             approvals=approvals,
+            relink=approvals.relink if approvals else None,
         )
-        return GraphProcessor(deps, checkpointer)
+        processor = GraphProcessor(deps, checkpointer)
+        if deps.relink is not None:
+            deps.relink.recheck = processor.recheck
+        return processor
+
+    def planner(self, flags: FlagService) -> Planner:
+        return Planner(
+            self.factory,
+            validation=ValidationService(
+                self.factory, marketdata=self.md, alerts=self.alerts, clock=self.clock
+            ),
+            marketdata=self.md,
+            flags=flags,
+        )
 
     def approval_service(self, checkpointer: Any, broker: SimulatedBroker) -> ApprovalService:
         """F036 approvals over the shadow broker (`broker`); its FakeBroker base records calls."""
@@ -158,7 +167,7 @@ class Harness:
             alerts=self.alerts,
             config=self.config,
         )
-        return ApprovalService(
+        approvals = ApprovalService(
             self.factory,
             checkpointer=checkpointer,
             executor=CardExecutor(self.factory, orders=orders, marketdata=self.md),
@@ -167,6 +176,10 @@ class Harness:
             flags=flags,
             clock=self.clock,
         )
+        approvals.relink = RelinkService(
+            self.factory, planner=self.planner(flags), config=self.config, clock=self.clock
+        )
+        return approvals
 
     async def message(
         self,
@@ -191,6 +204,7 @@ class Harness:
         env: Envelope,
         *,
         stale: bool = False,
+        late: bool = False,
         attempt: int = 1,
         processor: GraphProcessor | None = None,
     ) -> None:
@@ -201,6 +215,6 @@ class Harness:
                 started_at=self.clock.now(),
                 age_s=(self.clock.now() - env.posted_at).total_seconds(),
                 stale=stale,
-                late=False,
+                late=late,
             )
         )

@@ -163,36 +163,64 @@ async def _apply_signal(
             await notify(db, "cards", _event("card.updated", card.card_id))
 
     for proposal in o.cards:
-        disabled = proposal.card_type == CardType.DISABLED
-        key = f"{o.signal_id}:{proposal.action}"
-        card = Card(
-            card_id=cards.card_id_for(key),
-            dedupe_key=key,
+        card_id = await insert_card(
+            db,
+            proposal,
+            key=f"{o.signal_id}:{proposal.action}",
             source=CardSource.SIGNAL,
             signal_id=o.signal_id,
-            action=proposal.action,
-            card_type=proposal.card_type,
-            state=CardState.DISABLED if disabled else CardState.PENDING,
             provider_id=env.provider_id,
-            provider_position_id=o.position_id if exists else None,
+            position_id=o.position_id if exists else None,
             lot_id=o.lot_id,
-            proposal=proposal.model_dump(mode="json"),
             posted_at=env.posted_at,
-            valid_until=proposal.valid_until,
-            disabled_reason=proposal.disabled_reason,
         )
-        if not await cards.insert(db, card):
-            continue
-        result.card_ids.append(card.card_id)
-        if not disabled and card.valid_until is not None:
-            await timers.schedule(
-                db,
-                TimerKind.CARD_EXPIRY,
-                card.valid_until,
-                f"card_expiry:{card.card_id}",
-                card_id=card.card_id,
-            )
-        await notify(db, "cards", _event("card.created", card.card_id))
+        if card_id is not None:
+            result.card_ids.append(card_id)
+
+
+async def insert_card(
+    db: AsyncSession,
+    proposal: ProposedAction,
+    *,
+    key: str,
+    source: CardSource,
+    signal_id: uuid.UUID | None,
+    provider_id: int,
+    position_id: uuid.UUID | None,
+    lot_id: uuid.UUID | None,
+    posted_at: datetime,
+) -> uuid.UUID | None:
+    """One card + its expiry timer + NOTIFY; None = it exists already (idempotent re-run).
+    Shared by apply, re-link approval (F037) and the off-hours release (F039)."""
+    disabled = proposal.card_type == CardType.DISABLED
+    card = Card(
+        card_id=cards.card_id_for(key),
+        dedupe_key=key,
+        source=source,
+        signal_id=signal_id,
+        action=proposal.action,
+        card_type=proposal.card_type,
+        state=CardState.DISABLED if disabled else CardState.PENDING,
+        provider_id=provider_id,
+        provider_position_id=position_id,
+        lot_id=lot_id,
+        proposal=proposal.model_dump(mode="json"),
+        posted_at=posted_at,
+        valid_until=proposal.valid_until,
+        disabled_reason=proposal.disabled_reason,
+    )
+    if not await cards.insert(db, card):
+        return None
+    if not disabled and card.valid_until is not None:
+        await timers.schedule(
+            db,
+            TimerKind.CARD_EXPIRY,
+            card.valid_until,
+            f"card_expiry:{card.card_id}",
+            card_id=card.card_id,
+        )
+    await notify(db, "cards", _event("card.created", card.card_id))
+    return card.card_id
 
 
 async def _insert_signal(db: AsyncSession, inp: ApplyInput, o: SignalOutcome) -> bool:

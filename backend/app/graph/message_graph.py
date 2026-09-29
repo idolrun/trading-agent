@@ -6,6 +6,7 @@
                                          slow_path -> llm_extract -> decide_apply
     llm_extract (exhausted / rejected) | decide_apply (span mismatch) -> raw_review
     decide_apply | raw_review -> notify -> END
+    recheck mode (F037): after interpretation -> END (no apply, no notify)
 
 Nodes are thin adapters over the existing services. Side effects: only `decide_apply` /
 `raw_review` (one DB transaction each) and `notify` (post-commit). Models are side-effect free
@@ -46,6 +47,7 @@ from app.interpret.signal import ParsedSignals
 from app.interpret.spans import verify_literal_spans
 from app.ledger import repo as ledger
 from app.ledger.positions import state_of
+from app.ledger.relink import RelinkService
 from app.llm.usage import CallRef
 from app.markettime import Clock
 from app.pipeline.apply import ApplyInput, apply_event, apply_raw_review, record_stage
@@ -73,6 +75,7 @@ class GraphDeps:
     store: BaseStore | None = None
     fixture: Interpreter | None = None  # dev/demo/tests only: replaces Jev + LLM
     approvals: ApprovalService | None = None  # None: cards wait (tests of the graph alone)
+    relink: RelinkService | None = None  # F037: re-check later follow-ups after a late event
     background: set[asyncio.Task[Any]] = field(default_factory=set)
 
     def cfg(self) -> RuntimeConfig:
@@ -101,11 +104,12 @@ def build_message_graph(
         "find_candidates",
         lambda _s: "fixture_interpret" if deps.fixture is not None else "jev_interpret",
     )
-    g.add_conditional_edges("fixture_interpret", _raw_review_or("decide_apply"))
+    g.add_conditional_edges("fixture_interpret", _after_interpret)
     g.add_conditional_edges(
-        "jev_interpret", lambda s: "llm_extract" if s["route"] == "slow_path" else "decide_apply"
+        "jev_interpret",
+        lambda s: "llm_extract" if s["route"] == "slow_path" else _after_interpret(s),
     )
-    g.add_conditional_edges("llm_extract", _raw_review_or("decide_apply"))
+    g.add_conditional_edges("llm_extract", _after_interpret)
     g.add_conditional_edges("decide_apply", _raw_review_or("notify"))  # span mismatch
     g.add_edge("raw_review", "notify")
     g.add_edge("notify", END)
@@ -114,6 +118,12 @@ def build_message_graph(
 
 def _raw_review_or(next_node: str) -> Any:
     return lambda s: "raw_review" if s["raw_reason"] else next_node
+
+
+def _after_interpret(s: MessageState) -> str:
+    if s["recheck"]:
+        return END
+    return "raw_review" if s["raw_reason"] else "decide_apply"
 
 
 class _Nodes:
@@ -269,10 +279,18 @@ class _Nodes:
                     )
                 )
                 pending = [(r[0], r[1]) for r in rows.all()]
+        ctx = _processing(state)
+        relinks: list[uuid.UUID] = []
+        if ctx.late:
+            logger.info("late event applied", extra={"provider_id": ctx.envelope.provider_id})
+            if self.d.relink is not None:  # FR-1b: never a silent feed-only
+                relinks = await self.d.relink.recheck_after_late(
+                    ctx.envelope.provider_id, ctx.envelope.posted_at
+                )
         if self.d.approvals is not None:
-            by = _processing(state).envelope.key.message_id
+            by = ctx.envelope.key.message_id
             await self.d.approvals.invalidated([uuid.UUID(c) for c in state["superseded_ids"]], by)
-            await self.d.approvals.start_many(card_id for card_id, _ in pending)
+            await self.d.approvals.start_many([*(card_id for card_id, _ in pending), *relinks])
         if self.d.notes is not None:
             for card_id, action in pending:
                 if action == CardAction.REVIEW:

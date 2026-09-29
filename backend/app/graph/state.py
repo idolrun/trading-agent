@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 
 class MessageState(TypedDict, total=False):
     processing: dict[str, Any]  # ProcessingContext
+    recheck: bool  # F037: interpret only, END before decide_apply (no writes)
     skip: bool  # not a create event: feed only until F038
     context: dict[str, Any]  # ProviderContext (C71)
     candidates: dict[str, Any]  # Candidates (F016)
@@ -20,10 +21,11 @@ class MessageState(TypedDict, total=False):
     superseded_ids: list[str]  # cards this event invalidated: their approval graphs resume
 
 
-def initial_state(processing: dict[str, Any]) -> MessageState:
+def initial_state(processing: dict[str, Any], *, recheck: bool = False) -> MessageState:
     """Every key set, so a run never inherits values from an earlier run on the same thread."""
     return MessageState(
         processing=processing,
+        recheck=recheck,
         skip=False,
         context={},
         candidates={},

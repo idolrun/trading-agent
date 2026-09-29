@@ -45,8 +45,10 @@ from app.instruments import OptionContract
 from app.ledger import repo as ledger
 from app.ledger.models import Lot, LotStatus, PositionStatus, ProviderPosition
 from app.ledger.positions import contract_of, state_of
+from app.ledger.relink import RelinkFailed, RelinkService
 from app.marketdata.port import MarketData
 from app.markettime import Clock
+from app.pipeline.apply import BookChanged
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
@@ -109,6 +111,7 @@ class ApprovalService:
         self._config = config
         self._flags = flags
         self._clock = clock
+        self.relink: RelinkService | None = None  # approval of re-link cards (F037)
         self._graph: CompiledStateGraph[Any, Any, Any, Any] = build_approval_graph(
             self, checkpointer
         )
@@ -341,6 +344,9 @@ class ApprovalService:
         approval, target = loaded.approval, loaded.target()
         assert approval is not None and approval.approved_proposal is not None  # noqa: S101
         proposal = ProposedAction.model_validate(approval.approved_proposal)
+        if proposal.relink_signal_id is not None:
+            await self._relink(loaded.card, proposal.relink_signal_id)
+            return []
         if proposal.action == CardAction.REVIEW:
             return []  # a completed review places nothing; the card stays approved
         assert target is not None  # noqa: S101 — revalidate refused a card without one
@@ -364,6 +370,17 @@ class ApprovalService:
                 )
                 await notify(db, "cards", _event(card_id))
         return [o.order_id for o in orders]
+
+    async def _relink(self, card: Card, signal_id: uuid.UUID) -> None:
+        """F037: the link, ledger change and follow-up cards; places no order itself."""
+        assert self.relink is not None  # noqa: S101 — wired whenever re-link cards exist
+        try:
+            created, superseded = await self.relink.apply_approved(card, signal_id)
+        except (RelinkFailed, BookChanged) as exc:
+            await self._fail(card.card_id, f"relink: {exc}")
+            return
+        await self.invalidated(superseded, None)
+        await self.start_many(created)
 
     # --- helpers ---------------------------------------------------------------------
 

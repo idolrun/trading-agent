@@ -45,6 +45,7 @@ from app.interpret.interpreter import FixtureInterpreter, Interpreter
 from app.interpret.jev.client import JevInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.note import NoteWriter
+from app.ledger.relink import RelinkService
 from app.llm.chain import LlmChain
 from app.llm.registry import alert_missing_keys
 from app.logging import configure_logging
@@ -129,6 +130,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     graph_pool = open_pool(libpq_dsn(str(settings.database_url)))
     await graph_pool.open()
     checkpointer, store = saver_and_store(graph_pool)
+    planner = Planner(
+        session_factory,
+        validation=ValidationService(
+            session_factory, marketdata=marketdata, alerts=app.state.alerts, clock=app.state.clock
+        ),
+        marketdata=marketdata,
+        flags=app.state.flags,
+    )
+    relink = RelinkService(
+        session_factory, planner=planner, config=config_service, clock=app.state.clock
+    )
     app.state.approvals = ApprovalService(
         session_factory,
         checkpointer=checkpointer,
@@ -138,6 +150,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         flags=app.state.flags,
         clock=app.state.clock,
     )
+    app.state.approvals.relink = relink
 
     feed_health = FeedHealthMonitor(
         session_factory,
@@ -186,17 +199,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sessions=session_factory,
             config=config_service,
             clock=app.state.clock,
-            planner=Planner(
-                session_factory,
-                validation=ValidationService(
-                    session_factory,
-                    marketdata=marketdata,
-                    alerts=app.state.alerts,
-                    clock=app.state.clock,
-                ),
-                marketdata=marketdata,
-                flags=app.state.flags,
-            ),
+            planner=planner,
             flags=app.state.flags,
             llm=LlmInterpreter(app.state.llm, marketdata, app.state.alerts),
             jev=JevInterpreter(session_factory, settings, runtime, app.state.clock),
@@ -204,8 +207,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             store=store,
             fixture=_fixture(settings),
             approvals=app.state.approvals,
+            relink=relink,
         )
         processor = GraphProcessor(graph_deps, checkpointer)
+        relink.recheck = processor.recheck
         dispatcher = Dispatcher(
             session_factory,
             config=config_service,

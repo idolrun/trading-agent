@@ -4,14 +4,15 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from app.execution.models import Fill
+from app.inbox.models import MessageEvent
 from app.instruments import Instrument as Contract
 from app.instruments import OptionContract, broker_symbol
-from app.interpret.models import MessageLink, Signal
+from app.interpret.models import LinkOutcome, MessageLink, MsgType, Signal
 from app.ledger.correlation import ParentLink
 from app.ledger.lots import LotUpdate
 from app.ledger.models import (
@@ -245,3 +246,47 @@ async def sells_since(
         )
     )
     return [(i, int(q), avg, price) for i, q, avg, price in rows.all()]
+
+
+async def latest_link(db: AsyncSession, signal_id: uuid.UUID) -> MessageLink | None:
+    """The current link of a signal (append-only table: latest row wins)."""
+    link: MessageLink | None = await db.scalar(
+        select(MessageLink)
+        .where(col(MessageLink.signal_id) == signal_id)
+        .order_by(col(MessageLink.id).desc())
+        .limit(1)
+    )
+    return link
+
+
+async def unlinked_follow_ups_after(
+    db: AsyncSession, provider_id: int, posted_at: datetime, types: frozenset[MsgType]
+) -> list[tuple[Signal, MessageEvent]]:
+    """This provider's follow-ups posted after `posted_at` whose current link is none or
+    ambiguous (F037 recheck), oldest first."""
+    latest = (
+        select(col(MessageLink.signal_id), col(MessageLink.outcome))
+        .order_by(col(MessageLink.signal_id), col(MessageLink.id).desc())
+        .distinct(col(MessageLink.signal_id))
+        .subquery()
+    )
+    rows = await db.execute(
+        select(Signal, MessageEvent)
+        .join(
+            MessageEvent,
+            and_(
+                col(MessageEvent.message_id) == col(Signal.message_id),
+                col(MessageEvent.event_type) == col(Signal.event_type),
+                col(MessageEvent.event_seq) == col(Signal.event_seq),
+            ),
+        )
+        .join(latest, latest.c.signal_id == col(Signal.signal_id))
+        .where(
+            col(Signal.provider_id) == provider_id,
+            col(MessageEvent.posted_at) > posted_at,
+            col(Signal.msg_type).in_(list(types)),
+            latest.c.outcome.in_([LinkOutcome.NONE, LinkOutcome.AMBIGUOUS]),
+        )
+        .order_by(col(MessageEvent.posted_at), col(Signal.idx))
+    )
+    return [(sig, event) for sig, event in rows.tuples().all()]
