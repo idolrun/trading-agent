@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils"
 const LINKS = [
   { href: "/", label: "Inbox" },
   { href: "/feed", label: "Feed" },
+  { href: "/positions", label: "Positions" },
+  { href: "/orders", label: "Orders" },
 ]
 
 export function DeskNav() {

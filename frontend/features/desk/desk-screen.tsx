@@ -42,7 +42,7 @@ export function DeskScreen() {
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
         <CardInbox />
         <div className="flex flex-col gap-8">
-          <OrderList />
+          <OrderList compact />
           <AlertList />
           <BookPanel />
         </div>

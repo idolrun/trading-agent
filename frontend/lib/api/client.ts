@@ -75,6 +75,24 @@ export async function apiPost<T>(
   }
 }
 
+export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
+  try {
+    const response = await http.put<T>(path, body)
+    return response.data
+  } catch (error) {
+    return fail(error, true)
+  }
+}
+
+export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  try {
+    const response = await http.patch<T>(path, body)
+    return response.data
+  } catch (error) {
+    return fail(error, true)
+  }
+}
+
 export async function apiDelete(path: string): Promise<void> {
   try {
     await http.delete(path)

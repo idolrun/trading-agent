@@ -101,6 +101,39 @@ export const positionFixture: Schemas["PositionOut"] = {
   tpLevels: [],
 }
 
+export const positionDetailFixture: Schemas["PositionDetail"] = {
+  ...positionFixture,
+  events: [
+    { at: "2026-09-29T14:00:00Z", change: "opened", before: null, after: { status: "open" } },
+    { at: "2026-09-29T14:30:00Z", change: "trimmed", before: { remainingFraction: "1" }, after: { remainingFraction: "0.5" } },
+  ],
+  links: [
+    { signalId: "0a1b2c3d-0000-4000-8000-0000000000e1", method: "reply_chain", confidence: "0.95", outcome: "linked", createdAt: "2026-09-29T14:00:05Z" },
+  ],
+  lots: [lotFixture],
+}
+
+export const lotDetailFixture: Schemas["LotDetail"] = {
+  ...lotFixture,
+  events: [],
+  orders: [orderFixture],
+  stops: [
+    { id: "0a1b2c3d-0000-4000-8000-0000000000f1", basis: "price", heldBy: "system", kind: "stop", level: "0.90", qty: 1, status: "active" },
+  ],
+}
+
+export const orderDetailFixture: Schemas["OrderDetail"] = {
+  ...orderFixture,
+  events: [
+    { at: "2026-09-29T14:01:00Z", source: "system", status: "intent", brokerPayload: null },
+    { at: "2026-09-29T14:01:02Z", source: "broker", status: "submitted", brokerPayload: null },
+    { at: "2026-09-29T14:01:05Z", source: "broker", status: "partially_filled", brokerPayload: null },
+  ],
+  fills: [
+    { id: "0a1b2c3d-0000-4000-8000-0000000000a9", orderId: orderFixture.id, price: "1.25", qty: 1, filledAt: "2026-09-29T14:01:05Z" },
+  ],
+}
+
 export const feedFixture: Schemas["FeedItem"] = {
   messageId: "1234567890123456789",
   eventType: "create",
@@ -144,8 +177,11 @@ export const handlers = [
   }),
   http.get("*/api/v1/alerts", () => HttpResponse.json(page([alertFixture]))),
   http.get("*/api/v1/orders", () => HttpResponse.json(page([orderFixture]))),
+  http.get("*/api/v1/orders/:id", () => HttpResponse.json(orderDetailFixture)),
   http.get("*/api/v1/lots", () => HttpResponse.json(page([lotFixture]))),
+  http.get("*/api/v1/lots/:id", () => HttpResponse.json(lotDetailFixture)),
   http.get("*/api/v1/positions", () => HttpResponse.json(page([positionFixture]))),
+  http.get("*/api/v1/positions/:id", () => HttpResponse.json(positionDetailFixture)),
   http.get("*/api/v1/feed", () => HttpResponse.json(page([feedFixture]))),
   http.get("*/api/v1/health/details", () => HttpResponse.json(healthFixture)),
 ]

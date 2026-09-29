@@ -19,3 +19,9 @@ export function formatContract(contract: {
     .filter(Boolean)
     .join(" ")
 }
+
+const LOCAL_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" })
+
+export function formatTime(iso: string): string {
+  return LOCAL_TIME.format(new Date(iso))
+}

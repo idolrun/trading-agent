@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from "@tanstack/react-query"
+import { infiniteQueryOptions, queryOptions, useInfiniteQuery, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
 import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
@@ -6,20 +6,23 @@ import type { LotDetail, LotListFilters } from "@/features/lots/types"
 
 export const lotKeys = domainKeys("lots")
 
-export type LotList = Schemas["Page_LotOut_"]
+export type LotPage = Schemas["Page_LotOut_"]
 
-export function fetchLotList(filters: LotListFilters): Promise<LotList> {
-  return apiGet<LotList>("/api/v1/lots", filters)
+export function fetchLotPage(filters: LotListFilters, cursor?: string): Promise<LotPage> {
+  return apiGet<LotPage>("/api/v1/lots", { ...filters, cursor })
 }
 
 export function fetchLot(lotId: string): Promise<LotDetail> {
   return apiGet<LotDetail>(`/api/v1/lots/${encodeURIComponent(lotId)}`)
 }
 
+/** "Load more" follows `nextCursor`; a refetch (SSE, poll) reloads every loaded page. */
 export function lotListQuery(filters: LotListFilters) {
-  return queryOptions({
+  return infiniteQueryOptions({
     queryKey: lotKeys.list(filters),
-    queryFn: () => fetchLotList(filters),
+    queryFn: ({ pageParam }) => fetchLotPage(filters, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   })
 }
 
@@ -32,7 +35,10 @@ export function lotDetailQuery(lotId: string) {
 }
 
 export function useLotList(filters: LotListFilters) {
-  return useQuery(lotListQuery(filters))
+  return useInfiniteQuery({
+    ...lotListQuery(filters),
+    select: (data) => ({ items: data.pages.flatMap((page) => page.items) }),
+  })
 }
 
 export function useLot(lotId: string) {
