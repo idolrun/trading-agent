@@ -201,7 +201,7 @@ class NoteWriter:
                 .where(col(Card.card_id) == card_id)
                 .values(note=note, note_hidden=not guard.shown)  # nothing else, ever (AC-13)
             )
-            await notify(session, "cards", str(card_id))
+            await notify(session, "cards", json.dumps({"type": "card.updated", "id": str(card_id)}))
             if not guard.shown:
                 await self._alerts.raise_(
                     AlertKind.NOTE_HIDDEN,

@@ -74,3 +74,11 @@ export async function apiPost<T>(
     return fail(error, notifyUnauthorized)
   }
 }
+
+export async function apiDelete(path: string): Promise<void> {
+  try {
+    await http.delete(path)
+  } catch (error) {
+    return fail(error, true)
+  }
+}

@@ -591,7 +591,7 @@ C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple chan
 | S6 | Managed Postgres (OD-9) | F064 | Local PG 17 identical major version |
 | R1 | Single-provider slow-path bursts breach p95 | AC-22 | F063 test 3 → OD-19 upgrade |
 | R2 | LangChain/LangGraph API churn | all AI features | Step 0 verification table; re-verify per feature |
-| R3 | SSE through Next.js `rewrites` may buffer in some deployments | live updates | F054 verifies; fallback: dashboard calls API origin directly under same site (`api.` subdomain) — recorded if needed |
+| R3 | SSE through Next.js `rewrites` may buffer in some deployments | live updates | F054 measured (dev and `next build && next start`, 10 events each): through `localhost:3000/api/v1/events` 2–5 ms vs 3–4 ms direct to `:8000` — the rewrite does not buffer. Two fixes were needed: `compress: false` in `next.config.ts` (Next's gzip held every event when the client sent `Accept-Encoding: gzip`; the reverse proxy compresses instead) and an initial SSE comment from `/events` (the Node proxy withholds response headers until the first body byte, so `EventSource` `open` waited for the 15 s keep-alive). Subdomain fallback not needed |
 | R4 | System-held underlying stops dead while process down (C49) | — | External uptime monitor (F064) |
 | R5 | Long-lived approval interrupts (exit cards live until provider exits) grow checkpoint tables | ops | 30-day prune job (F049); domain tables are the audit |
 

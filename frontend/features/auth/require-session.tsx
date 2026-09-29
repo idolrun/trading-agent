@@ -13,7 +13,7 @@ function currentPath() {
 }
 
 /** Client gate for the desk. proxy.ts only checks the cookie exists; this asks the backend. */
-export function RequireSession({ children }: { children: ReactNode }) {
+export function RequireSession({ children, header }: { children: ReactNode; header?: ReactNode }) {
   const router = useRouter()
   const session = useSession()
   const logout = useLogout()
@@ -51,7 +51,8 @@ export function RequireSession({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div className="flex justify-end border-b border-border px-4 py-2 sm:px-6">
+      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 border-b border-border px-4 py-2 sm:px-6">
+        {header}
         <Button
           type="button"
           variant="ghost"

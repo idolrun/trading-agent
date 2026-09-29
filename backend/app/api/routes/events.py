@@ -14,5 +14,8 @@ async def events(request: Request, _ctx: SessionDep) -> AsyncIterable[ServerSent
     """Live updates: `event` = card.created, alert.created, ..., `data` = {"id"}. `resync`
     means events may have been missed: refetch. Keep-alive pings every 15 s (FastAPI)."""
     bus: EventBus = request.app.state.bus
+    # Node proxies (Next rewrites) hold the response headers until the first body byte; without
+    # this the browser's `open` would wait for the 15 s keep-alive.
+    yield ServerSentEvent(comment="connected")
     async for event in bus.stream():
         yield ServerSentEvent(event=event.type, data={"id": event.id})

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query/provider";
@@ -21,7 +21,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Desk",
   description: "Approval inbox for proposed trades",
+  icons: { apple: "/apple-touch-icon.png" }, // iOS ignores the manifest icons
 };
+
+export const viewport: Viewport = { themeColor: "#00775a" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
