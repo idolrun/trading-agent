@@ -1,31 +1,10 @@
 "use client"
 
-import { QueryState } from "@/components/query-state"
 import { AlertList } from "@/features/alerts/alert-list"
 import { CardInbox } from "@/features/cards/card-inbox"
 import { BookPanel } from "@/features/desk/book-panel"
-import { useFeedHealth } from "@/features/health/queries"
+import { FeedStatus } from "@/features/health/feed-status"
 import { OrderList } from "@/features/orders/order-list"
-
-function FeedStatus() {
-  const query = useFeedHealth()
-
-  return (
-    <QueryState query={query} loadingLabel="Checking feed" emptyTitle="No feed status">
-      {(health) => (
-        <p className="text-sm">
-          <span className="capitalize">{health.status === "ok" ? "Feed healthy" : "Feed degraded"}</span>
-          <span className="text-muted-foreground">
-            ·{" "}
-            {health.feedSilenceSeconds == null
-              ? "no messages yet"
-              : `${health.feedSilenceSeconds}s since last message`}
-          </span>
-        </p>
-      )}
-    </QueryState>
-  )
-}
 
 export function DeskScreen() {
   return (
@@ -43,7 +22,7 @@ export function DeskScreen() {
         <CardInbox />
         <div className="flex flex-col gap-8">
           <OrderList compact />
-          <AlertList />
+          <AlertList compact />
           <BookPanel />
         </div>
       </div>

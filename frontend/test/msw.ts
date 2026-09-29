@@ -52,6 +52,16 @@ export const alertFixture: Schemas["AlertOut"] = {
   createdAt: "2026-09-29T14:00:00Z",
 }
 
+export const warningAlertFixture: Schemas["AlertOut"] = {
+  id: "0a1b2c3d-0000-4000-8000-0000000000a2",
+  kind: "parser_degraded",
+  severity: "warning",
+  message: "Parser degraded for author 111",
+  acknowledged: false,
+  cardId: CARD_ID,
+  createdAt: "2026-09-29T14:02:00Z",
+}
+
 export const orderFixture: Schemas["OrderOut"] = {
   id: "0a1b2c3d-0000-4000-8000-0000000000b1",
   cardId: CARD_ID,
@@ -155,19 +165,42 @@ export const healthFixture = {
   feedSilenceSeconds: 12,
   feedHeartbeatAgeSeconds: 3,
   heartbeatAgeSeconds: 2,
-  oldestUnprocessedSeconds: null,
-  backlogDepth: 0,
+  oldestUnprocessedSeconds: 4.5,
+  backlogDepth: 7,
   catchUp: false,
-  invariantBlocks: 0,
+  invariantBlocks: 2,
   flags: {},
-  cardOutcomes: [],
-  latency: [],
-  queueWait: [],
-  llm: { models: [], providers: [], monthlyBudgetUsd: null, slowPathShare: null, spendMonthToDateUsd: "0" },
-  messages: { backfilled: 0, duplicatesSinceStart: 0, failed: 0, late: 0, stale: 0, total: 0 },
-  orders: { byStatus: {}, rejected: 0, reprices: 0 },
-  postgres: { connections: 1, lockWaits: 0 },
-  reconciliation: { clean: true, error: null, lastRunAt: null, mismatchAlerts: 0, mismatches: 0, unknownOrders: 0 },
+  cardOutcomes: [{ toState: "approved", reasonCode: "user_approved", count: 5 }],
+  latency: [
+    { stage: "total", path: "fast", count: 40, p50Ms: 120, p95Ms: 340.5, p99Ms: 900 },
+    { stage: "interpret", path: "slow", count: 8, p50Ms: 1500, p95Ms: 3200, p99Ms: 4100 },
+  ],
+  queueWait: [{ providerId: "111222333444555666", count: 12, p95Ms: 85, maxMs: 210 }],
+  llm: {
+    models: [
+      {
+        provider: "anthropic",
+        model: "claude-haiku",
+        calls: 30,
+        latencyP50Ms: 700,
+        latencyP95Ms: 1800,
+        outcomes: { ok: 27, timeout: 3 },
+        errorRate: 0.1,
+        fallbackCalls: 4,
+        spendUsd: "1.2345",
+      },
+    ],
+    providers: [
+      { provider: "anthropic", breakerOpen: true, slotsSinceStart: 30, semaphoreWaitsSinceStart: 2, rateLimitedSinceStart: 1 },
+    ],
+    monthlyBudgetUsd: "50",
+    slowPathShare: 0.2,
+    spendMonthToDateUsd: "12.5",
+  },
+  messages: { backfilled: 3, duplicatesSinceStart: 6, failed: 1, late: 2, stale: 4, total: 48 },
+  orders: { byStatus: { filled: 3, partially_filled: 1 }, rejected: 2, reprices: 5 },
+  postgres: { connections: 9, lockWaits: 0 },
+  reconciliation: { clean: false, error: "broker timeout", lastRunAt: "2026-09-29T14:10:00Z", mismatchAlerts: 1, mismatches: 3, unknownOrders: 2 },
 } satisfies Schemas["HealthDetails"]
 
 export const handlers = [
@@ -175,7 +208,20 @@ export const handlers = [
     const state = new URL(request.url).searchParams.get("state")
     return HttpResponse.json(page(state && state !== cardFixture.state ? [] : [cardFixture]))
   }),
-  http.get("*/api/v1/alerts", () => HttpResponse.json(page([alertFixture]))),
+  http.get("*/api/v1/alerts", ({ request }) => {
+    const params = new URL(request.url).searchParams
+    const severity = params.get("severity")
+    const acknowledged = params.get("acknowledged")
+    return HttpResponse.json(
+      page(
+        [alertFixture, warningAlertFixture].filter(
+          (alert) =>
+            (!severity || alert.severity === severity) &&
+            (acknowledged == null || String(alert.acknowledged) === acknowledged),
+        ),
+      ),
+    )
+  }),
   http.get("*/api/v1/orders", () => HttpResponse.json(page([orderFixture]))),
   http.get("*/api/v1/orders/:id", () => HttpResponse.json(orderDetailFixture)),
   http.get("*/api/v1/lots", () => HttpResponse.json(page([lotFixture]))),
@@ -183,7 +229,9 @@ export const handlers = [
   http.get("*/api/v1/positions", () => HttpResponse.json(page([positionFixture]))),
   http.get("*/api/v1/positions/:id", () => HttpResponse.json(positionDetailFixture)),
   http.get("*/api/v1/feed", () => HttpResponse.json(page([feedFixture]))),
-  http.get("*/api/v1/health/details", () => HttpResponse.json(healthFixture)),
+  http.get("*/api/v1/health/details", ({ request }) =>
+    HttpResponse.json({ ...healthFixture, window: new URL(request.url).searchParams.get("window") }),
+  ),
 ]
 
 export const server = setupServer(...handlers)

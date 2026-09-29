@@ -9,6 +9,8 @@ const LINKS = [
   { href: "/feed", label: "Feed" },
   { href: "/positions", label: "Positions" },
   { href: "/orders", label: "Orders" },
+  { href: "/alerts", label: "Alerts" },
+  { href: "/health", label: "Health" },
 ]
 
 export function DeskNav() {
