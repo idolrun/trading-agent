@@ -30,9 +30,11 @@ from app.auth.service import AuthService
 from app.broker.fake import FakeBroker
 from app.broker.port import BrokerClient, BrokerEvents
 from app.broker.simulated import SimulatedBroker
+from app.cards.approval_service import ApprovalService
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.dispatcher.service import Dispatcher
+from app.execution.card_executor import CardExecutor
 from app.execution.submit import OrderService
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.message_graph import GraphDeps
@@ -59,6 +61,7 @@ from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.system.heartbeat import run_heartbeat
+from app.timers.models import TimerKind
 from app.timers.service import TimerService
 from app.validate.service import ValidationService
 
@@ -122,6 +125,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         alerts=app.state.alerts,
         config=config_service,
     )
+    # LangGraph checkpointer + store (schema langgraph): approval threads live here (F036).
+    graph_pool = open_pool(libpq_dsn(str(settings.database_url)))
+    await graph_pool.open()
+    checkpointer, store = saver_and_store(graph_pool)
+    app.state.approvals = ApprovalService(
+        session_factory,
+        checkpointer=checkpointer,
+        executor=CardExecutor(session_factory, orders=app.state.orders, marketdata=marketdata),
+        marketdata=marketdata,
+        config=config_service,
+        flags=app.state.flags,
+        clock=app.state.clock,
+    )
 
     feed_health = FeedHealthMonitor(
         session_factory,
@@ -146,13 +162,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     feed_health.on_recovered.append(backfill_on_recovery)
 
-    # Handlers are registered by their owners (card expiry: F036); unregistered kinds wait.
+    # Handlers are registered by their owners; unregistered kinds wait.
     app.state.timers = TimerService(
         session_factory,
         alerts=app.state.alerts,
         clock=app.state.clock,
         listen_dsn=libpq_dsn(str(settings.database_url)),
     )
+    app.state.timers.register(TimerKind.CARD_EXPIRY, app.state.approvals.on_card_expiry)
     app.state.bus = EventBus()
     background = [
         config_listener,
@@ -160,15 +177,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ]
     dispatcher = None
     graph_deps: GraphDeps | None = None
-    graph_pool = None
     if settings.background_enabled:
 
         def runtime() -> RuntimeConfig:
             return config_service.get() or RuntimeConfig()
 
-        graph_pool = open_pool(libpq_dsn(str(settings.database_url)))
-        await graph_pool.open()
-        checkpointer, store = saver_and_store(graph_pool)
         graph_deps = GraphDeps(
             sessions=session_factory,
             config=config_service,
@@ -190,6 +203,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             notes=NoteWriter(session_factory, app.state.llm, app.state.alerts, runtime),
             store=store,
             fixture=_fixture(settings),
+            approvals=app.state.approvals,
         )
         processor = GraphProcessor(graph_deps, checkpointer)
         dispatcher = Dispatcher(
@@ -218,11 +232,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if graph_deps is not None:
             for note in graph_deps.background:
                 note.cancel()
-        if graph_pool is not None:
-            await graph_pool.close()
         for task in background:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)
+        await graph_pool.close()
         await engine.dispose()
 
 

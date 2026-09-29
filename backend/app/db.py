@@ -160,7 +160,12 @@ def flag(*, default: bool = False) -> Any:
 
 
 def jsonb(*, nullable: bool = False) -> Any:
-    return Field(default=None if nullable else ..., sa_type=JSONB, nullable=nullable)
+    """Nullable: Python None is SQL NULL, not the JSON value `null` (CHECKs test IS NULL)."""
+    return Field(
+        default=None if nullable else ...,
+        sa_type=JSONB(none_as_null=True) if nullable else JSONB,
+        nullable=nullable,
+    )
 
 
 def jsonb_object() -> Any:

@@ -15,6 +15,7 @@ from app.execution.models import (
     Order,
     OrderEvent,
     OrderEventSource,
+    OrderKind,
     OrderStatus,
     Side,
 )
@@ -79,3 +80,14 @@ async def set_status(
     )
     await db.flush()
     return order
+
+
+async def open_orders(db: AsyncSession, lot_id: uuid.UUID, kind: OrderKind) -> list[Order]:
+    rows = await db.scalars(
+        select(Order).where(
+            col(Order.lot_id) == lot_id,
+            col(Order.kind) == kind,
+            col(Order.status).in_(OPEN_ORDER_STATUSES),
+        )
+    )
+    return list(rows.all())

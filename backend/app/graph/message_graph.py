@@ -9,7 +9,8 @@
 
 Nodes are thin adapters over the existing services. Side effects: only `decide_apply` /
 `raw_review` (one DB transaction each) and `notify` (post-commit). Models are side-effect free
-apart from their `model_calls` audit rows. The graph ends at notify; approvals are F036.
+apart from their `model_calls` audit rows. The graph ends at notify, which starts the per-card
+approval graphs (F036).
 """
 
 import asyncio
@@ -25,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col
 
+from app.cards.approval_service import ApprovalService
 from app.cards.models import Card, CardAction, CardState
 from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
@@ -70,6 +72,7 @@ class GraphDeps:
     notes: NoteWriter | None = None
     store: BaseStore | None = None
     fixture: Interpreter | None = None  # dev/demo/tests only: replaces Jev + LLM
+    approvals: ApprovalService | None = None  # None: cards wait (tests of the graph alone)
     background: set[asyncio.Task[Any]] = field(default_factory=set)
 
     def cfg(self) -> RuntimeConfig:
@@ -239,7 +242,10 @@ class _Nodes:
                     model_call_id=state["model_call_id"],
                 ),
             )
-        return {"card_ids": [str(c) for c in result.card_ids]}
+        return {
+            "card_ids": [str(c) for c in result.card_ids],
+            "superseded_ids": [str(c) for c in result.superseded_card_ids],
+        }
 
     async def raw_review(self, state: MessageState) -> dict[str, Any]:
         ctx = _processing(state)
@@ -250,25 +256,30 @@ class _Nodes:
         return {"card_ids": [str(card_id)] if card_id else []}
 
     async def notify(self, state: MessageState) -> dict[str, Any]:
-        """Post-commit. SSE/push already flow from the apply transaction's NOTIFY (F029);
-        here: the advisory note for each new pending card, off the critical path (F034).
-        F036 adds starting the approval graphs."""
-        if self.d.notes is None or not state["card_ids"]:
-            return {}
+        """Post-commit. SSE/push already flow from the apply transaction's NOTIFY (F029).
+        Here: resume the approval graphs of superseded cards, start one for every new pending
+        card (F036), and the advisory note off the critical path (F034)."""
         ids = [uuid.UUID(c) for c in state["card_ids"]]
-        async with self.d.sessions() as db:
-            pending = await db.scalars(
-                select(col(Card.card_id)).where(
-                    col(Card.card_id).in_(ids),
-                    col(Card.state) == CardState.PENDING,
-                    col(Card.action) != CardAction.REVIEW,
+        pending: list[tuple[uuid.UUID, CardAction]] = []
+        if ids:
+            async with self.d.sessions() as db:
+                rows = await db.execute(
+                    select(col(Card.card_id), col(Card.action)).where(
+                        col(Card.card_id).in_(ids), col(Card.state) == CardState.PENDING
+                    )
                 )
-            )
-            targets = list(pending.all())
-        for card_id in targets:
-            task = asyncio.create_task(self._note(card_id), name=f"note:{card_id}")
-            self.d.background.add(task)
-            task.add_done_callback(self.d.background.discard)
+                pending = [(r[0], r[1]) for r in rows.all()]
+        if self.d.approvals is not None:
+            by = _processing(state).envelope.key.message_id
+            await self.d.approvals.invalidated([uuid.UUID(c) for c in state["superseded_ids"]], by)
+            await self.d.approvals.start_many(card_id for card_id, _ in pending)
+        if self.d.notes is not None:
+            for card_id, action in pending:
+                if action == CardAction.REVIEW:
+                    continue
+                task = asyncio.create_task(self._note(card_id), name=f"note:{card_id}")
+                self.d.background.add(task)
+                task.add_done_callback(self.d.background.discard)
         return {}
 
     async def _note(self, card_id: uuid.UUID) -> None:

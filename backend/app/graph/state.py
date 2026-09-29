@@ -17,6 +17,7 @@ class MessageState(TypedDict, total=False):
     model_call_id: int | None
     raw_reason: str | None  # set -> raw review card
     card_ids: list[str]
+    superseded_ids: list[str]  # cards this event invalidated: their approval graphs resume
 
 
 def initial_state(processing: dict[str, Any]) -> MessageState:
@@ -34,4 +35,5 @@ def initial_state(processing: dict[str, Any]) -> MessageState:
         model_call_id=None,
         raw_reason=None,
         card_ids=[],
+        superseded_ids=[],
     )

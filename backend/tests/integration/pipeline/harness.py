@@ -10,9 +10,13 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.alerts.service import AlertService
+from app.broker.simulated import SimulatedBroker
+from app.cards.approval_service import ApprovalService
 from app.config import get_settings
 from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
+from app.execution.card_executor import CardExecutor
+from app.execution.submit import OrderService
 from app.graph.message_graph import GraphDeps
 from app.graph.processor import GraphProcessor
 from app.inbox import repo as inbox
@@ -111,6 +115,7 @@ class Harness:
         jev: JevInterpreter | None = None,
         notes: NoteWriter | None = None,
         checkpointer: Any = None,
+        approvals: ApprovalService | None = None,
     ) -> GraphProcessor:
         """The message graph. `fixture=True`: recorded interpretations replace Jev + LLM.
         Otherwise Jev (if given) and the LLM (default: an unconfigured chain -> exhausted)."""
@@ -138,8 +143,30 @@ class Harness:
             jev=jev,
             notes=notes,
             fixture=FixtureInterpreter(self.fixtures) if fixture else None,
+            approvals=approvals,
         )
         return GraphProcessor(deps, checkpointer)
+
+    def approval_service(self, checkpointer: Any, broker: SimulatedBroker) -> ApprovalService:
+        """F036 approvals over the shadow broker (`broker`); its FakeBroker base records calls."""
+        flags = FlagService(self.factory, self.alerts)
+        orders = OrderService(
+            self.factory,
+            broker=broker,
+            simulated=broker,
+            flags=flags,
+            alerts=self.alerts,
+            config=self.config,
+        )
+        return ApprovalService(
+            self.factory,
+            checkpointer=checkpointer,
+            executor=CardExecutor(self.factory, orders=orders, marketdata=self.md),
+            marketdata=self.md,
+            config=self.config,
+            flags=flags,
+            clock=self.clock,
+        )
 
     async def message(
         self,

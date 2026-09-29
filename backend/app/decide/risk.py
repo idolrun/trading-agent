@@ -8,9 +8,9 @@ exit and stop cards are still created so exits are never missed.
 
 from app.cards.models import CardAction, CardType
 from app.decide.rules import is_option
-from app.decide.types import DecisionInputs, ProposedAction
+from app.decide.types import DecisionInputs, FlagsView, ProposedAction, RiskSnapshot
 from app.ledger.lots import OPTION_MULTIPLIER
-from app.runtime_config.schema import missing_for_entries
+from app.runtime_config.schema import RuntimeConfig, missing_for_entries
 
 ENTRY_ACTIONS = frozenset({CardAction.ENTRY, CardAction.ADD})
 
@@ -26,20 +26,26 @@ def apply_staleness(i: DecisionInputs, cards: list[ProposedAction]) -> list[Prop
     return out
 
 
-def entry_block_reason(i: DecisionInputs, card: ProposedAction) -> str | None:
-    """First failing gate for an entry/add card, else None."""
-    if missing := missing_for_entries(i.config):
+def entry_block_reason(
+    config: RuntimeConfig,
+    flags: FlagsView,
+    risk: RiskSnapshot | None,
+    card: ProposedAction,
+    *,
+    option: bool,
+) -> str | None:
+    """First failing gate for an entry/add card, else None. Also re-run at approval (F036)."""
+    if missing := missing_for_entries(config):
         return "config incomplete: " + ", ".join(missing)
-    if i.flags.kill_switch:
+    if flags.kill_switch:
         return "kill switch active"
-    if i.flags.entries_blocked:
+    if flags.entries_blocked:
         return "entries blocked: reconciliation mismatch"
-    risk = i.risk
     if risk is None or risk.unrealized is None:
         return "risk unknown: quote missing"
     if risk.realized_today is None or risk.exposure is None:
         return "risk unknown: cost basis missing"
-    c = i.config
+    c = config
     max_loss, max_open, max_exposure = (
         c.max_daily_loss_usd,
         c.max_open_positions,
@@ -52,7 +58,7 @@ def entry_block_reason(i: DecisionInputs, card: ProposedAction) -> str | None:
     if card.action == CardAction.ENTRY and risk.open_positions >= max_open:
         return "max open positions"
     if card.qty is not None and card.limit_price is not None:
-        cost = card.qty * card.limit_price * (OPTION_MULTIPLIER if is_option(i) else 1)
+        cost = card.qty * card.limit_price * (OPTION_MULTIPLIER if option else 1)
         if risk.exposure + cost > max_exposure:
             return "max exposure"  # no automatic down-sizing (not specified)
     return None
@@ -61,7 +67,9 @@ def entry_block_reason(i: DecisionInputs, card: ProposedAction) -> str | None:
 def apply_entry_gates(i: DecisionInputs, cards: list[ProposedAction]) -> list[ProposedAction]:
     out = []
     for card in cards:
-        if card.action in ENTRY_ACTIONS and (reason := entry_block_reason(i, card)):
+        if card.action in ENTRY_ACTIONS and (
+            reason := entry_block_reason(i.config, i.flags, i.risk, card, option=is_option(i))
+        ):
             card = card.model_copy(
                 update={"card_type": CardType.DISABLED, "disabled_reason": reason}
             )

@@ -1,13 +1,23 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from pydantic import ValidationError
 
-from app.api.deps import SessionDep, SessionFactoryDep
+from app.api.deps import AuthDep, SessionDep, SessionFactoryDep
 from app.api.errors import ApiError
 from app.api.pagination import Cursor, Limit, Page
+from app.api.schemas.card_decisions import DecisionRequest
 from app.api.schemas.cards import CardDetail, CardOut
 from app.cards import queries
+from app.cards.approval_service import (
+    ApprovalService,
+    CardNotFound,
+    DecisionConflict,
+    DecisionInvalid,
+    StepUpRequired,
+)
+from app.cards.edits import Edits
 from app.cards.models import CardState
 
 router = APIRouter(tags=["cards"])
@@ -36,3 +46,36 @@ async def get_card(card_id: uuid.UUID, sessions: SessionFactoryDep, _ctx: Sessio
     if card is None:
         raise ApiError("card not found", "not_found", 404)
     return card
+
+
+@router.post("/cards/{card_id}/decision")
+async def decide_card(
+    card_id: uuid.UUID,
+    body: DecisionRequest,
+    request: Request,
+    sessions: SessionFactoryDep,
+    auth: AuthDep,
+    ctx: SessionDep,
+) -> CardDetail:
+    approvals: ApprovalService = request.app.state.approvals
+    try:
+        edits = Edits.model_validate(
+            body.edits.model_dump(by_alias=False, exclude_none=True) if body.edits else {}
+        )
+        await approvals.decide(
+            card_id,
+            body.decision,
+            body.version,
+            edits,
+            session_id=ctx.session_id,
+            consume_step_up=lambda: auth.consume_step_up(ctx),
+        )
+    except CardNotFound:
+        raise ApiError("card not found", "not_found", 404) from None
+    except DecisionConflict as exc:
+        raise ApiError(str(exc), "conflict", 409) from None
+    except (DecisionInvalid, ValidationError) as exc:
+        raise ApiError(str(exc), "invalid", 422) from None
+    except StepUpRequired:
+        raise ApiError("confirm with your passkey first", "step_up_required", 403) from None
+    return await get_card(card_id, sessions, ctx)
