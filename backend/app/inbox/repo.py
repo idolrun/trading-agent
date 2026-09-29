@@ -19,6 +19,7 @@ from app.inbox.models import (
     Stage,
     StageTiming,
 )
+from app.observability.counters import bump
 
 _TERMINAL = (InboxStatus.DONE, InboxStatus.FAILED, InboxStatus.STALE)
 
@@ -59,6 +60,7 @@ async def store_event(db: AsyncSession, env: Envelope) -> bool:
 async def accept(db: AsyncSession, env: Envelope) -> bool:
     """T1: store the event exactly once + queue it + NOTIFY. False = duplicate (no-op)."""
     if not await store_event(db, env):
+        bump("duplicate")
         return False
     message_id, event_type, event_seq = env.key
     db.add(

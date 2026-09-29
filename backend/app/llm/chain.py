@@ -24,6 +24,7 @@ from app.llm.models import CallOutcome, ModelProvider, ModelRole
 from app.llm.registry import ModelRegistry, enabled_providers
 from app.llm.usage import CallRef, record_model_call
 from app.markettime import Clock
+from app.observability.counters import bump
 from app.runtime_config.schema import ChainEntry, LlmConfig
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,10 @@ class LlmChain:
     def breaker(self, provider: str) -> CircuitBreaker:
         return self._breakers.setdefault(provider, CircuitBreaker(self._clock))
 
+    def breakers_open(self) -> dict[str, bool]:
+        """Providers seen so far -> circuit open (or half-open probing)."""
+        return {p: b.is_open for p, b in self._breakers.items()}
+
     async def run[T](
         self,
         role: Role,
@@ -202,6 +207,8 @@ class LlmChain:
                 if outcome is None:
                     breaker.failure()  # never leave a half-open probe dangling
                     raise
+                if outcome == CallOutcome.RATE_LIMITED:
+                    bump(f"rate_limited:{entry.provider}")
                 if outcome in TRANSPORT_FAILURES:
                     breaker.failure()
                 else:

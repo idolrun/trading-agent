@@ -5,6 +5,8 @@ import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
+from app.observability.counters import bump
+
 DEFAULT_CONCURRENCY = 4
 
 
@@ -23,4 +25,8 @@ class ProviderLimiter:
             self._semaphores[provider] = sem
         started = time.monotonic()
         async with sem:
-            yield int((time.monotonic() - started) * 1000)
+            wait_ms = int((time.monotonic() - started) * 1000)
+            bump(f"slot:{provider}")
+            if wait_ms:
+                bump(f"slot_waited:{provider}")
+            yield wait_ms

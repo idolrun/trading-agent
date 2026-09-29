@@ -67,6 +67,7 @@ from app.messageapi.fake import FakeMessageHistory
 from app.messageapi.port import MessageHistory
 from app.notify.bus import EventBus
 from app.notify.push import PushService
+from app.observability.service import HealthService, check_spend, prune_checkpoints, run_daily
 from app.pipeline.plan import Planner
 from app.pipeline.processor import RawReviewPoisonHandler
 from app.pipeline.release import ReleaseService
@@ -277,6 +278,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store=store,
         clock=app.state.clock,
     )
+    app.state.health = HealthService(
+        session_factory,
+        clock=app.state.clock,
+        config=config_service,
+        feed=feed_health,
+        llm=app.state.llm,
+        reconciler=reconciler,
+    )
     app.state.bus = EventBus()
     background = [
         config_listener,
@@ -342,6 +351,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         push = PushService(session_factory, app.state.bus, settings)
         background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
+        background.append(
+            asyncio.create_task(
+                run_daily(
+                    "llm-spend",
+                    lambda: check_spend(
+                        session_factory,
+                        config=config_service,
+                        alerts=app.state.alerts,
+                        clock=app.state.clock,
+                    ),
+                ),
+                name="llm-spend",
+            )
+        )
+        background.append(
+            asyncio.create_task(
+                run_daily(
+                    "checkpoint-prune", lambda: prune_checkpoints(session_factory, app.state.clock)
+                ),
+                name="checkpoint-prune",
+            )
+        )
     app.state.dispatcher = dispatcher
     try:
         yield
@@ -386,12 +417,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(manual_routes.router, prefix="/api/v1")
     app.include_router(labels_routes.router, prefix="/api/v1")
     app.include_router(health_routes.router, prefix="/api/v1")
+    app.include_router(health_routes.liveness)
     app.include_router(push_routes.router, prefix="/api/v1")
     app.include_router(ingest_routes.router)
-
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
 
     return app
 

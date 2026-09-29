@@ -167,7 +167,11 @@ async def test_feed_orders_fills_health(seeded: tuple[Api, Harness]) -> None:
 
     health = (await c.get("/api/v1/health/details")).json()
     assert health["status"] == "ok" and health["flags"]["kill_switch"] is False
-    assert health["backlogDepth"] == 0
+    assert health["backlogDepth"] == 0 and health["window"] == "day"
+    assert health["messages"]["total"] == 3 and health["orders"]["rejected"] == 0
+    assert {p["provider"] for p in health["llm"]["providers"]} == set()
+    assert (await c.get("/api/v1/health/details", params={"window": "7d"})).json()["window"] == "7d"
+    assert (await c.get("/api/v1/health/details", params={"window": "1y"})).status_code == 422
 
 
 async def test_alerts_pagination_and_acknowledge(seeded: tuple[Api, Harness]) -> None:

@@ -664,6 +664,29 @@
         "title": "CardOut",
         "type": "object"
       },
+      "CardOutcome": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "reasonCode": {
+            "title": "Reasoncode",
+            "type": "string"
+          },
+          "toState": {
+            "title": "Tostate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "toState",
+          "reasonCode",
+          "count"
+        ],
+        "title": "CardOutcome",
+        "type": "object"
+      },
       "CardState": {
         "enum": [
           "pending",
@@ -1493,9 +1516,27 @@
             "title": "Backlogdepth",
             "type": "integer"
           },
+          "cardOutcomes": {
+            "items": {
+              "$ref": "#/components/schemas/CardOutcome"
+            },
+            "title": "Cardoutcomes",
+            "type": "array"
+          },
           "catchUp": {
             "title": "Catchup",
             "type": "boolean"
+          },
+          "feedHeartbeatAgeSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedheartbeatageseconds"
           },
           "feedSilenceSeconds": {
             "anyOf": [
@@ -1526,6 +1567,23 @@
             ],
             "title": "Heartbeatageseconds"
           },
+          "invariantBlocks": {
+            "title": "Invariantblocks",
+            "type": "integer"
+          },
+          "latency": {
+            "items": {
+              "$ref": "#/components/schemas/StageLatency"
+            },
+            "title": "Latency",
+            "type": "array"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/LlmStats"
+          },
+          "messages": {
+            "$ref": "#/components/schemas/MessageCounts"
+          },
           "oldestUnprocessedSeconds": {
             "anyOf": [
               {
@@ -1537,6 +1595,22 @@
             ],
             "title": "Oldestunprocessedseconds"
           },
+          "orders": {
+            "$ref": "#/components/schemas/OrderStats"
+          },
+          "postgres": {
+            "$ref": "#/components/schemas/PostgresStats"
+          },
+          "queueWait": {
+            "items": {
+              "$ref": "#/components/schemas/QueueWait"
+            },
+            "title": "Queuewait",
+            "type": "array"
+          },
+          "reconciliation": {
+            "$ref": "#/components/schemas/ReconciliationStats"
+          },
           "status": {
             "enum": [
               "ok",
@@ -1544,16 +1618,36 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "window": {
+            "enum": [
+              "session",
+              "day",
+              "7d"
+            ],
+            "title": "Window",
+            "type": "string"
           }
         },
         "required": [
           "status",
+          "window",
           "feedSilenceSeconds",
+          "feedHeartbeatAgeSeconds",
           "flags",
           "catchUp",
           "backlogDepth",
           "oldestUnprocessedSeconds",
-          "heartbeatAgeSeconds"
+          "heartbeatAgeSeconds",
+          "latency",
+          "queueWait",
+          "messages",
+          "llm",
+          "cardOutcomes",
+          "orders",
+          "invariantBlocks",
+          "reconciliation",
+          "postgres"
         ],
         "title": "HealthDetails",
         "type": "object"
@@ -2029,6 +2123,102 @@
         "title": "LlmConfig",
         "type": "object"
       },
+      "LlmModelStats": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "errorRate": {
+            "title": "Errorrate",
+            "type": "number"
+          },
+          "fallbackCalls": {
+            "title": "Fallbackcalls",
+            "type": "integer"
+          },
+          "latencyP50Ms": {
+            "title": "Latencyp50Ms",
+            "type": "number"
+          },
+          "latencyP95Ms": {
+            "title": "Latencyp95Ms",
+            "type": "number"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Outcomes",
+            "type": "object"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "spendUsd": {
+            "title": "Spendusd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "calls",
+          "latencyP50Ms",
+          "latencyP95Ms",
+          "outcomes",
+          "errorRate",
+          "fallbackCalls",
+          "spendUsd"
+        ],
+        "title": "LlmModelStats",
+        "type": "object"
+      },
+      "LlmProviderStats": {
+        "properties": {
+          "breakerOpen": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeropen"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "rateLimitedSinceStart": {
+            "title": "Ratelimitedsincestart",
+            "type": "integer"
+          },
+          "semaphoreWaitsSinceStart": {
+            "title": "Semaphorewaitssincestart",
+            "type": "integer"
+          },
+          "slotsSinceStart": {
+            "title": "Slotssincestart",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider",
+          "breakerOpen",
+          "slotsSinceStart",
+          "semaphoreWaitsSinceStart",
+          "rateLimitedSinceStart"
+        ],
+        "title": "LlmProviderStats",
+        "type": "object"
+      },
       "LlmRoles": {
         "additionalProperties": false,
         "properties": {
@@ -2055,6 +2245,59 @@
           }
         },
         "title": "LlmRoles",
+        "type": "object"
+      },
+      "LlmStats": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/LlmModelStats"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "monthlyBudgetUsd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthlybudgetusd"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/LlmProviderStats"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "slowPathShare": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slowpathshare"
+          },
+          "spendMonthToDateUsd": {
+            "title": "Spendmonthtodateusd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "models",
+          "providers",
+          "slowPathShare",
+          "spendMonthToDateUsd",
+          "monthlyBudgetUsd"
+        ],
+        "title": "LlmStats",
         "type": "object"
       },
       "LotDetail": {
@@ -2364,6 +2607,44 @@
           "orderIds"
         ],
         "title": "ManualResultOut",
+        "type": "object"
+      },
+      "MessageCounts": {
+        "properties": {
+          "backfilled": {
+            "title": "Backfilled",
+            "type": "integer"
+          },
+          "duplicatesSinceStart": {
+            "title": "Duplicatessincestart",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "late": {
+            "title": "Late",
+            "type": "integer"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "late",
+          "stale",
+          "backfilled",
+          "failed",
+          "duplicatesSinceStart"
+        ],
+        "title": "MessageCounts",
         "type": "object"
       },
       "MsgType": {
@@ -2687,6 +2968,32 @@
           "createdAt"
         ],
         "title": "OrderOut",
+        "type": "object"
+      },
+      "OrderStats": {
+        "properties": {
+          "byStatus": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bystatus",
+            "type": "object"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "reprices": {
+            "title": "Reprices",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "byStatus",
+          "rejected",
+          "reprices"
+        ],
+        "title": "OrderStats",
         "type": "object"
       },
       "OrderStatus": {
@@ -3222,6 +3529,24 @@
         "title": "PositionStatus",
         "type": "string"
       },
+      "PostgresStats": {
+        "properties": {
+          "connections": {
+            "title": "Connections",
+            "type": "integer"
+          },
+          "lockWaits": {
+            "title": "Lockwaits",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "connections",
+          "lockWaits"
+        ],
+        "title": "PostgresStats",
+        "type": "object"
+      },
       "Price": {
         "additionalProperties": false,
         "description": "USD per million tokens.",
@@ -3564,6 +3889,94 @@
           "prelabel"
         ],
         "title": "QueueItem",
+        "type": "object"
+      },
+      "QueueWait": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "maxMs": {
+            "title": "Maxms",
+            "type": "number"
+          },
+          "p95Ms": {
+            "title": "P95Ms",
+            "type": "number"
+          },
+          "providerId": {
+            "title": "Providerid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerId",
+          "count",
+          "p95Ms",
+          "maxMs"
+        ],
+        "title": "QueueWait",
+        "type": "object"
+      },
+      "ReconciliationStats": {
+        "properties": {
+          "clean": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "lastRunAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrunat"
+          },
+          "mismatchAlerts": {
+            "title": "Mismatchalerts",
+            "type": "integer"
+          },
+          "mismatches": {
+            "title": "Mismatches",
+            "type": "integer"
+          },
+          "unknownOrders": {
+            "title": "Unknownorders",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lastRunAt",
+          "clean",
+          "mismatches",
+          "unknownOrders",
+          "error",
+          "mismatchAlerts"
+        ],
+        "title": "ReconciliationStats",
         "type": "object"
       },
       "RegisterOptionsRequest": {
@@ -4239,6 +4652,48 @@
         ],
         "title": "Split",
         "type": "string"
+      },
+      "StageLatency": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "p50Ms": {
+            "title": "P50Ms",
+            "type": "number"
+          },
+          "p95Ms": {
+            "title": "P95Ms",
+            "type": "number"
+          },
+          "p99Ms": {
+            "title": "P99Ms",
+            "type": "number"
+          },
+          "path": {
+            "enum": [
+              "fast",
+              "slow"
+            ],
+            "title": "Path",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "path",
+          "count",
+          "p50Ms",
+          "p95Ms",
+          "p99Ms"
+        ],
+        "title": "StageLatency",
+        "type": "object"
       },
       "StepUpResponse": {
         "properties": {
@@ -5479,7 +5934,25 @@
     },
     "/api/v1/health/details": {
       "get": {
+        "description": "PRD \u00a716 metrics over `window`: `session` (since process start), `day` (24 h, default)\nor `7d`. In-process counters (`*_since_start`) ignore the window.",
         "operationId": "details_api_v1_health_details_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "session",
+                "day",
+                "7d"
+              ],
+              "title": "Window",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5490,6 +5963,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Details",
@@ -6579,24 +7062,25 @@
     },
     "/health": {
       "get": {
+        "description": "External uptime monitor target (TRD \u00a72.4): 503 when the DB is unreachable or, with\nbackground services running, the dispatcher heartbeat is older than 15 s.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Health Health Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "description": "Database down or heartbeat stale"
           }
         },
-        "summary": "Health"
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/ingest": {

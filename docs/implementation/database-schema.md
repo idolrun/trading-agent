@@ -444,7 +444,7 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 
 ## 10. Retention and growth
 - 7-year retention for all audit tables (C63). Volume estimate: ≤ 2,500 message events/session × ~250 sessions/year ≈ 0.6 M events/year; `model_calls` is the largest (jsonb request/response). Partitioning is **not** planned now (YAGNI); add range partitioning by month on `model_calls`/`stage_timings` when a table exceeds ~50 GB or query p95 degrades (measure first).
-- LangGraph checkpoints for finished threads pruned after 30 days (TRD §5.2) by a job in F049.
+- LangGraph checkpoints for finished threads (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) pruned after 30 days (TRD §5.2) by the daily F049 job: message threads `msg:<id>:<type>:<seq>:<attempt>` (inbox row done/failed/stale, `finished_at` old) and `recheck:<id>:*`, approval threads `card:<card_id>` (card not pending/approved and its last `card_events.at` old). Domain tables stay the audit.
 
 ## 11. Migration grouping
 | Migration | Feature | Tables |
@@ -459,6 +459,7 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 | `0008_event_seq_bigint` | F011 | `event_seq` → bigint on every table carrying the message event key |
 | `0009_alert_kind_timer_failed` | F027 | `alerts.kind` gains `timer_failed` |
 | `0010_alert_kind_order_failed` | F028 | `alerts.kind` gains `order_failed` |
+| `0014_alert_kind_llm_spend` | F049 | `alerts.kind` gains `llm_spend` (`0011`–`0013` added `entry_partial`, `underlying_stop`, `eod_forced_close`) |
 | later | owning feature | only additive changes, each updating this document |
 
 ## 12. Implementation notes (decisions made while implementing F002–F005)
@@ -495,3 +496,4 @@ Recorded here per the rule at the top of this document. None changes a column's 
 | 27 | `alerts.kind` `timer_failed` (migration `0009`, F027) | A timer handler raised; retried once after 5 s, then alert only. | No existing kind fit. |
 | 28 | `alerts.kind` `order_failed` (migration `0010`, F028) | Broker rejected the order, broker unavailable, or a timed-out submit the broker does not know (intent voided, never resubmitted). | No existing kind fit. |
 | 29 | `eval_labels.label` shape and replay `model_calls` (no migration, F048) | `label = {signals: [{idx, msg_type, instrument?, fields?, corrected?}], link?: {idx, provider_position_id}}` (snake_case; `fields` = plain expected values by `SignalFields` name; `corrected` = F047's edited position fields, not scored). The current label of an event is the row no other row supersedes. The `prelabel` suggestion is the latest ok `model_calls` row with `role='prelabel'` (no table). Replay and prelabel model calls leave `model_calls.eval_run_id` NULL. | `eval_runs` is insert-only and written after the run, so a call cannot reference its run through the FK while the run is going. Replay cost = `model_calls.cost_usd` since the run started. |
+| 30 | `alerts.kind` `llm_spend` and health metrics (migration `0014`, F049) | Month-to-date spend at 80 % / 100 % of `llm_monthly_budget_usd`; `dedupe_key = llm_spend:{YYYY-MM}:{severity}`. Metric SQL reads existing tables only; Postgres connection and lock-wait counts use `pg_stat_activity` / `pg_locks` without `pg_monitor`. Replay `model_calls` (deviation 29) count toward spend and LLM stats. | No existing kind fit; no new tables or grants. |

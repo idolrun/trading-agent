@@ -40,6 +40,7 @@ class AlertKind(StrEnum):
     ENTRY_PARTIAL = "entry_partial"  # entry remainder cancelled after M s, some filled (F041)
     UNDERLYING_STOP = "underlying_stop"  # a system-held underlying stop fired (F044)
     EOD_FORCED_CLOSE = "eod_forced_close"  # expiring lot closed at cutoff 2 (F045)
+    LLM_SPEND = "llm_spend"  # month-to-date spend crossed 80 % / 100 % of the budget (F049)
 
 
 class Alert(SQLModel, table=True):
