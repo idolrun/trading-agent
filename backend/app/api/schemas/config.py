@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Self
 
 from pydantic import Field
@@ -24,3 +25,11 @@ class UpdateConfigRequest(CamelModel):
     expected_version: int = Field(ge=0)  # 0 = first initialization
     document: RuntimeConfig
     reason: str = Field(min_length=1)
+
+
+class ConfigChangeOut(CamelModel):
+    version: int
+    actor: str
+    reason: str | None
+    diff: dict[str, Any]  # {top-level key: {before, after}}
+    at: datetime

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw"
 import { setupServer } from "msw/node"
+import { defaultDocument, missingKeys } from "@/features/config/types"
 import type { Schemas } from "@/lib/api/types"
 
 const CARD_ID = "0a1b2c3d-0000-4000-8000-000000000001"
@@ -210,7 +211,36 @@ export const healthFixture = {
   reconciliation: { clean: false, error: "broker timeout", lastRunAt: "2026-09-29T14:10:00Z", mismatchAlerts: 1, mismatches: 3, unknownOrders: 2 },
 } satisfies Schemas["HealthDetails"]
 
+const configDocument = {
+  ...defaultDocument(),
+  channels: ["999888777666555444"],
+  feed_silence_s: 60,
+  option_tiers: { default: "500", small: "250", lotto: "100" },
+  entry_chase_pct: "2",
+}
+
+/** Version 3, money values unset: `missingForEntries` lists them. */
+export const configFixture: Schemas["ConfigResponse"] = {
+  version: 3,
+  document: configDocument,
+  missingForEntries: missingKeys(configDocument),
+}
+
+export const configChangesFixture: Schemas["Page_ConfigChangeOut_"] = {
+  items: [
+    { version: 3, actor: "alice", reason: "tighten chase", diff: { entry_chase_pct: { before: "3", after: "2" } }, at: "2026-09-29T14:00:00Z" },
+    { version: 2, actor: "bob", reason: null, diff: { channels: { before: [], after: ["999888777666555444"] }, feed_silence_s: { before: null, after: 60 } }, at: "2026-09-28T14:00:00Z" },
+  ],
+  nextCursor: null,
+}
+
 export const handlers = [
+  http.get("*/api/v1/config", () => HttpResponse.json(configFixture)),
+  http.put("*/api/v1/config", async ({ request }) => {
+    const body = (await request.json()) as { document: Record<string, unknown> }
+    return HttpResponse.json({ version: configFixture.version + 1, document: body.document, missingForEntries: missingKeys(body.document) })
+  }),
+  http.get("*/api/v1/config/changes", () => HttpResponse.json(configChangesFixture)),
   http.get("*/api/v1/cards", ({ request }) => {
     const state = new URL(request.url).searchParams.get("state")
     return HttpResponse.json(page(state && state !== cardFixture.state ? [] : [cardFixture]))

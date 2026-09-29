@@ -46,3 +46,24 @@ async def test_requires_session(api: Api) -> None:
     r = await api.client.get("/api/v1/config")
     assert r.status_code == 401
     assert r.json()["code"] == "unauthorized"
+
+
+async def test_changes_history_newest_first_and_paged(signed_in: Api) -> None:
+    c = signed_in.client
+    await c.put("/api/v1/config", json={"expectedVersion": 0, "reason": "init", "document": {}})
+    await c.put(
+        "/api/v1/config",
+        json={"expectedVersion": 1, "reason": "silence", "document": {"feed_silence_s": 600}},
+    )
+    r = await c.get("/api/v1/config/changes", params={"limit": 1})
+    assert r.status_code == 200, r.text
+    page = r.json()
+    [top] = page["items"]
+    assert (top["version"], top["reason"], top["actor"]) == (2, "silence", "user")
+    assert top["diff"]["feed_silence_s"]["after"] == 600 and page["nextCursor"]
+    rest = (await c.get("/api/v1/config/changes", params={"cursor": page["nextCursor"]})).json()
+    assert [i["version"] for i in rest["items"]] == [1] and rest["nextCursor"] is None
+
+
+async def test_changes_requires_session(api: Api) -> None:
+    assert (await api.client.get("/api/v1/config/changes")).status_code == 401

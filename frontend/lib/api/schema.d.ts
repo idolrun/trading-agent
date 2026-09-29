@@ -243,6 +243,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Changes */
+        get: operations["list_changes_api_v1_config_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -942,6 +959,24 @@ export interface components {
              * @enum {string}
              */
             provider: "anthropic" | "openai" | "deepseek" | "openai_compat";
+        };
+        /** ConfigChangeOut */
+        ConfigChangeOut: {
+            /** Actor */
+            actor: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Diff */
+            diff: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string | null;
+            /** Version */
+            version: number;
         };
         /** ConfigResponse */
         ConfigResponse: {
@@ -1756,6 +1791,13 @@ export interface components {
         Page_CardOut_: {
             /** Items */
             items: components["schemas"]["CardOut"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
+        /** Page[ConfigChangeOut] */
+        Page_ConfigChangeOut_: {
+            /** Items */
+            items: components["schemas"]["ConfigChangeOut"][];
             /** Nextcursor */
             nextCursor: string | null;
         };
@@ -2841,6 +2883,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_changes_api_v1_config_changes_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ConfigChangeOut_"];
                 };
             };
             /** @description Client Error */

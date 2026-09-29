@@ -770,6 +770,48 @@
         "title": "ChainEntry",
         "type": "object"
       },
+      "ConfigChangeOut": {
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "diff": {
+            "additionalProperties": true,
+            "title": "Diff",
+            "type": "object"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "actor",
+          "reason",
+          "diff",
+          "at"
+        ],
+        "title": "ConfigChangeOut",
+        "type": "object"
+      },
       "ConfigResponse": {
         "properties": {
           "document": {
@@ -3096,6 +3138,34 @@
           "nextCursor"
         ],
         "title": "Page[CardOut]",
+        "type": "object"
+      },
+      "Page_ConfigChangeOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigChangeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "title": "Page[ConfigChangeOut]",
         "type": "object"
       },
       "Page_FeedItem_": {
@@ -5727,6 +5797,67 @@
           }
         },
         "summary": "Put Config",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/v1/config/changes": {
+      "get": {
+        "operationId": "list_changes_api_v1_config_changes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ConfigChangeOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "List Changes",
         "tags": [
           "config"
         ]

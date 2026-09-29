@@ -75,6 +75,7 @@ Frontend screen (F060). LLM chain validation logic (F031 adds a validator hook).
 |---|---|---|---|---|---|---|
 | GET | `/api/v1/config` | — | `ConfigResponse` | session (F009; until F009 lands, route is registered but protected by a placeholder dependency that denies in production) | `ConfigService.get` | 404 `not_found` if never initialized |
 | PUT | `/api/v1/config` | `UpdateConfigRequest` | `ConfigResponse` | session | `ConfigService.update` | 409 `conflict` version mismatch; 422 `invalid` schema errors |
+| GET | `/api/v1/config/changes` | `cursor`, `limit` | `Page[ConfigChangeOut]` (version, actor, reason, diff, at; newest first; added for F060) | session | `config_changes` query | 422 `invalid` bad cursor |
 
 ## Error cases
 No config row → pipeline treats all entries as "config incomplete"; dispatcher still runs (exits/stops still carded).
