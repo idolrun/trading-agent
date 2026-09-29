@@ -36,7 +36,7 @@ from app.cards.state import IllegalTransition
 from app.cards.validity import ENTRY_ACTIONS, approval_blockers, check_entry, check_exit
 from app.db import in_transaction, notify
 from app.decide.risk import entry_block_reason
-from app.decide.risk_snapshot import build_risk_snapshot
+from app.decide.risk_snapshot import build_risk_snapshot, lot_contract
 from app.decide.types import FlagsView, ProposedAction
 from app.execution.card_executor import SELLS, CardExecutor, ExecutionBlocked, Target
 from app.execution.submit import EntriesBlocked, InvariantViolation
@@ -86,8 +86,12 @@ class _Loaded:
         if self.position is None:
             return None
         lot_open = self.lot is not None and self.lot.status == LotStatus.OPEN
+        sells_lot = self.lot is not None and self.card.action not in ENTRY_ACTIONS
         return Target(
-            instrument=contract_of(state_of(self.position)),
+            # 7.5: after a provider correction the lot keeps its own contract
+            instrument=lot_contract(self.lot)
+            if sells_lot and self.lot is not None
+            else contract_of(state_of(self.position)),
             lot_id=self.lot.lot_id if self.lot else None,
             lot_qty=self.lot.qty if self.lot and lot_open else None,
         )

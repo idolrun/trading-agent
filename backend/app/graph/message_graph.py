@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col
 
 from app.cards.approval_service import ApprovalService
+from app.cards.corrections import CorrectionService
 from app.cards.models import Card, CardAction, CardState
 from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
@@ -76,6 +77,7 @@ class GraphDeps:
     fixture: Interpreter | None = None  # dev/demo/tests only: replaces Jev + LLM
     approvals: ApprovalService | None = None  # None: cards wait (tests of the graph alone)
     relink: RelinkService | None = None  # F037: re-check later follow-ups after a late event
+    corrections: CorrectionService | None = None  # F038; None: edits/deletes are feed-only
     background: set[asyncio.Task[Any]] = field(default_factory=set)
 
     def cfg(self) -> RuntimeConfig:
@@ -99,7 +101,7 @@ def build_message_graph(
     ):
         g.add_node(name, fn)
     g.add_edge(START, "load_context")
-    g.add_conditional_edges("load_context", lambda s: END if s["skip"] else "find_candidates")
+    g.add_conditional_edges("load_context", lambda s: "notify" if s["skip"] else "find_candidates")
     g.add_conditional_edges(
         "find_candidates",
         lambda _s: "fixture_interpret" if deps.fixture is not None else "jev_interpret",
@@ -133,11 +135,15 @@ class _Nodes:
     async def load_context(self, state: MessageState) -> dict[str, Any]:
         ctx = _processing(state)
         env = ctx.envelope
-        if env.key.event_type != EventType.CREATE:
-            # ponytail: edits/deletes stay feed-only until corrections land (F038)
+        if env.key.event_type == EventType.DELETE or (
+            env.key.event_type == EventType.EDIT and self.d.corrections is None
+        ):
+            invalidated: list[uuid.UUID] = []
             async with in_transaction(self.d.sessions, None) as db:
+                if env.key.event_type == EventType.DELETE and self.d.corrections is not None:
+                    invalidated = await self.d.corrections.handle_delete(db, env)  # 7.5
                 await inbox.mark(db, env.key, InboxStatus.DONE, late=ctx.late)
-            return {"skip": True}
+            return {"skip": True, "superseded_ids": [str(c) for c in invalidated]}
         cfg = self.d.cfg()
         profile = await self._profile(env.provider_id)
         async with in_transaction(self.d.sessions, None) as db:
@@ -239,7 +245,12 @@ class _Nodes:
             parents = await ledger.parent_links(db, env.reply_to_id) if env.reply_to_id else ()
         book = {r.provider_position_id: state_of(r) for r in rows}
         version = {r.provider_position_id: r.updated_at for r in rows}
-        outcomes = await self.d.planner.plan(ctx, parsed, cfg, book, parents, self.d.clock.now())
+        planner = (
+            self.d.corrections
+            if self.d.corrections is not None and self.d.corrections.applies(env, parsed)
+            else self.d.planner
+        )  # F038: edits and `correction` signals correct the original's position
+        outcomes = await planner.plan(ctx, parsed, cfg, book, parents, self.d.clock.now())
         await self._stage(ctx, Stage.VALIDATED)
         async with in_transaction(self.d.sessions, None) as db:
             result = await apply_event(
@@ -281,7 +292,7 @@ class _Nodes:
                 pending = [(r[0], r[1]) for r in rows.all()]
         ctx = _processing(state)
         relinks: list[uuid.UUID] = []
-        if ctx.late:
+        if ctx.late and not state["skip"]:
             logger.info("late event applied", extra={"provider_id": ctx.envelope.provider_id})
             if self.d.relink is not None:  # FR-1b: never a silent feed-only
                 relinks = await self.d.relink.recheck_after_late(

@@ -31,6 +31,7 @@ from app.broker.fake import FakeBroker
 from app.broker.port import BrokerClient, BrokerEvents
 from app.broker.simulated import SimulatedBroker
 from app.cards.approval_service import ApprovalService
+from app.cards.corrections import CorrectionService
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.dispatcher.service import Dispatcher
@@ -208,6 +209,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             fixture=_fixture(settings),
             approvals=app.state.approvals,
             relink=relink,
+            corrections=CorrectionService(session_factory, planner=planner, marketdata=marketdata),
         )
         processor = GraphProcessor(graph_deps, checkpointer)
         relink.recheck = processor.recheck

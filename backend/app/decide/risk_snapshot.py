@@ -60,13 +60,14 @@ async def build_risk_snapshot(
 
 async def _mark(marketdata: MarketData, lot: Lot) -> Decimal | None:
     try:
-        return mid_price(await marketdata.quote(_contract(lot)))
+        return mid_price(await marketdata.quote(lot_contract(lot)))
     except Exception:
         logger.warning("no quote for open lot", extra={"lot_id": str(lot.lot_id)})
         return None
 
 
-def _contract(lot: Lot) -> Instrument:
+def lot_contract(lot: Lot) -> Instrument:
+    """What the user actually holds (a provider correction never changes it, 7.5)."""
     if lot.instrument == Kind.STOCK:
         return Stock(symbol=lot.underlying)
     assert lot.expiry and lot.strike and lot.option_right  # noqa: S101 — DB contract_shape

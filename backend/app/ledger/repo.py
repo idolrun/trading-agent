@@ -290,3 +290,13 @@ async def unlinked_follow_ups_after(
         .order_by(col(MessageEvent.posted_at), col(Signal.idx))
     )
     return [(sig, event) for sig, event in rows.tuples().all()]
+
+
+async def has_lot(db: AsyncSession, provider_position_id: uuid.UUID) -> bool:
+    """Did the user ever hold a lot on this provider position (any status)?"""
+    found = await db.scalar(
+        select(col(Lot.lot_id))
+        .where(col(Lot.provider_position_id) == provider_position_id)
+        .limit(1)
+    )
+    return found is not None

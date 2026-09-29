@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.alerts.service import AlertService
 from app.broker.simulated import SimulatedBroker
 from app.cards.approval_service import ApprovalService
+from app.cards.corrections import CorrectionService
 from app.config import get_settings
 from app.db import in_transaction
 from app.dispatcher.types import ProcessingContext
@@ -140,6 +141,7 @@ class Harness:
             fixture=FixtureInterpreter(self.fixtures) if fixture else None,
             approvals=approvals,
             relink=approvals.relink if approvals else None,
+            corrections=CorrectionService(self.factory, planner=planner, marketdata=self.md),
         )
         processor = GraphProcessor(deps, checkpointer)
         if deps.relink is not None:
@@ -192,6 +194,43 @@ class Harness:
     ) -> Envelope:
         """Accept the message into the inbox; write its interpretation (None = no fixture)."""
         env = to_envelope(create(at, text, author=author, **extra), at)
+        async with in_transaction(self.factory, None) as db:
+            await inbox.accept(db, env)
+        if signals is not None:
+            parsed = ParsedSignals(signals=signals, interpreter="llm")
+            (self.fixtures / f"{env.key.message_id}.json").write_text(parsed.model_dump_json())
+        return env
+
+    async def edit(
+        self, original: Envelope, text: str, signals: list[ParsedSignal] | None, *, at: datetime
+    ) -> Envelope:
+        """A `message.update` of `original` (event time = edit time, OD-24)."""
+        payload = create(original.posted_at, text, author=original.provider_id)
+        payload["type"] = "message.update"
+        payload["message"] |= {
+            "id": str(original.key.message_id),
+            "edited_timestamp": at.isoformat(),
+        }
+        return await self._accept(payload, at, text, signals)
+
+    async def delete(self, original: Envelope, *, at: datetime) -> Envelope:
+        payload = create(original.posted_at, "", author=original.provider_id)
+        payload["type"] = "message.delete"
+        payload["message"] |= {
+            "id": str(original.key.message_id),
+            "content": None,
+            "deleted_timestamp": at.isoformat(),
+        }
+        return await self._accept(payload, at, None, None)
+
+    async def _accept(
+        self,
+        payload: dict[str, Any],
+        at: datetime,
+        text: str | None,
+        signals: list[ParsedSignal] | None,
+    ) -> Envelope:
+        env = to_envelope(payload, at)
         async with in_transaction(self.factory, None) as db:
             await inbox.accept(db, env)
         if signals is not None:

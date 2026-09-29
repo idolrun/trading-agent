@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 class MessageState(TypedDict, total=False):
     processing: dict[str, Any]  # ProcessingContext
     recheck: bool  # F037: interpret only, END before decide_apply (no writes)
-    skip: bool  # not a create event: feed only until F038
+    skip: bool  # a delete event (F038): straight to notify
     context: dict[str, Any]  # ProviderContext (C71)
     candidates: dict[str, Any]  # Candidates (F016)
     lot_ids: list[str]  # the user's open lot ids: scope-guard input only, never sent to a model

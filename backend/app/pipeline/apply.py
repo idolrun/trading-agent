@@ -9,11 +9,14 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
+from app.alerts import repo as alerts
+from app.alerts.models import AlertKind, Severity
 from app.cards import repo as cards
 from app.cards.models import (
     Card,
@@ -56,6 +59,16 @@ class BookChanged(Exception):
 
 
 @dataclass(frozen=True)
+class Correction:
+    """F038: this signal corrects an earlier message (an edit event or a `correction`)."""
+
+    target_signal_ids: tuple[uuid.UUID, ...]  # the corrected message's signals
+    position_id: uuid.UUID | None  # the provider position it corrects (None: not an opening)
+    original_text: str | None
+    lot_pnl: Decimal | None  # live P&L of the user's lot, for the after-trade alert
+
+
+@dataclass(frozen=True)
 class SignalOutcome:
     """One signal, fully decided before the transaction."""
 
@@ -67,6 +80,7 @@ class SignalOutcome:
     update: PositionUpdate | None  # provider-ledger change (None = none)
     lot_id: uuid.UUID | None
     cards: list[ProposedAction]
+    correction: Correction | None = None
 
 
 @dataclass(frozen=True)
@@ -149,6 +163,10 @@ async def _apply_signal(
         )
         await db.flush()
 
+    if o.correction is not None:  # F038: replaces supersession and plain card creation
+        await _apply_correction(db, inp, o, o.correction, result)
+        return
+
     if exists and o.position_id is not None and supersedes(o.parsed.msg_type, CardAction.ENTRY):
         for card in await cards.pending_on_position(db, o.position_id, ENTRY_ACTIONS):
             await cards.transition(
@@ -176,6 +194,92 @@ async def _apply_signal(
         )
         if card_id is not None:
             result.card_ids.append(card_id)
+
+
+async def _apply_correction(
+    db: AsyncSession, inp: ApplyInput, o: SignalOutcome, c: Correction, result: ApplyOutcome
+) -> None:
+    """PRD 7.5 / AC-5. Before the user trades: the pending card is invalidated and the
+    corrected interpretation becomes a fresh card. After: alert only, no card; the lot keeps
+    its own contract. Neither: the provider ledger was corrected above, nothing else."""
+    env = inp.ctx.envelope
+    targets = await cards.of_signals(db, c.target_signal_ids)
+    if c.position_id is not None:
+        targets += await cards.pending_on_position(db, c.position_id, ENTRY_ACTIONS)
+    traded = any(t.state in (CardState.APPROVED, CardState.SUBMITTED) for t in targets) or (
+        c.position_id is not None and await ledger.has_lot(db, c.position_id)
+    )
+    if traded:
+        await raise_alert(
+            db,
+            AlertKind.LATE_CORRECTION,
+            Severity.WARNING,
+            "Provider corrected a message after you traded; follow-ups now refer to the "
+            "corrected contract. Your lot keeps what you hold. No action proposed.",
+            details={
+                "original_text": c.original_text,
+                "correction_text": env.text,
+                "lot_pnl": str(c.lot_pnl) if c.lot_pnl is not None else None,
+            },
+            dedupe_key=f"late_correction:{o.signal_id}",
+            message_id=env.key.message_id,
+        )
+        return
+    pending = {t.card_id: t for t in targets if t.state == CardState.PENDING}
+    for card in pending.values():
+        await cards.transition(
+            db,
+            card,
+            CardState.INVALIDATED,
+            CardReason.CORRECTION,
+            CardActor.SYSTEM,
+            detail={"by_signal_id": str(o.signal_id)},
+        )
+        result.superseded_card_ids.append(card.card_id)
+        await notify(db, "cards", _event("card.updated", card.card_id))
+    if not pending:
+        return  # nothing pending and nothing traded: the ledger correction is the whole effect
+    for proposal in o.cards:  # needs fresh approval (C48)
+        card_id = await insert_card(
+            db,
+            proposal,
+            key=f"{o.signal_id}:{proposal.action}",
+            source=CardSource.SIGNAL,
+            signal_id=o.signal_id,
+            provider_id=env.provider_id,
+            position_id=o.position_id,
+            lot_id=o.lot_id,
+            posted_at=env.posted_at,
+        )
+        if card_id is not None:
+            result.card_ids.append(card_id)
+
+
+async def raise_alert(
+    db: AsyncSession,
+    kind: AlertKind,
+    severity: Severity,
+    message: str,
+    *,
+    details: dict[str, object],
+    dedupe_key: str,
+    message_id: int | None = None,
+) -> None:
+    """An alert inside the caller's transaction (atomic with the change it reports)."""
+    alert_id = await alerts.insert_alert(
+        db,
+        kind=kind,
+        severity=severity,
+        message=message,
+        details=details,
+        dedupe_key=dedupe_key,
+        card_id=None,
+        lot_id=None,
+        order_id=None,
+        message_id=message_id,
+    )
+    if alert_id is not None:
+        await notify(db, "alerts", str(alert_id))
 
 
 async def insert_card(
@@ -236,7 +340,7 @@ async def _insert_signal(db: AsyncSession, inp: ApplyInput, o: SignalOutcome) ->
             provider_id=env.provider_id,
             msg_type=o.parsed.msg_type,
             instrument=o.parsed.instrument,
-            fields=o.parsed.fields.model_dump(mode="json", exclude_defaults=True),
+            fields=o.parsed.fields.model_dump(mode="json", exclude_none=True),  # re-parseable
             interpreter=inp.interpreter,
             model_call_id=inp.model_call_id,
             stale=ctx.stale,

@@ -108,3 +108,17 @@ async def pending_on_position(
         .with_for_update()
     )
     return list(rows.all())
+
+
+async def of_signals(db: AsyncSession, signal_ids: Iterable[uuid.UUID]) -> list[Card]:
+    """Locked cards of these signals (corrections / deletes, F038)."""
+    ids = list(signal_ids)
+    if not ids:
+        return []
+    rows = await db.scalars(
+        select(Card)
+        .where(col(Card.signal_id).in_(ids))
+        .order_by(col(Card.created_at))
+        .with_for_update()
+    )
+    return list(rows.all())
