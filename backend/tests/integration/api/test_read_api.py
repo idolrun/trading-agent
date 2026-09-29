@@ -115,6 +115,7 @@ async def test_cards_positions_lots(seeded: tuple[Api, Harness]) -> None:
     assert set(by_action) == {"entry", "trim"}
     entry = by_action["entry"]
     assert entry["providerId"] == str(PROVIDER_A)  # Discord ids as strings
+    assert uuid.UUID(entry["signalId"])  # F059: re-link needs the signal
     assert entry["underlying"] == "GOOGL" and entry["contract"]["strike"] == "357.5"
     assert entry["proposal"]["qty"] == 13 and entry["proposal"]["price"] == "0.74"
     assert entry["sourceMessages"][0]["text"] == "Bought GOOGL 357.5C 10/2 @ 0.71"

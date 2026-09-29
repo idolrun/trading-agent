@@ -7,6 +7,7 @@ const CARD_ID = "0a1b2c3d-0000-4000-8000-000000000001"
 export const cardFixture: Schemas["CardOut"] = {
   id: CARD_ID,
   messageId: "1234567890123456789", // Discord snowflake: string, never a number
+  signalId: "0a1b2c3d-0000-4000-8000-0000000000e2",
   signalIndex: 0,
   action: "entry",
   cardType: "normal",
@@ -144,6 +145,12 @@ export const orderDetailFixture: Schemas["OrderDetail"] = {
   ],
 }
 
+export const profileFixture: Schemas["ProfileOut"] = {
+  aliases: ["spy", "spx"],
+  lexicon: ["lotto"],
+  habits: [],
+}
+
 export const feedFixture: Schemas["FeedItem"] = {
   messageId: "1234567890123456789",
   eventType: "create",
@@ -228,6 +235,7 @@ export const handlers = [
   http.get("*/api/v1/lots/:id", () => HttpResponse.json(lotDetailFixture)),
   http.get("*/api/v1/positions", () => HttpResponse.json(page([positionFixture]))),
   http.get("*/api/v1/positions/:id", () => HttpResponse.json(positionDetailFixture)),
+  http.get("*/api/v1/providers/:id/profile", () => HttpResponse.json(profileFixture)),
   http.get("*/api/v1/feed", () => HttpResponse.json(page([feedFixture]))),
   http.get("*/api/v1/health/details", ({ request }) =>
     HttpResponse.json({ ...healthFixture, window: new URL(request.url).searchParams.get("window") }),

@@ -161,6 +161,13 @@ async def adjust_lot(
     return lot
 
 
+@router.get("/providers/{provider_id}/profile")
+async def get_profile(
+    provider_id: Annotated[int, Path(gt=0)], request: Request, ctx: SessionDep
+) -> ProfileOut:
+    return ProfileOut(**await _corrections(request).profile(provider_id))
+
+
 @router.put("/providers/{provider_id}/profile")
 async def put_profile(
     provider_id: Annotated[int, Path(gt=0)], body: ProfileRequest, request: Request, ctx: SessionDep

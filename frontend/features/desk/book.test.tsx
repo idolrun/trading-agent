@@ -21,7 +21,7 @@ describe("lot detail", () => {
     expect(screen.queryByText(/read-only/i)).not.toBeInTheDocument()
   })
 
-  it("shows a foreign lot as read-only with no action buttons", async () => {
+  it("shows a foreign lot as read-only with exit as its only action", async () => {
     server.use(
       http.get("*/api/v1/lots/:id", () => HttpResponse.json({ ...lotDetailFixture, isForeign: true })),
     )
@@ -29,7 +29,7 @@ describe("lot detail", () => {
     expect(await screen.findByText(/read-only/i)).toBeInTheDocument()
     expect(screen.getByText("Foreign")).toBeInTheDocument()
     expect(screen.getByText(new RegExp(AVG))).toBeInTheDocument()
-    expect(screen.queryAllByRole("button")).toHaveLength(0)
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Exit"])
   })
 })
 

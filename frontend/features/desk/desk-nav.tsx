@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/orders", label: "Orders" },
   { href: "/alerts", label: "Alerts" },
   { href: "/health", label: "Health" },
+  { href: "/manual/entry", label: "Manual entry" },
 ]
 
 export function DeskNav() {

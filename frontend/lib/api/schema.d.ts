@@ -584,7 +584,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Profile */
+        get: operations["get_profile_api_v1_providers__provider_id__profile_get"];
         /** Put Profile */
         put: operations["put_profile_api_v1_providers__provider_id__profile_put"];
         post?: never;
@@ -832,6 +833,8 @@ export interface components {
             providerId: string | null;
             /** Providerpositionid */
             providerPositionId: string | null;
+            /** Signalid */
+            signalId: string | null;
             /** Signalindex */
             signalIndex: number | null;
             /** Sourcemessages */
@@ -897,6 +900,8 @@ export interface components {
             providerId: string | null;
             /** Providerpositionid */
             providerPositionId: string | null;
+            /** Signalid */
+            signalId: string | null;
             /** Signalindex */
             signalIndex: number | null;
             /** Sourcemessages */
@@ -3559,6 +3564,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PositionDetail"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_profile_api_v1_providers__provider_id__profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
                 };
             };
             /** @description Client Error */

@@ -72,6 +72,7 @@ class CardOut(CamelModel):
     id: uuid.UUID
     message_id: DiscordId | None
     signal_index: int | None
+    signal_id: uuid.UUID | None
     action: str
     card_type: str
     state: str

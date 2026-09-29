@@ -5,11 +5,14 @@ import type { ReactNode } from "react"
 import { Badge } from "@/components/badge"
 import { QueryState } from "@/components/query-state"
 import { words } from "@/features/cards/types"
+import { AdjustLot } from "@/features/manual/adjust-lot"
+import { ExitForm } from "@/features/manual/exit-form"
+import { StopForm } from "@/features/manual/stop-form"
 import { useLot } from "@/features/lots/queries"
 import { AVG_LABEL, type LotDetail as Lot } from "@/features/lots/types"
 import { formatContract, formatPrice, formatTime } from "@/lib/format"
 
-/** `actions` is the slot for manual lot actions (F059); a foreign lot never gets them. */
+/** `actions` is the slot for manual lot actions; the caller decides which apply (a foreign lot only gets exit). */
 export function LotView({ lot, actions }: { lot: Lot; actions?: ReactNode }) {
   return (
     <div className="flex flex-col gap-6">
@@ -35,13 +38,18 @@ export function LotView({ lot, actions }: { lot: Lot; actions?: ReactNode }) {
         </p>
         {lot.isForeign ? (
           <p className="mt-1 text-muted-foreground">
-            Read-only. This lot was opened outside this system, so it is shown for reference and cannot be managed
-            here.
+            Read-only. This lot was opened outside this system, so stops and quantity cannot be managed here. You can
+            still exit it.
           </p>
         ) : null}
       </section>
 
-      {!lot.isForeign && actions ? <section aria-label="Actions">{actions}</section> : null}
+      {actions ? (
+        <section aria-label="Actions" className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium">Manual actions</h2>
+          {actions}
+        </section>
+      ) : null}
 
       <section aria-label="Stops" className="flex flex-col gap-2">
         <h2 className="text-lg font-medium">Stops and take profits</h2>
@@ -84,11 +92,26 @@ export function LotView({ lot, actions }: { lot: Lot; actions?: ReactNode }) {
   )
 }
 
+/** A foreign lot gets exit only: the server refuses stop operations and reconcile-adjust for it. */
+function LotActions({ lot }: { lot: Lot }) {
+  return (
+    <>
+      <ExitForm lot={lot} />
+      {lot.isForeign ? null : (
+        <>
+          <StopForm lot={lot} />
+          <AdjustLot lot={lot} />
+        </>
+      )}
+    </>
+  )
+}
+
 export function LotDetail({ lotId }: { lotId: string }) {
   const query = useLot(lotId)
   return (
     <QueryState query={query} loadingLabel="Loading lot" emptyTitle="Lot not found">
-      {(lot) => <LotView lot={lot} />}
+      {(lot) => <LotView lot={lot} actions={lot.status === "closed" ? undefined : <LotActions lot={lot} />} />}
     </QueryState>
   )
 }

@@ -120,6 +120,7 @@ async def _outs(db: AsyncSession, cards: list[Card]) -> list[CardOut]:
                 id=card.card_id,
                 message_id=sig.message_id if sig else None,
                 signal_index=sig.idx if sig else None,
+                signal_id=card.signal_id,
                 action=card.action,
                 card_type=card.card_type,
                 state=card.state,

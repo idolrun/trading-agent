@@ -366,6 +366,18 @@
             ],
             "title": "Providerpositionid"
           },
+          "signalId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signalid"
+          },
           "signalIndex": {
             "anyOf": [
               {
@@ -420,6 +432,7 @@
           "id",
           "messageId",
           "signalIndex",
+          "signalId",
           "action",
           "cardType",
           "state",
@@ -590,6 +603,18 @@
             ],
             "title": "Providerpositionid"
           },
+          "signalId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signalid"
+          },
           "signalIndex": {
             "anyOf": [
               {
@@ -644,6 +669,7 @@
           "id",
           "messageId",
           "signalIndex",
+          "signalId",
           "action",
           "cardType",
           "state",
@@ -6966,6 +6992,47 @@
       }
     },
     "/api/v1/providers/{provider_id}/profile": {
+      "get": {
+        "operationId": "get_profile_api_v1_providers__provider_id__profile_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Provider Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Get Profile",
+        "tags": [
+          "manual"
+        ]
+      },
       "put": {
         "operationId": "put_profile_api_v1_providers__provider_id__profile_put",
         "parameters": [

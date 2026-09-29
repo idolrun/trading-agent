@@ -1,12 +1,45 @@
 "use client"
 
 import Link from "next/link"
+import { useState } from "react"
 import { Badge } from "@/components/badge"
 import { QueryState } from "@/components/query-state"
+import { Button } from "@/components/ui/button"
 import { words } from "@/features/cards/types"
+import { CorrectionDialog, type CorrectionMode } from "@/features/positions/correction-form"
+import { RelinkDialog } from "@/features/positions/relink-dialog"
 import { positionLabel } from "@/features/positions/position-list"
 import { usePosition } from "@/features/positions/queries"
+import type { PositionDetail as Position } from "@/features/positions/types"
+import { ProfileEditor } from "@/features/providers/profile-editor"
 import { formatContract, formatPrice, formatTime } from "@/lib/format"
+
+/** Corrections are the user's word against the provider's: every one asks for a reason and is kept in history. */
+function PositionActions({ position }: { position: Position }) {
+  const [dialog, setDialog] = useState<CorrectionMode | "relink" | null>(null)
+  const close = () => setDialog(null)
+  return (
+    <section aria-label="Actions" className="flex flex-wrap gap-2">
+      <Button type="button" variant="outline" size="sm" onClick={() => setDialog("add")}>
+        Add position
+      </Button>
+      <Button type="button" variant="outline" size="sm" onClick={() => setDialog("edit")}>
+        Edit position
+      </Button>
+      {position.status === "closed" ? null : (
+        <Button type="button" variant="destructive" size="sm" onClick={() => setDialog("close")}>
+          Close position
+        </Button>
+      )}
+      <Button type="button" variant="outline" size="sm" onClick={() => setDialog("relink")}>
+        Re-link signal
+      </Button>
+      <ProfileEditor providerId={position.providerId} />
+      {dialog === "relink" ? <RelinkDialog position={position} onClose={close} /> : null}
+      {dialog && dialog !== "relink" ? <CorrectionDialog mode={dialog} position={position} onClose={close} /> : null}
+    </section>
+  )
+}
 
 export function PositionDetail({ positionId }: { positionId: string }) {
   const query = usePosition(positionId)
@@ -36,6 +69,8 @@ export function PositionDetail({ positionId }: { positionId: string }) {
               <p className="tabular-nums">Take profit {position.tpLevels.join(", ")}</p>
             ) : null}
           </section>
+
+          <PositionActions position={position} />
 
           <section aria-label="Lots" className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Lots</h2>

@@ -173,6 +173,7 @@ async def orders(api: Api, kind: OrderKind | None = None) -> list[Order]:
         ("POST", "/links"),
         ("POST", f"/lots/{uuid.uuid4()}/adjust"),
         ("PUT", "/providers/1/profile"),
+        ("GET", "/providers/1/profile"),
     ],
 )
 async def test_requires_session(api: Api, method: str, path: str) -> None:
@@ -581,6 +582,9 @@ async def test_provider_profile_put_writes_the_store_and_the_audit(m: Api) -> No
 
     r = await m.client.put(url, json={"aliases": ["goog", "googl"], "reason": "more"})
     assert r.json()["aliases"] == ["goog", "googl"]
+    r = await m.client.get(url)
+    assert r.json() == {"aliases": ["goog", "googl"], "lexicon": ["lotto"], "habits": []}
+    assert (await m.client.get("/api/v1/providers/0/profile")).status_code == 422
     audits = await rows(
         m, ManualCorrection, col(ManualCorrection.target_type) == "provider_profile"
     )
