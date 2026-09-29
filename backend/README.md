@@ -59,7 +59,12 @@ endpoint. The first user (and any recovery) comes from the server console:
 uv run python -m app.auth.cli create-user you@example.com    # prints a temporary password once
 uv run python -m app.auth.cli reset-password you@example.com # new temporary password, ends sessions
 uv run python -m app.auth.cli list
+uv run python -m app.auth.cli seed-dev-user                  # ENVIRONMENT=development only
 ```
+
+`seed-dev-user` creates (or resets) the local desk login `dev@idolrun.com` with the fixed
+development password in `app/auth/cli.py` (`DEV_PASSWORD`), no forced change. It refuses to run
+in any other environment.
 
 Temporary passwords must be changed at first login (`POST /api/v1/auth/change-password`; every
 other endpoint answers 403 `password_change_required` until then). A signed-in user manages

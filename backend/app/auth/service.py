@@ -258,6 +258,18 @@ class AuthService:
         )
         return user, temp
 
+    async def set_password(self, user_id: uuid.UUID, password: str) -> User:
+        """Console-only (development seed): a known password, no forced change."""
+        return await self._change_user(
+            user_id,
+            AuditAction.PASSWORD_CHANGED,
+            None,
+            None,
+            password_hash=await hash_password_async(password),
+            must_change_password=False,
+            revoke=True,
+        )
+
     async def _change_user(
         self,
         user_id: uuid.UUID,
