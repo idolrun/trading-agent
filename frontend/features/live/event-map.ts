@@ -1,6 +1,7 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
 import { alertKeys } from "@/features/alerts/queries"
 import { cardKeys } from "@/features/cards/queries"
+import { feedKeys } from "@/features/feed/queries"
 import { healthKeys } from "@/features/health/queries"
 import { lotKeys } from "@/features/lots/queries"
 import { orderKeys } from "@/features/orders/queries"
@@ -8,7 +9,7 @@ import { positionKeys } from "@/features/positions/queries"
 
 /**
  * Backend event type (`app/notify/bus.py`, emitted by pipeline/apply, approval_service,
- * execution/fills, alerts, system/flags) -> query keys to refetch. `id` is the row id, except
+ * execution/fills, alerts, system/flags, inbox/repo `feed.message`) -> query keys to refetch. `id` is the row id, except
  * `flag.changed` (flag name) and `fill.created` (a fill: there is no fill query).
  * `resync` = events may have been missed: everything is refetched.
  */
@@ -22,6 +23,7 @@ const invalidations: Record<string, (id: string) => readonly QueryKey[]> = {
   "position.updated": (id) => [positionKeys.lists(), positionKeys.detail(id)],
   "alert.created": () => [alertKeys.lists()],
   "flag.changed": () => [healthKeys.all],
+  "feed.message": () => [feedKeys.lists()],
 }
 
 export const RESYNC = "resync"

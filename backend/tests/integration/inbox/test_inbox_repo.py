@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
@@ -59,6 +60,7 @@ async def test_notify_only_after_commit(factory: async_sessionmaker[AsyncSession
         libpq_dsn(_url("test_database_url")), autocommit=True
     ) as listener:
         await listener.execute("LISTEN inbox")
+        await listener.execute("LISTEN feed")
         notifies = listener.notifies(timeout=0.3)
         async with factory() as db:
             async with db.begin():
@@ -66,7 +68,11 @@ async def test_notify_only_after_commit(factory: async_sessionmaker[AsyncSession
                 # not committed yet: nothing delivered
                 assert [n async for n in listener.notifies(timeout=0.3)] == []
         received = [n async for n in notifies]
-    assert [(n.channel, n.payload) for n in received] == [("inbox", str(PROVIDER_A))]
+    assert [(n.channel, n.payload) for n in received if n.channel == "inbox"] == [
+        ("inbox", str(PROVIDER_A))
+    ]
+    feed = [json.loads(n.payload) for n in received if n.channel == "feed"]
+    assert [f["type"] for f in feed] == ["feed.message"]
 
 
 async def test_next_for_provider_in_post_order(factory: async_sessionmaker[AsyncSession]) -> None:

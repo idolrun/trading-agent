@@ -15,6 +15,7 @@ describe("event map", () => {
     ["position.updated", [["positions", "list"], ["positions", "detail", ID]]],
     ["alert.created", [["alerts", "list"]]],
     ["flag.changed", [["health"]]],
+    ["feed.message", [["feed", "list"]]],
   ])("%s invalidates its domain keys", (type, keys) => {
     expect(queryKeysFor(type, ID)).toEqual(keys)
   })

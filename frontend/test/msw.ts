@@ -101,6 +101,21 @@ export const positionFixture: Schemas["PositionOut"] = {
   tpLevels: [],
 }
 
+export const feedFixture: Schemas["FeedItem"] = {
+  messageId: "1234567890123456789",
+  eventType: "create",
+  eventSeq: 0,
+  providerId: "111222333444555666",
+  channelId: "999888777666555444",
+  postedAt: "2026-09-29T14:00:00Z",
+  text: "BTO SPY 550c 1.20",
+  replyToId: null,
+  status: "done",
+  labels: [],
+  msgTypes: ["entry"],
+  cardIds: [CARD_ID],
+}
+
 export const healthFixture = {
   status: "ok",
   window: "session",
@@ -131,6 +146,7 @@ export const handlers = [
   http.get("*/api/v1/orders", () => HttpResponse.json(page([orderFixture]))),
   http.get("*/api/v1/lots", () => HttpResponse.json(page([lotFixture]))),
   http.get("*/api/v1/positions", () => HttpResponse.json(page([positionFixture]))),
+  http.get("*/api/v1/feed", () => HttpResponse.json(page([feedFixture]))),
   http.get("*/api/v1/health/details", () => HttpResponse.json(healthFixture)),
 ]
 

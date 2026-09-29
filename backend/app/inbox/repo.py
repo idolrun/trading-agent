@@ -1,5 +1,6 @@
 """Inbox transport boundary (TRD §2.4). Callers own the transaction."""
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -86,6 +87,7 @@ async def accept(db: AsyncSession, env: Envelope) -> bool:
     )
     await db.flush()
     await notify(db, "inbox", str(env.provider_id))
+    await notify(db, "feed", json.dumps({"type": "feed.message", "id": str(message_id)}))  # F056
     return True
 
 
