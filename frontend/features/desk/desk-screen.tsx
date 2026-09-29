@@ -16,8 +16,10 @@ function FeedStatus() {
         <p className="text-sm">
           <span className="capitalize">{health.status === "ok" ? "Feed healthy" : "Feed degraded"}</span>
           <span className="text-muted-foreground">
-            {" "}
-            · {health.feedSilenceSeconds}s since last message
+            ·{" "}
+            {health.feedSilenceSeconds == null
+              ? "no messages yet"
+              : `${health.feedSilenceSeconds}s since last message`}
           </span>
         </p>
       )}

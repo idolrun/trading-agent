@@ -1,19 +1,19 @@
 import { queryOptions, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
-import type { ItemList } from "@/lib/api/types"
+import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
-import type { PositionListFilters, ProviderPosition } from "@/features/positions/types"
+import type { PositionDetail, PositionListFilters } from "@/features/positions/types"
 
 export const positionKeys = domainKeys("positions")
 
-export type PositionList = ItemList<ProviderPosition>
+export type PositionList = Schemas["Page_PositionOut_"]
 
 export function fetchPositionList(filters: PositionListFilters): Promise<PositionList> {
   return apiGet<PositionList>("/api/v1/positions", filters)
 }
 
-export function fetchPosition(positionId: string): Promise<ProviderPosition> {
-  return apiGet<ProviderPosition>(
+export function fetchPosition(positionId: string): Promise<PositionDetail> {
+  return apiGet<PositionDetail>(
     `/api/v1/positions/${encodeURIComponent(positionId)}`,
   )
 }

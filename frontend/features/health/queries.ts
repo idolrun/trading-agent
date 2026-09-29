@@ -1,14 +1,14 @@
 import { queryOptions, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
-import type { FeedHealth } from "@/features/health/types"
+import type { HealthDetails } from "@/features/health/types"
 
 export const healthKeys = {
   all: ["health"] as const,
   feed: () => ["health", "feed"] as const,
 }
 
-export function fetchFeedHealth(): Promise<FeedHealth> {
-  return apiGet<FeedHealth>("/api/v1/health")
+export function fetchFeedHealth(): Promise<HealthDetails> {
+  return apiGet<HealthDetails>("/api/v1/health/details")
 }
 
 export function feedHealthQuery() {

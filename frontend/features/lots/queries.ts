@@ -1,19 +1,19 @@
 import { queryOptions, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
-import type { ItemList } from "@/lib/api/types"
+import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
-import type { Lot, LotListFilters } from "@/features/lots/types"
+import type { LotDetail, LotListFilters } from "@/features/lots/types"
 
 export const lotKeys = domainKeys("lots")
 
-export type LotList = ItemList<Lot>
+export type LotList = Schemas["Page_LotOut_"]
 
 export function fetchLotList(filters: LotListFilters): Promise<LotList> {
   return apiGet<LotList>("/api/v1/lots", filters)
 }
 
-export function fetchLot(lotId: string): Promise<Lot> {
-  return apiGet<Lot>(`/api/v1/lots/${encodeURIComponent(lotId)}`)
+export function fetchLot(lotId: string): Promise<LotDetail> {
+  return apiGet<LotDetail>(`/api/v1/lots/${encodeURIComponent(lotId)}`)
 }
 
 export function lotListQuery(filters: LotListFilters) {

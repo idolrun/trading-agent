@@ -1,12 +1,12 @@
 import { queryOptions, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
-import type { ItemList } from "@/lib/api/types"
+import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
-import type { Alert, AlertListFilters } from "@/features/alerts/types"
+import type { AlertListFilters } from "@/features/alerts/types"
 
 export const alertKeys = domainKeys("alerts")
 
-export type AlertList = ItemList<Alert>
+export type AlertList = Schemas["Page_AlertOut_"]
 
 export function fetchAlertList(filters: AlertListFilters): Promise<AlertList> {
   return apiGet<AlertList>("/api/v1/alerts", filters)

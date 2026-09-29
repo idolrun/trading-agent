@@ -1,27 +1,11 @@
-export const ALERT_SEVERITIES = ["info", "urgent"] as const
+import type { ListFilters, Schemas } from "@/lib/api/types"
 
-export type AlertSeverity = (typeof ALERT_SEVERITIES)[number]
-
-export type Alert = {
-  id: string
-  severity: AlertSeverity
-  message: string
-  acknowledged: boolean
-  cardId: string | null
-  createdAt: string
-}
-
-export type AlertListFilters = {
-  acknowledged?: boolean
-  severity?: AlertSeverity
-}
-
-export function isAlertSeverity(value: string | null): value is AlertSeverity {
-  return ALERT_SEVERITIES.some((severity) => severity === value)
-}
+export type Alert = Schemas["AlertOut"]
+export type AlertSeverity = Schemas["Severity"]
+export type AlertListFilters = ListFilters<"list_alerts_api_v1_alerts_get">
 
 export function alertMatchesFilters(alert: Alert, filters: AlertListFilters): boolean {
-  if (filters.acknowledged !== undefined && alert.acknowledged !== filters.acknowledged) {
+  if (filters.acknowledged != null && alert.acknowledged !== filters.acknowledged) {
     return false
   }
   if (filters.severity && alert.severity !== filters.severity) return false

@@ -1,7 +1,7 @@
 "use client"
 
 import { QueryState } from "@/components/query-state"
-import { formatPrice } from "@/lib/format"
+import { formatContract, formatPrice } from "@/lib/format"
 import { useLotList } from "@/features/lots/queries"
 import { usePositionList } from "@/features/positions/queries"
 
@@ -27,7 +27,7 @@ export function BookPanel() {
                   key={lot.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
                 >
-                  <span>{lot.contract}</span>
+                  <span>{formatContract(lot.contract)}</span>
                   <span className="shrink-0 tabular-nums text-muted-foreground">
                     {lot.qty} @ {formatPrice(lot.avgPrice)}
                   </span>

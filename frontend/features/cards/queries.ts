@@ -1,19 +1,19 @@
 import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
-import type { ItemList } from "@/lib/api/types"
+import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
-import type { Card, CardListFilters } from "@/features/cards/types"
+import type { CardDetail, CardListFilters } from "@/features/cards/types"
 
 export const cardKeys = domainKeys("cards")
 
-export type CardList = ItemList<Card>
+export type CardList = Schemas["Page_CardOut_"]
 
 export function fetchCardList(filters: CardListFilters): Promise<CardList> {
   return apiGet<CardList>("/api/v1/cards", filters)
 }
 
-export function fetchCard(cardId: string): Promise<Card> {
-  return apiGet<Card>(`/api/v1/cards/${encodeURIComponent(cardId)}`)
+export function fetchCard(cardId: string): Promise<CardDetail> {
+  return apiGet<CardDetail>(`/api/v1/cards/${encodeURIComponent(cardId)}`)
 }
 
 export function cardListQuery(filters: CardListFilters) {

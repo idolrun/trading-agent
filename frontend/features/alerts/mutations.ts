@@ -18,11 +18,11 @@ function filtersFromListKey(queryKey: QueryKey): AlertListFilters {
 function patchAlertList(list: AlertList, next: Alert, filters: AlertListFilters): AlertList {
   const index = list.items.findIndex((alert) => alert.id === next.id)
   const matches = alertMatchesFilters(next, filters)
-  if (index === -1) return matches ? { items: [next, ...list.items] } : list
-  if (!matches) return { items: list.items.filter((alert) => alert.id !== next.id) }
+  if (index === -1) return matches ? { ...list, items: [next, ...list.items] } : list
+  if (!matches) return { ...list, items: list.items.filter((alert) => alert.id !== next.id) }
   const items = list.items.slice()
   items[index] = next
-  return { items }
+  return { ...list, items }
 }
 
 export function useAcknowledgeAlert() {

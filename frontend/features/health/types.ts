@@ -1,4 +1,3 @@
-export type FeedHealth = {
-  status: "ok" | "degraded"
-  feedSilenceSeconds: number
-}
+import type { Schemas } from "@/lib/api/types"
+
+export type HealthDetails = Schemas["HealthDetails"]

@@ -1,19 +1,19 @@
 import { queryOptions, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
-import type { ItemList } from "@/lib/api/types"
+import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
-import type { Order, OrderListFilters } from "@/features/orders/types"
+import type { OrderDetail, OrderListFilters } from "@/features/orders/types"
 
 export const orderKeys = domainKeys("orders")
 
-export type OrderList = ItemList<Order>
+export type OrderList = Schemas["Page_OrderOut_"]
 
 export function fetchOrderList(filters: OrderListFilters): Promise<OrderList> {
   return apiGet<OrderList>("/api/v1/orders", filters)
 }
 
-export function fetchOrder(orderId: string): Promise<Order> {
-  return apiGet<Order>(`/api/v1/orders/${encodeURIComponent(orderId)}`)
+export function fetchOrder(orderId: string): Promise<OrderDetail> {
+  return apiGet<OrderDetail>(`/api/v1/orders/${encodeURIComponent(orderId)}`)
 }
 
 export function orderListQuery(filters: OrderListFilters) {

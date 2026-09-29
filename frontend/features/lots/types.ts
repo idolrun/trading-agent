@@ -1,21 +1,5 @@
-export const LOT_STATUSES = ["open", "closed"] as const
+import type { ListFilters, Schemas } from "@/lib/api/types"
 
-export type LotStatus = (typeof LOT_STATUSES)[number]
-
-export type Lot = {
-  id: string
-  providerPositionId: string | null
-  contract: string
-  qty: number
-  avgPrice: number
-  isForeign: boolean
-  status: LotStatus
-}
-
-export type LotListFilters = {
-  status?: LotStatus
-}
-
-export function isLotStatus(value: string | null): value is LotStatus {
-  return LOT_STATUSES.some((status) => status === value)
-}
+export type Lot = Schemas["LotOut"]
+export type LotDetail = Schemas["LotDetail"]
+export type LotListFilters = ListFilters<"list_lots_api_v1_lots_get">

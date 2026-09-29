@@ -14,7 +14,7 @@ export function CardSummary({
 }) {
   const title = (
     <>
-      {card.underlying}
+      {card.underlying ?? "Unknown underlying"}
       <span className="font-normal text-muted-foreground"> · {card.action}</span>
     </>
   )
@@ -33,7 +33,7 @@ export function CardSummary({
             )}
           </h3>
           <p className="text-sm text-muted-foreground capitalize">
-            {card.cardType} · {card.state} · {card.providerId}
+            {card.cardType} · {card.state}{card.providerId ? ` · ${card.providerId}` : ""}
           </p>
         </div>
         <p className="shrink-0 text-sm tabular-nums">

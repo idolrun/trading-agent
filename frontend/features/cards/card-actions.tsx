@@ -35,7 +35,7 @@ export function CardActions({
               return
             }
             setDraftError(null)
-            onDecide({ decision: "edit", edits: { qty } })
+            onDecide({ decision: "edit", edits: { qty }, version: card.version })
           }}
         >
           <label className="flex flex-col gap-1 text-sm" htmlFor={`qty-${card.id}`}>
@@ -67,7 +67,7 @@ export function CardActions({
           variant="outline"
           size="sm"
           disabled={pending}
-          onClick={() => onDecide({ decision: "reject" })}
+          onClick={() => onDecide({ decision: "reject", version: card.version })}
         >
           Reject
         </Button>
@@ -75,7 +75,7 @@ export function CardActions({
           type="button"
           size="sm"
           disabled={pending || needsQty}
-          onClick={() => onDecide({ decision: "approve" })}
+          onClick={() => onDecide({ decision: "approve", version: card.version })}
         >
           Approve
         </Button>
