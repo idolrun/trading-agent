@@ -88,18 +88,22 @@ class DiscordListener:
         alerts: AlertService,
         clock: Clock,
     ) -> None:
-        self._token = token
+        self._token = token if token and token.get_secret_value() else None  # blank = off
         self._sessions = sessions
         self._config = config
         self._feed_health = feed_health
         self._alerts = alerts
         self._clock = clock
         self._client: _Client | None = None
-        self._state: State = "connecting" if token else "not_configured"
+        self._state: State = "connecting" if self._token else "not_configured"
         self._ready = asyncio.Event()
         self.last_message_at: datetime | None = None
 
     # --- lifecycle -------------------------------------------------------------------------
+
+    @property
+    def enabled(self) -> bool:
+        return self._token is not None
 
     async def run(self) -> None:
         if self._token is None:

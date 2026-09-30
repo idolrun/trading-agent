@@ -225,7 +225,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.discord = discord_listener
     history: MessageHistory = (
-        DiscordHistory(discord_listener) if settings.discord_token else FakeMessageHistory()
+        DiscordHistory(discord_listener) if discord_listener.enabled else FakeMessageHistory()
     )
     gaps = GapDetector(
         session_factory,

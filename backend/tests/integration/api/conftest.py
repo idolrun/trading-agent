@@ -30,6 +30,7 @@ def api_settings() -> Settings:
             "database_url": _url("test_database_url"),
             "dashboard_origin": ORIGIN,
             "background_enabled": False,
+            "discord_token": None,  # never depend on the developer's .env
         }
     )
 
