@@ -1167,6 +1167,100 @@
         "title": "DecisionRequest",
         "type": "object"
       },
+      "DiscordChannel": {
+        "properties": {
+          "guild": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guild"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "guild",
+          "visible"
+        ],
+        "title": "DiscordChannel",
+        "type": "object"
+      },
+      "DiscordStatus": {
+        "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/DiscordChannel"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "lastMessageAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastmessageat"
+          },
+          "state": {
+            "enum": [
+              "not_configured",
+              "connecting",
+              "connected",
+              "login_failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "account",
+          "lastMessageAt",
+          "channels"
+        ],
+        "title": "DiscordStatus",
+        "type": "object"
+      },
       "EditPositionRequest": {
         "description": "Only the fields sent change; an explicit null clears one (e.g. `stopLevel`).",
         "properties": {
@@ -6118,6 +6212,37 @@
         "summary": "List Changes",
         "tags": [
           "config"
+        ]
+      }
+    },
+    "/api/v1/discord/status": {
+      "get": {
+        "operationId": "status_api_v1_discord_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscordStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "discord"
         ]
       }
     },

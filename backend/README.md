@@ -74,6 +74,15 @@ absolute, bound to the browser's User-Agent. State-changing `/api/*` calls must 
 `Origin: DASHBOARD_ORIGIN`. Card decisions, manual entry, flatten and lot adjust need a fresh
 password step-up (`/auth/step-up`, 120 s, single use).
 
+## Discord listener
+
+The backend reads Discord itself (a user-account "selfbot" via `discord.py-self`: against
+Discord's terms, use a throwaway account). Set `DISCORD_TOKEN` in `.env` and restart; unset =
+listener off. Watched channels are `channels` in the runtime config, managed on the dashboard
+**Discord** page (or `/config`). Messages, edits and deletes go through the same inbox path as
+`POST /ingest`; gap backfill uses the channel history after a restart. Bot authors are ignored;
+embed text is appended to the message. `GET /api/v1/discord/status` reports the connection.
+
 ## Message ingest (F011)
 
 `POST /ingest` takes the (provisional) Message API payload, signed with

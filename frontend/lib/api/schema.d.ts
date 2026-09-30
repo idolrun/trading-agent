@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discord/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_discord_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -1134,6 +1151,31 @@ export interface components {
             edits?: components["schemas"]["EditsIn"] | null;
             /** Version */
             version: number;
+        };
+        /** DiscordChannel */
+        DiscordChannel: {
+            /** Guild */
+            guild: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** Visible */
+            visible: boolean;
+        };
+        /** DiscordStatus */
+        DiscordStatus: {
+            /** Account */
+            account: string | null;
+            /** Channels */
+            channels: components["schemas"]["DiscordChannel"][];
+            /** Lastmessageat */
+            lastMessageAt: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "not_configured" | "connecting" | "connected" | "login_failed";
         };
         /**
          * EditPositionRequest
@@ -3000,6 +3042,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_ConfigChangeOut_"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    status_api_v1_discord_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordStatus"];
                 };
             };
             /** @description Client Error */

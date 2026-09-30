@@ -258,7 +258,15 @@ export const labelProgressFixture: Schemas["LabelProgress"] = {
   minProviders: 5,
 }
 
+export const discordStatusFixture: Schemas["DiscordStatus"] = {
+  state: "connected",
+  account: "signals#0001",
+  lastMessageAt: "2026-09-29T14:30:00Z",
+  channels: [{ id: "999888777666555444", name: "alerts", guild: "Owls", visible: true }],
+}
+
 export const handlers = [
+  http.get("*/api/v1/discord/status", () => HttpResponse.json(discordStatusFixture)),
   http.get("*/api/v1/config", () => HttpResponse.json(configFixture)),
   http.put("*/api/v1/config", async ({ request }) => {
     const body = (await request.json()) as { document: Record<string, unknown> }

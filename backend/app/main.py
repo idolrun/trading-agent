@@ -18,6 +18,7 @@ from app.api.routes import alerts as alerts_routes
 from app.api.routes import auth as auth_routes
 from app.api.routes import cards as cards_routes
 from app.api.routes import config as config_routes
+from app.api.routes import discord as discord_routes
 from app.api.routes import events as events_routes
 from app.api.routes import feed as feed_routes
 from app.api.routes import health as health_routes
@@ -40,6 +41,8 @@ from app.cards.approval_service import ApprovalService
 from app.cards.corrections import CorrectionService
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
+from app.discord_source.history import DiscordHistory
+from app.discord_source.listener import DiscordListener
 from app.dispatcher.service import Dispatcher
 from app.execution.brackets import BracketService
 from app.execution.card_executor import CardExecutor
@@ -212,7 +215,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         clock=app.state.clock,
     )
     app.state.feed_health = feed_health
-    history: MessageHistory = FakeMessageHistory()  # real client: F050
+    discord_listener = DiscordListener(
+        settings.discord_token,
+        sessions=session_factory,
+        config=config_service,
+        feed_health=feed_health,
+        alerts=app.state.alerts,
+        clock=app.state.clock,
+    )
+    app.state.discord = discord_listener
+    history: MessageHistory = (
+        DiscordHistory(discord_listener) if settings.discord_token else FakeMessageHistory()
+    )
     gaps = GapDetector(
         session_factory,
         history=history,
@@ -366,6 +380,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         push = PushService(session_factory, app.state.bus, settings)
         background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
+        background.append(asyncio.create_task(discord_listener.run(), name="discord-listener"))
         background.append(
             asyncio.create_task(
                 run_daily(
@@ -429,6 +444,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_routes.router, prefix="/api/v1")
     app.include_router(users_routes.router, prefix="/api/v1")
     app.include_router(config_routes.router, prefix="/api/v1")
+    app.include_router(discord_routes.router, prefix="/api/v1")
     app.include_router(events_routes.router, prefix="/api/v1")
     for read in (feed_routes, cards_routes, positions_routes, lots_routes, orders_routes):
         app.include_router(read.router, prefix="/api/v1")

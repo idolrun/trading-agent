@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/alerts", label: "Alerts" },
   { href: "/health", label: "Health" },
   { href: "/manual/entry", label: "Manual entry" },
+  { href: "/discord", label: "Discord" },
   { href: "/config", label: "Config" },
   { href: "/users", label: "Users" },
   { href: "/audit", label: "Audit" },
