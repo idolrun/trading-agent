@@ -37,6 +37,11 @@ SINGLE_ROLES = {
     "share_or_contract_qty": "qty_stated",
 }
 FLAGS = ("candle_close", "is_add", "breakeven_stop", "stop_removed")
+STOP_TYPES = frozenset({MsgType.STOP_SET, MsgType.STOP_MOVE, MsgType.STOP_CANCEL})
+EXIT_TYPES = frozenset({MsgType.TRIM, MsgType.FULL_EXIT, MsgType.SOFT_EXIT, MsgType.STOCK_EXIT})
+# Flags that change what an order does only when the message carries a stop; `is_add` changes
+# nothing downstream (the link decides add vs new).
+STOP_FLAGS = frozenset({"candle_close", "breakeven_stop", "stop_removed"})
 _RIGHT_WORD = re.compile(r"\b(?:calls?|puts?)\b", re.IGNORECASE)
 
 
@@ -173,18 +178,32 @@ def map_answers(
         fields["size_tier"] = {"value": tier.choice.casefold(), "source": source}
         confidence["size_tier"] = _d(tier.confidence)
 
+    # A question that does not apply to the message ("how much is sold?" on an entry, "which
+    # price is the stop?" with no stop) is answered at 0.2-0.5 by Jev: noise, not doubt. Such
+    # answers are ignored instead of sending every plain entry to the slow path (replay of 518
+    # real messages: 0 assembled). Where the question applies, low confidence still blocks.
+    has_stop = msg_type in STOP_TYPES or "stop_level" in fields
     for name in ("exit_fraction", "stop_basis", "instrument"):
+        if (name == "exit_fraction" and msg_type not in EXIT_TYPES) or (
+            name == "stop_basis" and not has_stop
+        ):
+            continue
         a = choice(name)
         if confident(name, a) and a.choice not in ("not_applicable", "unclear"):
             fields[name] = a.choice
-    for name in (*FLAGS, "has_prose_condition", "is_correction"):
+    for name in FLAGS:
         p = noul(name).noul
-        if _d(max(p, 1 - p)) < t_field:
-            reasons.append(f"{name}: yes/no uncertain ({p:.2f})")
-        elif name in FLAGS:
+        if _d(max(p, 1 - p)) >= t_field:
             fields[name] = p >= 0.5
-        elif p >= 0.5:  # a worded condition or a correction needs the LLM to read it
-            reasons.append(f"{name}: needs the slow path")
+        elif name in STOP_FLAGS and has_stop:
+            reasons.append(f"{name}: yes/no uncertain ({p:.2f})")
+    # A worded condition changes the trade, so any real chance of one goes to the LLM; a
+    # possible correction only when Jev leans yes (its 0.2-0.3 is background noise).
+    p = noul("has_prose_condition").noul
+    if _d(max(p, 1 - p)) < t_field or p >= 0.5:
+        reasons.append(f"has_prose_condition: needs the slow path ({p:.2f})")
+    if noul("is_correction").noul >= 0.5:
+        reasons.append("is_correction: needs the slow path")
 
     for name in REQUIRED.get(msg_type, ()):
         if name not in fields:

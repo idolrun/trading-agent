@@ -1,0 +1,131 @@
+n,sender,text,gold,jev,jev_conf,match_strict,match_coarse,path_default,path_relaxedC
+1,Mr. Banks,@Paulongerrr (Admin),chatter,chatter,1.00,True,True,feed_only,feed_only
+2,Skyy,"7735 didn't hit, that's my target for upside, downside would be 7650. Decent range going into tomorrow but bot",watch,chatter,0.66,False,False,slow_path,feed_only
+3,Giul🇮🇹,@giul-heatseeker Some setups for tomorrow and october i am eyeing that look very interesting Remember to do yo,watch,chatter,0.55,False,False,slow_path,slow_path
+4,KianTrades (Yes its Me),"Will be late tomorrow, celebrating brothers bday, BUT I WILL BE ONLINE FOR FLAT ASS FRIDAY @everyone",chatter,chatter,0.98,True,True,feed_only,feed_only
+5,EliSpicy,"Premarket: bullish, currently spx at 7719, upside target 7730/40 first then 7770 maybe @here",watch,chatter,0.50,False,False,slow_path,slow_path
+6,MuggZone,"AMD hitting ATH overnight , watching this ticker today @here",watch,watch,0.96,True,True,feed_only,feed_only
+7,EliSpicy,7740c 3.1 @here,entry,entry,0.61,True,True,slow_path,slow_path
+8,EliSpicy,out 4.5 @here ;,full_exit,full_exit,0.60,True,True,slow_path,slow_path
+9,EliSpicy,1 min trade,commentary_pnl,chatter,0.49,False,False,slow_path,slow_path
+10,EliSpicy,"Im taking it easy on friday, I think can hold for more",chatter,chatter,0.84,True,True,slow_path,feed_only
+11,EliSpicy,hit 5 @here,commentary_pnl,tp_hit_notice,0.60,False,True,slow_path,slow_path
+12,EliSpicy,wasnt't this crystal clear? @here,chatter,chatter,0.98,True,True,feed_only,feed_only
+13,EliSpicy,100% 4 min market open already @here,commentary_pnl,chatter,0.84,False,False,slow_path,feed_only
+14,EliSpicy,the fastest 100% LOL logging off,commentary_pnl,chatter,0.90,False,False,feed_only,feed_only
+15,Paulongerrr (Admin),"@Paulongerrr (Admin)NOW 10/16 145 calls $5.30 @everyone 135/136 is FLOOR added $3.80, i have a 4.55 average 13",add,add,0.79,True,True,slow_path,slow_path
+16,CashflowChristian(Admin),"MU 1,125c 2.95 @everyone small size",entry,entry,0.90,True,True,slow_path,slow_path
+17,shabs🇨🇦 (μ),Im in 7750cs at 250 but it already ran @here fudge,entry,chatter,0.39,False,False,slow_path,slow_path
+18,shabs🇨🇦 (μ),I was hoping for more of a pullback but w/e SNDK 0dte 1900c at 200 @here lotto,entry,entry,0.89,True,True,slow_path,slow_path
+19,CashflowChristian(Admin),"broke 1,100 and holding send it @everyone cut below 1,100",stop_set,stop_set,0.32,True,True,slow_path,slow_path
+20,Paulongerrr (Admin),bought that dip into support @everyone lets see how she shakes,add,chatter,0.40,False,False,slow_path,slow_path
+21,Paulongerrr (Admin),watch this JUNE high here @everyone,watch,watch,0.97,True,True,feed_only,feed_only
+22,CashflowChristian(Admin),and out @everyone sorry guys,full_exit,full_exit,0.46,True,True,slow_path,slow_path
+23,EliSpicy,"u know im cooking on friday, less active, maybe back late PM",chatter,chatter,0.99,True,True,feed_only,feed_only
+24,MuggZone,MSFT 520 0dte calls 1.15 @here,entry,entry,0.93,True,True,slow_path,slow_path
+25,MuggZone,jesus already 1.35 make a starter position and wait for a pullback to avg down,conditional,conditional,0.60,True,True,slow_path,slow_path
+26,MuggZone,TP 1.55 / 1.85 / 2.30 let runners go,tp_set,tp_set,0.93,True,True,slow_path,slow_path
+27,MuggZone,back at entry,commentary_pnl,entry,0.44,False,False,slow_path,slow_path
+28,MuggZone,also snagged amd 0dte 645 calls 1.90,entry,entry,0.93,True,True,slow_path,assemble
+29,MuggZone,but same with those they jumped fast,chatter,chatter,0.98,True,True,feed_only,feed_only
+30,Paulongerrr (Admin),tsla 377.50 cals $2.08 @everyone,entry,entry,0.60,True,True,slow_path,slow_path
+31,MuggZone,1.50 highs,commentary_pnl,chatter,0.72,False,False,slow_path,feed_only
+32,MuggZone,1st tp hit sold 1/4  @here,trim,tp_hit_notice,0.88,False,False,slow_path,slow_path
+33,Paulongerrr (Admin),stopped quick,full_exit,chatter,0.34,False,False,slow_path,slow_path
+34,Paulongerrr (Admin),need to hold 375.50 for me to have any interest a,watch,stop_set,0.58,False,False,slow_path,slow_path
+35,shabs🇨🇦 (μ),OKAYYY lets goo finally 7750c at 240/con @here lotto friday either works or it doesnt see ya,entry,entry,0.78,True,True,slow_path,slow_path
+36,MuggZone,ugh hit 517.48 then rejected HARD,chatter,chatter,0.75,True,True,slow_path,feed_only
+37,MuggZone,out. on rest of msft calls for now @here,full_exit,full_exit,0.48,True,True,slow_path,slow_path
+38,EliSpicy,7670/65 lighting up big very SUS be careful if u in calls @here I suggest take puts lotto,watch,chatter,0.37,False,False,slow_path,slow_path
+39,EliSpicy,NFA,chatter,chatter,0.82,True,True,slow_path,feed_only
+40,EliSpicy,"aint missed shit today 4/4, shared plays in chat as well ;",commentary_pnl,chatter,0.87,False,False,slow_path,feed_only
+41,Paulongerrr (Admin),msft 515 0dte calls 1.23 @everyone,entry,entry,0.91,True,True,slow_path,assemble
+42,Paulongerrr (Admin),trim 1.52 @everyone,trim,trim,0.98,True,True,slow_path,slow_path
+43,Paulongerrr (Admin),out most 1.86 @everyone,trim,full_exit,0.77,False,True,slow_path,slow_path
+44,Paulongerrr (Admin),runners,chatter,chatter,0.41,True,True,slow_path,slow_path
+45,MuggZone,decent support right at 509,watch,chatter,0.89,False,False,slow_path,feed_only
+46,Paulongerrr (Admin),"stop breakeven on runners, but think we get in the money @everyone",stop_move,commentary_pnl,0.45,False,False,slow_path,slow_path
+47,Paulongerrr (Admin),515 and change,chatter,chatter,0.38,True,True,slow_path,slow_path
+48,Paulongerrr (Admin),wick right off 8,chatter,chatter,0.60,True,True,slow_path,feed_only
+49,Paulongerrr (Admin),HOD 518 would be ultimate target fyi if she gets froggy,watch,tp_set,0.66,False,False,slow_path,slow_path
+50,Paulongerrr (Admin),gotta go here,soft_exit,chatter,0.95,False,False,feed_only,feed_only
+51,Paulongerrr (Admin),very careful here,chatter,chatter,0.96,True,True,feed_only,feed_only
+52,MuggZone,META seeing some big profit taking today,chatter,chatter,0.97,True,True,feed_only,feed_only
+53,Paulongerrr (Admin),pop it here @everyone,soft_exit,chatter,0.83,False,False,slow_path,feed_only
+54,Paulongerrr (Admin),out runners @everyone,full_exit,full_exit,0.31,True,True,slow_path,slow_path
+55,Paulongerrr (Admin),poop target hit right there @everyone,commentary_pnl,tp_hit_notice,0.56,False,True,slow_path,assemble
+56,Paulongerrr (Admin),last 1 and smaller size high risk qqq 740 0dte puts 1.07 @everyone,entry,entry,0.41,True,True,slow_path,slow_path
+57,Paulongerrr (Admin),has to hold under yesterdays high @everyone,watch,conditional,0.40,False,True,slow_path,slow_path
+58,shabs🇨🇦 (μ),7750c green @here I was early sorry,commentary_pnl,commentary_pnl,0.36,True,True,slow_path,slow_path
+59,shabs🇨🇦 (μ),see me in my office yall @here ;,chatter,chatter,1.00,True,True,feed_only,feed_only
+60,shabs🇨🇦 (μ),Holy chop fest 7740c at 290/con @here size for 0,entry,,,False,False,,
+61,shabs🇨🇦 (μ),INSTNAT LMAO lol 360/copn @here,commentary_pnl,chatter,0.43,False,False,slow_path,slow_path
+62,Paulongerrr (Admin),09/28 qqq 740 puts 2.06 @everyone,entry,entry,0.80,True,True,slow_path,assemble
+63,Paulongerrr (Admin),743.50 is cut,stop_set,full_exit,0.37,False,False,slow_path,slow_path
+64,shabs🇨🇦 (μ),7740c 400/con just take the win @here,soft_exit,soft_exit,0.41,True,True,slow_path,slow_path
+65,Paulongerrr (Admin),has to hoild under 74.50 or cut,stop_set,stop_set,0.80,True,True,slow_path,slow_path
+66,shabs🇨🇦 (μ),"it'd be a shame if I could sniff them, oh wait",chatter,chatter,0.99,True,True,feed_only,feed_only
+67,shabs🇨🇦 (μ),500/con @here manage yourselves,commentary_pnl,entry,0.39,False,False,slow_path,slow_path
+68,Paulongerrr (Admin),hold @everyone,chatter,chatter,0.45,True,True,slow_path,slow_path
+69,shabs🇨🇦 (μ),"I gotta run @here, back Monday, see ya",chatter,chatter,1.00,True,True,feed_only,feed_only
+70,Paulongerrr (Admin),trim 1.48 @everyone,trim,trim,0.98,True,True,slow_path,slow_path
+71,shabs🇨🇦 (μ),"Oh note note, SPX WANTS to take out 7740, but not sure what the hold up is @here, we're in ORB best to stay ou",watch,chatter,0.70,False,False,slow_path,feed_only
+72,Paulongerrr (Admin),out more 2.62 @everyone still holding but down to smaller size,trim,trim,0.73,True,True,slow_path,slow_path
+73,Paulongerrr (Admin),hold above yesterdays high will be my cut on rest @everyone,stop_set,stop_set,0.48,True,True,slow_path,slow_path
+74,Paulongerrr (Admin),"or be your call with this volatility be, is much safer @everyone",chatter,chatter,0.93,True,True,feed_only,feed_only
+75,Paulongerrr (Admin),out most 2.82 @everyone,trim,trim,0.83,True,True,slow_path,slow_path
+76,Paulongerrr (Admin),kept a few,chatter,chatter,0.62,True,True,slow_path,feed_only
+77,Paulongerrr (Admin),"I have 3 left and im just leaving them with a breakeven stop and gunna grab lunch, but yesterdays high is what",stop_move,stop_set,0.68,False,True,slow_path,slow_path
+78,Paulongerrr (Admin),Stopped last 3 have a good weekend @everyone,full_exit,chatter,0.71,False,False,slow_path,feed_only
+79,shabs🇨🇦 (μ),7740c 1100/con @here,commentary_pnl,entry,0.52,False,False,slow_path,slow_path
+80,shabs🇨🇦 (μ),1200 @here I paid you get out,soft_exit,soft_exit,0.35,True,True,slow_path,slow_path
+81,shabs🇨🇦 (μ),1350/con @here,commentary_pnl,entry,0.69,False,False,slow_path,slow_path
+82,CashflowChristian(Admin),mu 1090c .98 @everyone,entry,entry,0.39,True,True,slow_path,slow_path
+83,CashflowChristian(Admin),these just shot up 30% got the trim @everyone was a quick one,trim,trim,0.54,True,True,slow_path,slow_path
+84,CashflowChristian(Admin),more 60% @everyone nice reclaim of yest high,trim,commentary_pnl,0.50,False,False,slow_path,slow_path
+85,CashflowChristian(Admin),100% bangaaa runners @everyone gimme 1087,commentary_pnl,chatter,0.20,False,False,slow_path,slow_path
+86,shabs🇨🇦 (μ),See what I said it wants 7740? @here lol,chatter,chatter,0.92,True,True,feed_only,feed_only
+87,CashflowChristian(Admin),all out HAGW @everyone,full_exit,full_exit,0.79,True,True,slow_path,slow_path
+88,EP (Admin),Stalking $AMD 9/28 625P @everyone,watch,watch,0.83,True,True,slow_path,feed_only
+89,Mr. Banks,$SPY 770P .54 light,entry,entry,0.57,True,True,slow_path,slow_path
+90,Mr. Banks,Runners .63 @everyone,trim,entry,0.18,False,False,slow_path,slow_path
+91,Mr. Banks,**32%** more @everyone,trim,commentary_pnl,0.40,False,False,slow_path,slow_path
+92,Mr. Banks,Recent high or breakeven on rest @everyone,stop_move,chatter,0.22,False,False,slow_path,slow_path
+93,MuggZone,these hit 3.00 today lol,commentary_pnl,chatter,0.50,False,False,slow_path,slow_path
+94,MuggZone,wouldnt be shocked if AMD gets back over 635 today,watch,chatter,0.99,False,False,feed_only,feed_only
+95,MuggZone,and META going back over 560 by eod,watch,chatter,0.95,False,False,feed_only,feed_only
+96,MuggZone,but im just gonna chill since im slightly green getting lucky off that random spx pop and drop off double top ,chatter,commentary_pnl,0.63,False,False,slow_path,feed_only
+97,shabs🇨🇦 (μ),"aight i was early as shit but 7750c peaked at 1072, 7740c 290 > 1650 gg @here, get your lotto chains out",commentary_pnl,tp_hit_notice,0.43,False,True,slow_path,slow_path
+98,shabs🇨🇦 (μ),7760c at 140/con @here size for 0,entry,entry,0.84,True,True,slow_path,slow_path
+99,shabs🇨🇦 (μ),SNDK 0dte 1800c at 180 @here size for 0,entry,entry,0.91,True,True,slow_path,slow_path
+100,shabs🇨🇦 (μ),"SNDK green @here, not holding my breath on SPX but SNDK going",commentary_pnl,chatter,0.84,False,False,slow_path,feed_only
+101,shabs🇨🇦 (μ),180 -> 300 @here,commentary_pnl,tp_set,0.32,False,False,slow_path,slow_path
+102,shabs🇨🇦 (μ),THERES 350 @here,commentary_pnl,chatter,0.59,False,False,slow_path,slow_path
+103,shabs🇨🇦 (μ),leggo @here ;,chatter,chatter,0.95,True,True,feed_only,feed_only
+104,shabs🇨🇦 (μ),"Hot shit I was early on 7760c as usual @here,",commentary_pnl,chatter,0.68,False,False,slow_path,feed_only
+105,shabs🇨🇦 (μ),MANAGE SNDK @here ;,chatter,chatter,0.29,True,True,slow_path,slow_path
+106,Mr. Banks,From a TA standpoint we should break out higher. They have been trapping people all day so let's see @everyone,watch,chatter,0.94,False,False,feed_only,feed_only
+107,Mr. Banks,Reason for the puts MY level has been 771 for weeks #👑│banks  Along with the action today of trapping the side,chatter,chatter,0.91,True,True,feed_only,feed_only
+108,Mr. Banks,$1 range for two hours again… at least grabbed a little nibble @everyone,chatter,chatter,0.52,True,True,slow_path,slow_path
+109,Mr. Banks,;,chatter,chatter,0.99,True,True,feed_only,feed_only
+110,Baba Neal,"@everyone if you guys wanna buy equity , you all should buy SYM. Robotics future . Buy shares now sell at 180 ",stock_entry,stock_entry,0.68,True,True,slow_path,slow_path
+111,Skyy,My moc 7730p,entry,entry,0.48,True,True,slow_path,slow_path
+112,Skyy,185 filled,commentary_pnl,chatter,0.73,False,False,slow_path,feed_only
+113,Skyy,225,commentary_pnl,chatter,0.34,False,False,slow_path,slow_path
+114,Paulongerrr (Admin),cut NOW swing @everyone not swinging,full_exit,stop_set,0.36,False,False,slow_path,slow_path
+115,EliSpicy,"some members asks about me about how I scalp, Im not that good at it just share some my own tricks: 1. News ca",chatter,chatter,1.00,True,True,feed_only,feed_only
+116,EliSpicy,what the rest are just depends on personal exp/what one have seen,chatter,chatter,1.00,True,True,feed_only,feed_only
+117,Skyy,Happy lords day! I'll be doing my weekly write up of everything I'll be watching this week soon. Lack of alert,chatter,chatter,1.00,True,True,feed_only,feed_only
+118,Skyy,"For example, I saw msft Friday premarket and said this looks good just to go play spx and scalp 30% gains. I'm",chatter,chatter,0.95,True,True,feed_only,feed_only
+119,MuggZone,@everyone Disciplined risk management guideline : https://x.com/TheMuggZone/status/2104271690683588838?s=20,chatter,chatter,0.99,True,True,feed_only,feed_only
+120,Skyy,DJT — Call swings end of OCT DKNG — Call swings end of OCT FCEL — LEAPS (LOVE THIS) or end of year HIMS — Call,watch,entry,0.56,False,False,slow_path,slow_path
+121,Skyy,@here,chatter,chatter,0.99,True,True,feed_only,feed_only
+122,Skyy,"Aapl calls for monday , think it dips first for entries on 342.5c",conditional,conditional,0.82,True,True,slow_path,assemble
+123,Skyy,"i gave yall a great game plan for the week, you can avoid spx entirely and should make money on any of these I",chatter,chatter,0.97,True,True,feed_only,feed_only
+124,MuggZone,"I may be back on the ORCL bull train , not likely for this week exp, but eyeing 10/9 $150 calls, FSLR for a sw",watch,conditional,0.48,False,True,slow_path,slow_path
+125,MuggZone,Yes im all over the place here but its late and i didnt have time to type this out properly today but heres so,watch,conditional,0.30,False,True,slow_path,slow_path
+126,MuggZone,"whoah we got some selling premarket, INTC already down to 120, with overnight lows at 115.66",chatter,chatter,0.95,True,True,feed_only,feed_only
+127,MuggZone,coin mstr pumpig,chatter,chatter,0.97,True,True,feed_only,feed_only
+128,MuggZone,nvda #1 on my WL as far as gains so far this morning,chatter,chatter,0.74,True,True,slow_path,feed_only
+129,Skyy,In msft 540c weeklies and 510c 0dte at 100$,entry,entry,0.56,True,True,slow_path,slow_path
+130,Skyy,@here this moves quick holy,chatter,chatter,1.00,True,True,feed_only,feed_only

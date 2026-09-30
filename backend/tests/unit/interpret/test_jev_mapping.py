@@ -69,6 +69,64 @@ def test_low_confidence_or_missing_required_field_goes_to_the_slow_path() -> Non
     assert run(candle_close=n(0.5))[1].path == "slow_path"  # yes/no uncertain
 
 
+PLAIN = "spy 770c .95 lotto"  # an entry with no stop
+
+
+def test_questions_that_do_not_apply_do_not_block_a_plain_entry() -> None:
+    """Replay of 518 real messages: Jev answers these at 0.2-0.5 and nothing assembled."""
+    _, decision = run(
+        PLAIN,
+        stop_basis=c("not_applicable", 0.27),
+        exit_fraction=c("not_stated", 0.3),
+        candle_close=n(0.5),
+        stop_removed=n(0.4),
+        breakeven_stop=n(0.5),
+        is_add=n(0.45),
+        is_correction=n(0.3),
+    )
+    assert decision.path == "assemble", decision.reasons
+    assert decision.parsed is not None
+    f = decision.parsed.signals[0].fields
+    assert f.stop_basis is None and f.exit_fraction is None and not f.is_add
+
+
+def test_a_confident_flag_is_still_recorded_without_a_stop() -> None:
+    _, decision = run(PLAIN, is_add=n(0.95))
+    assert decision.parsed is not None and decision.parsed.signals[0].fields.is_add
+
+
+def test_the_same_doubt_blocks_when_the_message_has_a_stop() -> None:
+    for name, answer in (
+        ("stop_removed", n(0.5)),
+        ("breakeven_stop", n(0.5)),
+        ("stop_basis", c("underlying", 0.5)),
+    ):
+        assert run(**{name: answer})[1].path == "slow_path", name  # EXAMPLE has "sl 769"
+    assert (
+        run("spy 770c .95 sl 769", stop_removed=n(0.5), role_n2=c("entry_price"))[1].path
+        == "slow_path"
+    )
+
+
+def test_an_uncertain_exit_fraction_blocks_an_exit_but_not_an_entry() -> None:
+    exit_answers = {
+        "msg_type": c("trim"),
+        "ticker": c("not_stated"),
+        "right": c("not_stated"),
+        "size_tier": c("not_stated"),
+        "exit_fraction": c("half", 0.5),
+    }
+    assert run("sold half", **exit_answers)[1].path == "slow_path"
+    exit_answers["exit_fraction"] = c("half", 0.95)
+    assert run("sold half", **exit_answers)[1].path == "assemble"
+
+
+def test_a_worded_condition_or_a_likely_correction_still_goes_to_the_llm() -> None:
+    assert run(PLAIN, has_prose_condition=n(0.4))[1].path == "slow_path"  # a real chance of "if..."
+    assert run(PLAIN, is_correction=n(0.6))[1].path == "slow_path"
+    assert run(PLAIN, is_correction=n(0.3))[1].path == "assemble"
+
+
 def test_weak_link_is_an_ambiguous_hint_not_an_upgrade() -> None:
     _, decision = run(book=[(P1, "SPY 770C")], links_to=c(str(P1), 0.6))
     assert decision.path == "assemble" and decision.link_ambiguous
