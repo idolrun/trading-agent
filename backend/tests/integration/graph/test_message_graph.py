@@ -21,6 +21,7 @@ from app.graph.checkpointer import open_pool, saver_and_store
 from app.inbox.envelope import Envelope
 from app.inbox.models import InboxItem
 from app.interpret.jev.client import JevInterpreter
+from app.interpret.laya.client import LayaInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.models import Signal
 from app.interpret.signal import ParsedSignals
@@ -30,6 +31,7 @@ from app.main import libpq_dsn
 from app.runtime_config.schema import (
     ChainEntry,
     JevConfig,
+    LayaConfig,
     LlmConfig,
     LlmRoles,
     RoleConfig,
@@ -37,9 +39,10 @@ from app.runtime_config.schema import (
 )
 from app.system.models import FlagName, SystemFlag
 from tests.integration.conftest import _url
-from tests.integration.interpret.test_jev_client import ScriptedJev, response
+from tests.integration.interpret.test_jev_client import ScriptedJev, rate_limited, response
 from tests.integration.pipeline.harness import T0, Factory, Harness
 from tests.jev_helpers import EXAMPLE, c, example_answers
+from tests.laya_helpers import FakeLaya
 from tests.llm_helpers import FakeChat, FakeRegistry, structured
 from tests.messages import PROVIDER_A, PROVIDER_B
 
@@ -108,6 +111,31 @@ def jev(h: Harness, **answers: Any) -> JevInterpreter:
         h.clock,
         client=client,  # type: ignore[arg-type]
     )
+
+
+def jev_down(h: Harness) -> JevInterpreter:
+    """Rate limited twice: the client gives up and returns no answer."""
+    client = ScriptedJev(rate_limited(), rate_limited())
+    return JevInterpreter(
+        h.factory,
+        get_settings(),
+        lambda: h.config.get() or RuntimeConfig(),
+        h.clock,
+        client=client,  # type: ignore[arg-type]
+    )
+
+
+async def laya(h: Harness, fake: FakeLaya) -> LayaInterpreter:
+    interpreter = LayaInterpreter(
+        h.factory,
+        get_settings(),
+        lambda: h.config.get() or RuntimeConfig(),
+        h.clock,
+        h.alerts,
+        loader=fake.load,
+    )
+    await interpreter.warm()
+    return interpreter
 
 
 NO_ANSWER = AIMessage("I am not sure")  # no structured response -> `empty` -> fallback
@@ -306,3 +334,74 @@ async def test_crash_mid_llm_then_rerun_makes_one_card(
     base = f"msg:{env.key.message_id}:create:0"
     # durability "exit": one checkpoint per run, also for the killed one (where it stopped)
     assert threads == [f"{base}:1", f"{base}:2", f"{base}:2"]
+
+
+LAYA_ON = LayaConfig(enabled=True)
+
+
+async def test_laya_answers_when_jev_is_down(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers())
+    env = await example(h)
+    processor = h.processor(fixture=False, jev=jev_down(h), laya=await laya(h, fake))
+    await h.process(env, processor=processor)
+    [signal] = await signals(db_session)
+    assert (signal.msg_type, signal.interpreter) == ("entry", "laya")
+    assert signal.model_call_id is not None
+    assert len(await cards(db_session)) == 1
+    providers = (await db_session.scalars(select(ModelCall.provider).order_by(ModelCall.id))).all()
+    assert providers == ["typesafe", "typesafe", "laya"]
+    flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
+    assert flag is None or not flag.active
+
+
+async def test_laya_is_not_asked_while_jev_is_answering(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers())
+    env = await example(h)
+    unsure = jev(h, msg_type=c("entry", 0.6))
+    await h.process(env, processor=h.processor(fixture=False, jev=unsure, laya=await laya(h, fake)))
+    assert fake.calls == 0  # a weak model never second-guesses a Jev answer
+    [card] = await cards(db_session)
+    assert card.proposal["review_reasons"][0].startswith("needs_review: msg_type")
+
+
+async def test_a_doubtful_laya_answer_continues_to_the_llm(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LLM, jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers(msg_type=c("entry", 0.85)))  # below Laya's 0.9 gate
+    env = await example(h)
+    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
+    processor = h.processor(fixture=False, jev=jev_down(h), laya=await laya(h, fake), llm=extractor)
+    await h.process(env, processor=processor)
+    assert fake.calls == 1
+    [signal] = await signals(db_session)
+    assert signal.interpreter == "llm"
+
+
+async def test_laya_that_cannot_load_leaves_the_outage_to_the_review_card(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
+
+    def broken(_model: str) -> Any:
+        raise ImportError("No module named 'mlx'")
+
+    dead = LayaInterpreter(
+        h.factory,
+        get_settings(),
+        lambda: h.config.get() or RuntimeConfig(),
+        h.clock,
+        h.alerts,
+        loader=broken,
+    )
+    await dead.warm()
+    env = await example(h)
+    await h.process(env, processor=h.processor(fixture=False, jev=jev_down(h), laya=dead))
+    [card] = await cards(db_session)
+    assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]

@@ -64,6 +64,7 @@ class SignalInstrument(StrEnum):
 class Interpreter(StrEnum):
     JEV = "jev"
     LLM = "llm"
+    LAYA = "laya"
     NONE = "none"
 
 
@@ -78,6 +79,7 @@ class LinkMethod(StrEnum):
     REPLY = "reply"
     JEV = "jev"
     LLM = "llm"
+    LAYA = "laya"
     USER_CORRECTION = "user_correction"
     CODE = "code"  # entry opened a new position
 

@@ -71,7 +71,9 @@ class Planner:
         now: datetime,
     ) -> list[SignalOutcome]:
         env = ctx.envelope
-        method = LinkMethod.JEV if parsed.interpreter == "jev" else LinkMethod.LLM
+        method = {"jev": LinkMethod.JEV, "laya": LinkMethod.LAYA}.get(
+            parsed.interpreter, LinkMethod.LLM
+        )
         flags = await self._flags_view()
         risk = None
         if any(s.msg_type in SIZED_TYPES for s in parsed.signals):

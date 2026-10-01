@@ -20,6 +20,7 @@ class ModelProvider(StrEnum):
     DEEPSEEK = "deepseek"
     OPENAI_COMPAT = "openai_compat"
     BEDROCK = "bedrock"
+    LAYA = "laya"  # local typed-decision model, answers when Jev gave no answer
 
 
 class ModelRole(StrEnum):

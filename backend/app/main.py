@@ -59,6 +59,7 @@ from app.ingest.feed_health import FeedHealthMonitor
 from app.ingest.gaps import GapDetector
 from app.interpret.interpreter import FixtureInterpreter, Interpreter
 from app.interpret.jev.client import JevInterpreter
+from app.interpret.laya.client import LayaInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.note import NoteWriter
 from app.ledger.relink import RelinkService
@@ -319,6 +320,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         def runtime() -> RuntimeConfig:
             return config_service.get() or RuntimeConfig()
 
+        laya = LayaInterpreter(
+            session_factory, settings, runtime, app.state.clock, app.state.alerts
+        )
+        app.state.laya = laya
         graph_deps = GraphDeps(
             sessions=session_factory,
             config=config_service,
@@ -327,6 +332,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             flags=app.state.flags,
             llm=LlmInterpreter(app.state.llm, marketdata, app.state.alerts),
             jev=JevInterpreter(session_factory, settings, runtime, app.state.clock),
+            laya=laya,
             notes=NoteWriter(session_factory, app.state.llm, app.state.alerts, runtime),
             store=store,
             fixture=_fixture(settings),
@@ -381,6 +387,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
         background.append(asyncio.create_task(discord_listener.run(), name="discord-listener"))
+        laya.start()  # no-op unless config.laya.enabled; loads the weights off the hot path
         background.append(
             asyncio.create_task(
                 run_daily(
@@ -418,6 +425,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         for task in background:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)
+        if graph_deps is not None and graph_deps.laya is not None:
+            graph_deps.laya.close()
         await graph_pool.close()
         await engine.dispose()
 

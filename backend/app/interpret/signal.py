@@ -93,7 +93,7 @@ class ParsedSignals(_Contract):
     """0..n signals per message event (FR-6)."""
 
     signals: list[ParsedSignal]
-    interpreter: Literal["jev", "llm", "stub", "none"]
+    interpreter: Literal["jev", "laya", "llm", "stub", "none"]
     schema_version: int = SCHEMA_VERSION
 
 

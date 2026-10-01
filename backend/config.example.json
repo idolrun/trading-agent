@@ -37,6 +37,14 @@
     "timeout_ms": 300,
     "enabled": false
   },
+  "laya": {
+    "enabled": false,
+    "timeout_ms": 10000,
+    "t_chat": "0.95",
+    "t_field": "0.9",
+    "t_type": "0.9",
+    "t_link": "0.9"
+  },
   "llm": {
     "roles": {
       "extract": {

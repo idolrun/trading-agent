@@ -2385,6 +2385,85 @@
         "title": "LabelSource",
         "type": "string"
       },
+      "LayaConfig": {
+        "additionalProperties": false,
+        "description": "Local fallback for when Jev gave no answer. Its answers are weak (it was right on ~27% of\nlabelled messages), so the gate is strict and it is off until switched on.",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "t_chat": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0.95",
+            "title": "T Chat"
+          },
+          "t_field": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0.9",
+            "title": "T Field"
+          },
+          "t_link": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0.9",
+            "title": "T Link"
+          },
+          "t_type": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0.9",
+            "title": "T Type"
+          },
+          "timeout_ms": {
+            "default": 10000,
+            "exclusiveMinimum": 0.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "LayaConfig",
+        "type": "object"
+      },
       "LinkOut": {
         "properties": {
           "confidence": {
@@ -4720,6 +4799,17 @@
             "default": {
               "enabled": false,
               "timeout_ms": 300
+            }
+          },
+          "laya": {
+            "$ref": "#/components/schemas/LayaConfig",
+            "default": {
+              "enabled": false,
+              "t_chat": "0.95",
+              "t_field": "0.9",
+              "t_link": "0.9",
+              "t_type": "0.9",
+              "timeout_ms": 10000
             }
           },
           "llm": {

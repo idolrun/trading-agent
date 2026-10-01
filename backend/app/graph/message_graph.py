@@ -3,8 +3,10 @@
     load_context -> find_candidates -> fixture_interpret (dev/tests) -> decide_apply
                                     -> jev_interpret -> route:
                                          feed_only | assemble -> decide_apply
-                                         slow_path -> llm_extract -> decide_apply
-    llm_extract (exhausted / rejected) | decide_apply (span mismatch) -> raw_review
+                                         slow_path, Jev gave no answer -> laya_interpret
+                                         slow_path -> llm_extract (optional) -> decide_apply
+    laya_interpret: feed_only | assemble -> decide_apply, else -> llm_extract
+    llm_extract (not configured / exhausted / rejected) | decide_apply (span mismatch) -> raw_review
     decide_apply | raw_review -> notify -> END
     recheck mode (F037): after interpretation -> END (no apply, no notify)
     replay mode (F048): as recheck, and additionally no stage_timings, no system flags, no user
@@ -44,6 +46,7 @@ from app.interpret.candidates import Candidates, find_candidates
 from app.interpret.context import BookEntry, ProviderContext, load_context
 from app.interpret.interpreter import Interpreter, InterpreterUnavailable
 from app.interpret.jev.client import JevInterpreter
+from app.interpret.laya.client import LayaInterpreter, gate
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.models import Interpreter as InterpreterKind
 from app.interpret.note import NoteWriter
@@ -76,6 +79,7 @@ class GraphDeps:
     flags: FlagService
     llm: LlmInterpreter
     jev: JevInterpreter | None = None
+    laya: LayaInterpreter | None = None  # only when Jev gave no answer
     notes: NoteWriter | None = None
     store: BaseStore | None = None
     fixture: Interpreter | None = None  # dev/demo/tests only: replaces Jev + LLM
@@ -99,6 +103,7 @@ def build_message_graph(
         ("find_candidates", n.find_candidates),
         ("fixture_interpret", n.fixture_interpret),
         ("jev_interpret", n.jev_interpret),
+        ("laya_interpret", n.laya_interpret),
         ("llm_extract", n.llm_extract),
         ("decide_apply", n.decide_apply),
         ("raw_review", n.raw_review),
@@ -115,10 +120,14 @@ def build_message_graph(
     g.add_conditional_edges(
         "jev_interpret",
         lambda s: (
-            "llm_extract"
-            if s["route"] == "slow_path" and not s["raw_reason"]
+            ("laya_interpret" if not s["jev_answered"] else "llm_extract")
+            if s["route"] == "slow_path"
             else _after_interpret(s)
         ),
+    )
+    g.add_conditional_edges(
+        "laya_interpret",
+        lambda s: "llm_extract" if s["route"] == "slow_path" else _after_interpret(s),
     )
     g.add_conditional_edges("llm_extract", _after_interpret)
     g.add_conditional_edges("decide_apply", _raw_review_or("notify"))  # span mismatch
@@ -202,21 +211,47 @@ class _Nodes:
             )
             await self._stage(state, ctx, Stage.JEV)
         decision = route(result, self.d.cfg())
-        update: dict[str, Any] = {
+        return {
             "route": decision.path,
             "route_reasons": list(decision.reasons),
             "hints": decision.hints,
             "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
             "interpreter": "jev",
             "model_call_id": result.model_call_id if result else None,
+            "jev_answered": result is not None,
         }
-        if decision.path == "slow_path" and not self.d.llm.configured():
-            # The LLM is optional (4-8 s per call): without one the human decides, and the
-            # card says why Jev did not. No degraded-parser flag: nothing failed.
-            update["raw_reason"] = ("needs_review: " + "; ".join(decision.reasons))[:200]
-        return update
+
+    async def laya_interpret(self, state: MessageState) -> dict[str, Any]:
+        """Jev gave no answer (down, timed out, disabled): the local model gets one try, under
+        its own strict thresholds. Anything it cannot settle continues to the optional LLM."""
+        ctx = _processing(state)
+        result = None
+        if self.d.laya is not None:
+            result = await self.d.laya.interpret(
+                _context(state),
+                _candidates(state),
+                ref=_ref(ctx),
+                lot_ids=frozenset(state["lot_ids"]),
+                underlying_optional=not self.d.llm.configured(),
+            )
+        if result is None:
+            return {}
+        await self._stage(state, ctx, Stage.JEV)
+        decision = route(result, gate(self.d.cfg()))
+        return {
+            "route": decision.path,
+            "route_reasons": list(decision.reasons),
+            "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
+            "interpreter": "laya",
+            "model_call_id": result.model_call_id,
+        }
 
     async def llm_extract(self, state: MessageState) -> dict[str, Any]:
+        if not self.d.llm.configured():
+            # The LLM is optional (4-8 s per call): without one the human decides, and the
+            # card says why the local models did not. No degraded-parser flag: nothing failed.
+            reasons = "; ".join(state["route_reasons"])
+            return {"raw_reason": f"needs_review: {reasons}"[:200]}
         ctx = _processing(state)
         deadline = self.d.cfg().llm.roles.extract.deadline_ms
         try:

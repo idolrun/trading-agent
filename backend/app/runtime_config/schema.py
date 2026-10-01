@@ -33,6 +33,18 @@ class JevConfig(_Strict):
     enabled: bool = False
 
 
+class LayaConfig(_Strict):
+    """Local fallback for when Jev gave no answer. Its answers are weak (it was right on ~27% of
+    labelled messages), so the gate is strict and it is off until switched on."""
+
+    enabled: bool = False
+    timeout_ms: PositiveInt = 10000  # ~20 questions take 3-13 s on an M4
+    t_chat: Probability = Decimal("0.95")
+    t_field: Probability = Decimal("0.9")
+    t_type: Probability = Decimal("0.9")
+    t_link: Probability = Decimal("0.9")
+
+
 LlmProvider = Literal["anthropic", "openai", "deepseek", "openai_compat"]  # Bedrock: OD-7
 NonNegDecimal = Annotated[Decimal, Field(ge=0)]
 
@@ -131,6 +143,7 @@ class RuntimeConfig(_Strict):
     t_link: Probability = Decimal("0.8")
     # Models
     jev: JevConfig = JevConfig()
+    laya: LayaConfig = LayaConfig()
     llm: LlmConfig = LlmConfig()
     note_guard_enabled: bool = True  # OD-6 (TRD recommendation)
     llm_monthly_budget_usd: PositiveDecimal | None = None  # PRD open item (d)

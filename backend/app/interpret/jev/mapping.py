@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from typesafe_sdk import ChoiceAnswer, NoulAnswer, ScoreAnswer
 
@@ -83,6 +83,7 @@ def map_answers(
     cfg: RuntimeConfig,
     *,
     underlying_optional: bool = False,
+    interpreter: Literal["jev", "laya"] = "jev",
 ) -> JevResult:
     t_field, t_type, t_link = cfg.t_field, cfg.t_type, cfg.t_link
     reasons: list[str] = []
@@ -121,7 +122,7 @@ def map_answers(
     signal_count = choice("signal_count").choice
     base = JevResult(msg_type, conf, signal_count, parsed=None, hints=compact(answers))
     if msg_type in FEED_TYPES:  # no fields needed; routing decides on t_chat
-        parsed = ParsedSignals(signals=[ParsedSignal(msg_type=msg_type)], interpreter="jev")
+        parsed = ParsedSignals(signals=[ParsedSignal(msg_type=msg_type)], interpreter=interpreter)
         return replace(base, parsed=parsed)
 
     fields: dict[str, Any] = {}
@@ -239,7 +240,7 @@ def map_answers(
             "field_confidence": confidence,
         }
     )
-    parsed = ParsedSignals(signals=[signal], interpreter="jev")
+    parsed = ParsedSignals(signals=[signal], interpreter=interpreter)
     if errors := verify_literal_spans(parsed, text):  # defence in depth: spans came from code
         reasons += [f"{e.field}: {e.reason}" for e in errors]
         return replace(base, slow_reasons=tuple(reasons))

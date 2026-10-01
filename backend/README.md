@@ -85,14 +85,28 @@ embed text is appended to the message. `GET /api/v1/discord/status` reports the 
 
 ## Interpretation order
 
-Jev (TypeSafe) reads every message first. What it settles with confidence is decided at once
-(feed-only or an assembled signal). The LLM extraction agent is **optional**: it runs only when a
-chain entry in `llm.roles.extract` has a provider with an API key. Without one, a message Jev
-does not settle becomes a review card whose reason says why (`needs_review: msg_type: below
-t_field`, `needs_review: jev_unavailable`), and no "parser degraded" flag is raised. With an LLM
-configured, a slow or failing chain still raises `parser_degraded` as before. LLM calls take
-seconds (the default `extract` deadline is 3000 ms and a slower provider will exhaust it), so
-size `deadline_ms` to the provider you use.
+1. **Jev** (TypeSafe) reads every message. What it settles with confidence is decided at once
+   (feed-only or an assembled signal).
+2. **Laya** (`laya-mlx`, local, Apple Silicon only) runs **only when Jev gave no answer**
+   (timeout, rate limit, error, no key, disabled). It answers the same questions, goes through the
+   same mapper and router, and uses its own strict thresholds (`laya.t_*` in the runtime config,
+   all 0.9+). It is **off by default** (`laya.enabled`, Config page) and never second-guesses a
+   Jev answer. Its answers are weak: on 130 labelled messages it named the right message type
+   27% of the time against Jev's 64%, with a confidence that does not track accuracy
+   (`docs/reviews/laya-evaluation-2026-09-30.md`), and a message takes seconds, so expect it to
+   settle little. Weights (~0.85 GB, `LAYA_MODEL`, default `aac6fef/laya-mlx`) download from
+   Hugging Face on first use and load in the background; until loaded, or if loading fails (an
+   alert is raised), it is skipped. A provider with more than 5 open positions is skipped (the
+   model's window cannot hold the choices).
+3. The **LLM extraction agent** is **optional**: it runs only when a chain entry in
+   `llm.roles.extract` has a provider with an API key. Without one, a message nothing settled
+   becomes a review card whose reason says why (`needs_review: msg_type: below t_type`,
+   `needs_review: jev_unavailable`), and no "parser degraded" flag is raised. With an LLM
+   configured, a slow or failing chain still raises `parser_degraded` as before. LLM calls take
+   seconds (the default `extract` deadline is 3000 ms and a slower provider will exhaust it), so
+   size `deadline_ms` to the provider you use.
+
+Rows written by Laya carry provider/interpreter/link method `laya`.
 
 ## Message ingest (F011)
 

@@ -1550,6 +1550,43 @@ export interface components {
          * @enum {string}
          */
         LabelSource: "prelabel_corrected" | "manual" | "provider_correction";
+        /**
+         * LayaConfig
+         * @description Local fallback for when Jev gave no answer. Its answers are weak (it was right on ~27% of
+         *     labelled messages), so the gate is strict and it is off until switched on.
+         */
+        LayaConfig: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * T Chat
+             * @default 0.95
+             */
+            t_chat: number | string;
+            /**
+             * T Field
+             * @default 0.9
+             */
+            t_field: number | string;
+            /**
+             * T Link
+             * @default 0.9
+             */
+            t_link: number | string;
+            /**
+             * T Type
+             * @default 0.9
+             */
+            t_type: number | string;
+            /**
+             * Timeout Ms
+             * @default 10000
+             */
+            timeout_ms: number;
+        };
         /** LinkOut */
         LinkOut: {
             /** Confidence */
@@ -2299,6 +2336,17 @@ export interface components {
              *     }
              */
             jev: components["schemas"]["JevConfig"];
+            /**
+             * @default {
+             *       "enabled": false,
+             *       "t_chat": "0.95",
+             *       "t_field": "0.9",
+             *       "t_link": "0.9",
+             *       "t_type": "0.9",
+             *       "timeout_ms": 10000
+             *     }
+             */
+            laya: components["schemas"]["LayaConfig"];
             /**
              * @default {
              *       "concurrency": {},

@@ -7,6 +7,8 @@ export function ModelsSection() {
   const { draft, patch } = useConfigForm()
   const { jev } = draft
   const setJev = (change: Partial<typeof jev>) => patch({ jev: { ...jev, ...change } })
+  const { laya } = draft
+  const setLaya = (change: Partial<typeof laya>) => patch({ laya: { ...laya, ...change } })
   const jsonError = llmError(draft.llm)
   return (
     <Section title="Models">
@@ -24,6 +26,23 @@ export function ModelsSection() {
         </div>
         <CheckField label="Jev enabled" checked={jev.enabled} onChange={(enabled) => setJev({ enabled })} />
         <FieldErrors name="jev" />
+      </div>
+      <div className="flex flex-col gap-2 sm:col-span-2">
+        <h3 className="text-sm font-medium">Laya (local fallback when Jev gives no answer)</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ConfigField name="laya_timeout_ms" label="Laya timeout (ms)">
+            {(control) => (
+              <input {...control} type="number" step={1} value={laya.timeout_ms} onChange={(event) => setLaya({ timeout_ms: event.target.value })} />
+            )}
+          </ConfigField>
+          {(["t_chat", "t_field", "t_type", "t_link"] as const).map((key) => (
+            <ConfigField key={key} name={`laya_${key}`} label={`Laya ${key} (0 to 1)`}>
+              {(control) => <input {...control} inputMode="decimal" value={laya[key]} onChange={(event) => setLaya({ [key]: event.target.value })} />}
+            </ConfigField>
+          ))}
+        </div>
+        <CheckField label="Laya enabled" checked={laya.enabled} onChange={(enabled) => setLaya({ enabled })} />
+        <FieldErrors name="laya" />
       </div>
       <ConfigField
         name="llm"
