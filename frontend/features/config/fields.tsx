@@ -2,6 +2,10 @@
 
 import { createContext, useContext, useId, useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { INT_FIELDS, type Draft, type ListKey, type RowsKey, type ScalarKey, type ServerErrors } from "@/features/config/types"
 import { cn } from "@/lib/utils"
 
@@ -22,8 +26,7 @@ export function useConfigForm(): FormState {
   return state
 }
 
-export const UNSET_HINT = "not set — entries disabled"
-const input = "h-11 rounded-md border bg-background px-2 text-sm"
+export const UNSET_HINT = "not set: entries disabled"
 
 /** Per-field server errors (422), shown under the field they name. */
 export function FieldErrors({ name }: { name: string }) {
@@ -43,7 +46,7 @@ type Control = { id: string; className: string; "aria-describedby"?: string; "ar
 
 /**
  * Label + control + hint. A field the server lists as unset, and that is still empty,
- * gets an amber border and the "not set — entries disabled" hint.
+ * gets a warning border and the "not set: entries disabled" hint.
  */
 export function ConfigField({
   name,
@@ -67,18 +70,18 @@ export function ConfigField({
   const describedBy = unset ? `${id}-unset` : undefined
   return (
     <div className={cn("flex flex-col gap-1 text-sm", className)}>
-      <label htmlFor={id} className="font-medium">
+      <Label htmlFor={id} className="leading-normal select-text">
         {label}
-      </label>
+      </Label>
       {children({
         id,
-        className: cn(input, invalid ? "border-destructive" : unset ? "border-amber-500 bg-amber-500/5" : "border-input"),
+        className: cn(invalid && "border-destructive", unset && "border-warning bg-warning/5"),
         "aria-describedby": describedBy,
         ...(invalid ? { "aria-invalid": true as const } : {}),
         ...(unset ? { "data-unset": true as const } : {}),
       })}
       {unset ? (
-        <p id={describedBy} className="text-xs font-medium text-amber-700 dark:text-amber-400">
+        <p id={describedBy} className="text-xs font-medium text-warning-foreground">
           {UNSET_HINT}
         </p>
       ) : null}
@@ -95,7 +98,7 @@ export function ScalarField({ name, label, hint }: { name: ScalarKey; label: str
   return (
     <ConfigField name={name} label={label} hint={hint} empty={draft[name].trim() === ""}>
       {(control) => (
-        <input
+        <Input
           {...control}
           type="number"
           inputMode={int ? "numeric" : "decimal"}
@@ -110,10 +113,10 @@ export function ScalarField({ name, label, hint }: { name: ScalarKey; label: str
 
 export function CheckField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
-      <input type="checkbox" className="size-4" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <Label className="min-h-11 leading-normal select-text">
+      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
       {label}
-    </label>
+    </Label>
   )
 }
 
@@ -134,22 +137,24 @@ export function ListField({ name, label }: { name: ListKey; label: string }) {
           {items.length > 0 ? (
             <ul aria-label={`${label} list`} className="flex flex-wrap gap-2">
               {items.map((item) => (
-                <li key={item} className="flex items-center gap-1 rounded-full border border-border bg-muted py-0.5 pr-1 pl-3 text-xs tabular-nums">
+                <li key={item} className="flex items-center gap-1 rounded-md border border-border bg-muted py-0.5 pr-1 pl-3 text-xs tabular-nums">
                   {item}
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     aria-label={`Remove ${item} from ${label}`}
-                    className="inline-flex size-8 items-center justify-center rounded-full hover:bg-background"
+                    className="font-normal text-xs hover:bg-background"
                     onClick={() => patch({ [name]: items.filter((other) => other !== item) })}
                   >
                     ×
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
           ) : null}
           <div className="flex gap-2">
-            <input
+            <Input
               {...control}
               className={cn(control.className, "flex-1")}
               inputMode="numeric"
@@ -163,7 +168,7 @@ export function ListField({ name, label }: { name: ListKey; label: string }) {
                 }
               }}
             />
-            <Button type="button" variant="outline" className="h-11" onClick={add}>
+            <Button type="button" variant="outline" onClick={add}>
               Add
             </Button>
           </div>
@@ -201,24 +206,23 @@ export function RowsField({
         <div role="group" aria-label={`${label} rows`} className="flex flex-col gap-2">
           {rows.map((row, index) => (
             <div key={index} className="flex gap-2">
-              <input
+              <Input
                 {...(index === 0 ? control : {})}
                 aria-label={`${label} ${nameLabel} ${index + 1}`}
                 className={cn(control.className, "min-w-0 flex-1")}
                 value={row.name}
                 onChange={(event) => edit(index, { name: event.target.value })}
               />
-              <input
+              <Input
                 aria-label={`${label} ${valueLabel} ${index + 1}`}
                 className={cn(control.className, "min-w-0 flex-1")}
-                {...(numeric ? { type: "number", inputMode: "decimal", step: "any" } : {})}
+                {...(numeric ? { type: "number" as const, inputMode: "decimal" as const, step: "any" } : {})}
                 value={row.value}
                 onChange={(event) => edit(index, { value: event.target.value })}
               />
               <Button
                 type="button"
                 variant="outline"
-                className="h-11"
                 aria-label={`Remove ${label} row ${index + 1}`}
                 onClick={() => set(rows.filter((_, at) => at !== index))}
               >
@@ -226,7 +230,7 @@ export function RowsField({
               </Button>
             </div>
           ))}
-          <Button type="button" variant="outline" className="h-11 self-start" onClick={() => set([...rows, { name: "", value: "" }])}>
+          <Button type="button" variant="outline" className="self-start" onClick={() => set([...rows, { name: "", value: "" }])}>
             Add row
           </Button>
         </div>
@@ -238,11 +242,15 @@ export function RowsField({
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId()
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-3 rounded-lg border border-border p-4">
-      <h2 id={id} className="text-lg font-medium">
-        {title}
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2">{children}</div>
-    </section>
+    <Card aria-labelledby={id}>
+      <CardHeader>
+        <CardTitle>
+          <h2 id={id}>{title}</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-2">{children}</div>
+      </CardContent>
+    </Card>
   )
 }

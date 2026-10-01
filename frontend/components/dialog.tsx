@@ -1,7 +1,15 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { Dialog as Radix } from "radix-ui"
+import {
+  Dialog as DialogRoot,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
+
+const panel =
+  "flex max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] max-w-sm flex-col gap-4 overflow-y-auto rounded-lg border border-border bg-background p-5 text-base text-foreground shadow-lg ring-0 animate-none! data-open:animate-none! data-closed:animate-none! sm:max-w-sm"
 
 /** Modal with a focus trap, title and description. Content is whatever the caller passes. */
 export function Dialog({
@@ -18,23 +26,20 @@ export function Dialog({
   children?: ReactNode
 }) {
   return (
-    <Radix.Root open={open} onOpenChange={onOpenChange}>
-      <Radix.Portal>
-        <Radix.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Radix.Content
-          // No description: tell Radix so it does not warn about a missing one.
-          {...(description ? {} : { "aria-describedby": undefined })}
-          className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-lg border border-border bg-background p-5 shadow-lg"
-        >
-          <div>
-            <Radix.Title className="text-lg font-semibold">{title}</Radix.Title>
-            {description ? (
-              <Radix.Description className="text-sm text-muted-foreground">{description}</Radix.Description>
-            ) : null}
-          </div>
-          {children}
-        </Radix.Content>
-      </Radix.Portal>
-    </Radix.Root>
+    <DialogRoot open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="bg-black/50 animate-none! supports-backdrop-filter:backdrop-blur-none data-open:animate-none! data-closed:animate-none!"
+        className={panel}
+        // No description: tell Radix so it does not warn about a missing one.
+        {...(description ? {} : { "aria-describedby": undefined })}
+      >
+        <div>
+          <DialogTitle className="font-sans text-lg leading-normal font-semibold">{title}</DialogTitle>
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
+        </div>
+        {children}
+      </DialogContent>
+    </DialogRoot>
   )
 }

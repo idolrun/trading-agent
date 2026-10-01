@@ -1,5 +1,7 @@
 "use client"
 
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { CheckField, ConfigField, FieldErrors, ScalarField, Section, useConfigForm } from "@/features/config/fields"
 import { llmError } from "@/features/config/types"
 
@@ -16,11 +18,11 @@ export function ModelsSection() {
         <h3 className="text-sm font-medium">Jev</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <ConfigField name="jev_model" label="Jev model">
-            {(control) => <input {...control} value={jev.model} onChange={(event) => setJev({ model: event.target.value })} />}
+            {(control) => <Input {...control} value={jev.model} onChange={(event) => setJev({ model: event.target.value })} />}
           </ConfigField>
           <ConfigField name="jev_timeout_ms" label="Jev timeout (ms)">
             {(control) => (
-              <input {...control} type="number" step={1} value={jev.timeout_ms} onChange={(event) => setJev({ timeout_ms: event.target.value })} />
+              <Input {...control} type="number" step={1} value={jev.timeout_ms} onChange={(event) => setJev({ timeout_ms: event.target.value })} />
             )}
           </ConfigField>
         </div>
@@ -32,12 +34,12 @@ export function ModelsSection() {
         <div className="grid gap-3 sm:grid-cols-2">
           <ConfigField name="laya_timeout_ms" label="Laya timeout (ms)">
             {(control) => (
-              <input {...control} type="number" step={1} value={laya.timeout_ms} onChange={(event) => setLaya({ timeout_ms: event.target.value })} />
+              <Input {...control} type="number" step={1} value={laya.timeout_ms} onChange={(event) => setLaya({ timeout_ms: event.target.value })} />
             )}
           </ConfigField>
           {(["t_chat", "t_field", "t_type", "t_link"] as const).map((key) => (
             <ConfigField key={key} name={`laya_${key}`} label={`Laya ${key} (0 to 1)`}>
-              {(control) => <input {...control} inputMode="decimal" value={laya[key]} onChange={(event) => setLaya({ [key]: event.target.value })} />}
+              {(control) => <Input {...control} inputMode="decimal" value={laya[key]} onChange={(event) => setLaya({ [key]: event.target.value })} />}
             </ConfigField>
           ))}
         </div>
@@ -52,11 +54,11 @@ export function ModelsSection() {
       >
         {({ className, ...control }) => (
           <>
-            <textarea
+            <Textarea
               {...control}
               spellCheck={false}
               rows={12}
-              className={`${className} h-auto min-h-40 py-1.5 font-mono text-xs`}
+              className={`${className} min-h-40 font-mono text-xs`}
               value={draft.llm}
               onChange={(event) => patch({ llm: event.target.value })}
             />

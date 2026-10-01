@@ -3,6 +3,7 @@
 import { AlertTriangle, Ban, CircleHelp, ClipboardCheck, Lightbulb } from "lucide-react"
 import Link from "next/link"
 import type { ReactNode } from "react"
+import { Badge } from "@/components/badge"
 import { AdvisoryNote } from "@/features/cards/advisory-note"
 import { BracketLegs } from "@/features/cards/bracket-legs"
 import { Countdown, useExpired } from "@/features/cards/countdown"
@@ -10,17 +11,9 @@ import { labelBadge } from "@/features/cards/labels"
 import { SourceMessages } from "@/features/cards/source-messages"
 import { isDecidable, words } from "@/features/cards/types"
 import type { Card } from "@/features/cards/types"
+import { Card as SummaryCard, CardContent } from "@/components/ui/card"
 import { formatPrice } from "@/lib/format"
 import { cn } from "@/lib/utils"
-
-function Badge({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
-  return (
-    <li className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium">
-      {icon}
-      {children}
-    </li>
-  )
-}
 
 /** Inferred fields are marked in the contract text itself (dotted underline + "inferred" title). */
 function ContractText({ card }: { card: Card }) {
@@ -47,7 +40,7 @@ function ContractText({ card }: { card: Card }) {
           {inferred.has(part.field) ? (
             <mark
               title="Inferred from an earlier message"
-              className="rounded-sm bg-amber-200 px-0.5 text-amber-950 underline decoration-dotted dark:bg-amber-400/30 dark:text-amber-100"
+              className="rounded-sm bg-warning-muted px-0.5 text-warning-foreground underline decoration-dotted"
             >
               {part.text}
             </mark>
@@ -97,16 +90,15 @@ export function CardSummary({
   )
 
   return (
-    <article
+    <SummaryCard
+      role="article"
       tabIndex={0}
       aria-label={`${author}, ${card.action} ${card.underlying ?? ""}`.trim()}
       data-card-id={card.id}
       data-expired={expired}
-      className={cn(
-        "flex flex-col gap-3 rounded-lg border border-border bg-card p-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        expired && "opacity-60 grayscale",
-      )}
+      className={cn("gap-0 py-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/50", expired && "opacity-60 grayscale")}
     >
+      <CardContent className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 text-lg font-semibold break-words">{author}</p>
         <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
@@ -127,22 +119,40 @@ export function CardSummary({
           )}
         </h3>
         <p className="shrink-0 text-base font-medium tabular-nums">
-          {proposal.qty ?? "—"} × {formatPrice(proposal.price)}
+          {proposal.qty ?? "-"} × {formatPrice(proposal.price)}
         </p>
       </div>
       <ul aria-label="Labels" className="flex flex-wrap gap-1.5 empty:hidden">
         {card.cardType === "review" ? (
-          <Badge icon={<ClipboardCheck aria-hidden className="size-3.5" />}>Review</Badge>
+          <Badge asChild>
+            <li>
+              <ClipboardCheck aria-hidden className="size-3.5" />
+              Review
+            </li>
+          </Badge>
         ) : null}
         {card.cardType === "inferred" ? (
-          <Badge icon={<CircleHelp aria-hidden className="size-3.5" />}>Inferred</Badge>
+          <Badge asChild>
+            <li>
+              <CircleHelp aria-hidden className="size-3.5" />
+              Inferred
+            </li>
+          </Badge>
         ) : null}
         {card.cardType === "disabled" ? (
-          <Badge icon={<Ban aria-hidden className="size-3.5" />}>Disabled</Badge>
+          <Badge asChild>
+            <li>
+              <Ban aria-hidden className="size-3.5" />
+              Disabled
+            </li>
+          </Badge>
         ) : null}
         {proposal.labels.map((label) => (
-          <Badge key={label} icon={<Lightbulb aria-hidden className="size-3.5" />}>
-            {labelBadge(label)}
+          <Badge key={label} asChild>
+            <li>
+              <Lightbulb aria-hidden className="size-3.5" />
+              {labelBadge(label)}
+            </li>
           </Badge>
         ))}
       </ul>
@@ -179,6 +189,7 @@ export function CardSummary({
       <AdvisoryNote note={card.note} hidden={card.noteHidden} />
       <SourceMessages card={card} />
       {actions}
-    </article>
+      </CardContent>
+    </SummaryCard>
   )
 }

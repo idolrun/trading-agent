@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { highlightSpans } from "@/features/cards/source-messages"
 import { words } from "@/features/cards/types"
 import { useSaveLabel } from "@/features/labels/mutations"
@@ -13,26 +18,23 @@ import type { LabelLink, LabelSignal, MsgType, QueueItem } from "@/features/labe
 import { usePositionList } from "@/features/positions/queries"
 import { formatTime } from "@/lib/format"
 
-const CONTROL = "h-11 rounded-md border border-input bg-background px-2 text-sm"
-
 function FieldInput({ name, value, onChange }: { name: string; value: unknown; onChange: (value: unknown) => void }) {
   if (BOOLEAN_FIELDS.includes(name)) {
-    return <input type="checkbox" aria-label={words(name)} checked={value === true} onChange={(e) => onChange(e.target.checked)} className="size-5" />
+    return <Checkbox aria-label={words(name)} checked={value === true} onCheckedChange={(checked) => onChange(checked === true)} />
   }
   const options = ENUM_FIELDS[name]
   if (options) {
     return (
-      <select aria-label={words(name)} data-field-input value={String(value)} onChange={(e) => onChange(e.target.value)} className={CONTROL}>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
+      <NativeSelect aria-label={words(name)} data-field-input value={String(value)} onChange={(e) => onChange(e.target.value)}>
+        {options.map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
+      </NativeSelect>
     )
   }
   return (
-    <input
+    <Input
       aria-label={words(name)}
       data-field-input
       autoComplete="off"
-      className={`${CONTROL} w-full`}
       value={Array.isArray(value) ? value.join(", ") : String(value ?? "")}
       onChange={(e) => onChange(name === "tp_levels" ? e.target.value.split(",").map((v) => v.trimStart()) : e.target.value)}
     />
@@ -47,13 +49,13 @@ function SignalEditor({ signal, onChange, onRemove }: { signal: LabelSignal; onC
     <fieldset className="flex flex-col gap-2 rounded-md border border-border p-3">
       <legend className="px-1 text-sm font-medium">Signal {signal.idx + 1}</legend>
       <div className="flex flex-wrap items-center gap-2">
-        <select aria-label={`Type ${signal.idx + 1}`} value={signal.msgType} onChange={(e) => onChange({ ...signal, msgType: e.target.value as MsgType })} className={CONTROL}>
-          {MSG_TYPES.map((type) => <option key={type} value={type}>{words(type)}</option>)}
-        </select>
-        <select aria-label={`Instrument ${signal.idx + 1}`} value={signal.instrument ?? ""} onChange={(e) => onChange({ ...signal, instrument: (e.target.value || null) as LabelSignal["instrument"] })} className={CONTROL}>
-          <option value="">Instrument: none</option>
-          {INSTRUMENTS.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}
-        </select>
+        <NativeSelect aria-label={`Type ${signal.idx + 1}`} value={signal.msgType} onChange={(e) => onChange({ ...signal, msgType: e.target.value as MsgType })}>
+          {MSG_TYPES.map((type) => <NativeSelectOption key={type} value={type}>{words(type)}</NativeSelectOption>)}
+        </NativeSelect>
+        <NativeSelect aria-label={`Instrument ${signal.idx + 1}`} value={signal.instrument ?? ""} onChange={(e) => onChange({ ...signal, instrument: (e.target.value || null) as LabelSignal["instrument"] })}>
+          <NativeSelectOption value="">Instrument: none</NativeSelectOption>
+          {INSTRUMENTS.map((instrument) => <NativeSelectOption key={instrument} value={instrument}>{instrument}</NativeSelectOption>)}
+        </NativeSelect>
         <Button type="button" variant="outline" className="ml-auto h-11" onClick={onRemove}>Remove signal {signal.idx + 1}</Button>
       </div>
       {names.map((name) => (
@@ -63,10 +65,10 @@ function SignalEditor({ signal, onChange, onRemove }: { signal: LabelSignal; onC
           <Button type="button" variant="ghost" className="h-11" aria-label={`Remove ${words(name)}`} onClick={() => setFields(Object.fromEntries(Object.entries(signal.fields).filter(([key]) => key !== name)))}>×</Button>
         </div>
       ))}
-      <select aria-label={`Add field ${signal.idx + 1}`} value="" onChange={(e) => e.target.value && setFields({ ...signal.fields, [e.target.value]: emptyValue(e.target.value) })} className={`${CONTROL} self-start`}>
-        <option value="">Add field…</option>
-        {remaining.map((name) => <option key={name} value={name}>{words(name)}</option>)}
-      </select>
+      <NativeSelect aria-label={`Add field ${signal.idx + 1}`} value="" onChange={(e) => e.target.value && setFields({ ...signal.fields, [e.target.value]: emptyValue(e.target.value) })} className="self-start">
+        <NativeSelectOption value="">Add field…</NativeSelectOption>
+        {remaining.map((name) => <NativeSelectOption key={name} value={name}>{words(name)}</NativeSelectOption>)}
+      </NativeSelect>
     </fieldset>
   )
 }
@@ -83,26 +85,32 @@ function LinkPicker({ item, link, count, onChange }: { item: QueueItem; link: La
       <legend className="text-sm font-medium">Link to position</legend>
       {positions.isPending ? <p className="text-sm text-muted-foreground">Loading positions</p> : null}
       {positions.isError ? <p role="alert" className="text-sm text-destructive">{positions.error.message}</p> : null}
-      <label className="flex min-h-11 items-center gap-3 text-sm">
-        <input type="radio" name="link" checked={link == null} onChange={() => onChange(null)} />
-        No link
-      </label>
-      {candidates.map((p) => (
-        <label key={p.id} className="flex min-h-11 items-center gap-3 text-sm">
-          <input type="radio" name="link" checked={link?.providerPositionId === p.id} onChange={() => onChange({ idx: link?.idx ?? 0, providerPositionId: p.id })} />
-          <span>
-            {[p.underlying, p.expiry, p.strike, p.optionRight].filter(Boolean).join(" ")}
-            <span className="block text-xs text-muted-foreground">{p.status}, opened {formatTime(p.openedAt)}</span>
-          </span>
-        </label>
-      ))}
+      <RadioGroup
+        value={link?.providerPositionId ?? "none"}
+        onValueChange={(id) => onChange(id === "none" ? null : { idx: link?.idx ?? 0, providerPositionId: id })}
+        className="gap-1"
+      >
+        <Label className="min-h-11 gap-3 font-normal leading-normal select-text">
+          <RadioGroupItem value="none" />
+          No link
+        </Label>
+        {candidates.map((p) => (
+          <Label key={p.id} className="min-h-11 gap-3 font-normal leading-normal select-text">
+            <RadioGroupItem value={p.id} />
+            <span>
+              {[p.underlying, p.expiry, p.strike, p.optionRight].filter(Boolean).join(" ")}
+              <span className="block text-xs text-muted-foreground">{p.status}, opened {formatTime(p.openedAt)}</span>
+            </span>
+          </Label>
+        ))}
+      </RadioGroup>
       {link && count > 1 ? (
-        <label className="flex items-center gap-2 text-sm">
+        <Label className="gap-2 font-normal leading-normal select-text">
           Link belongs to signal
-          <select value={link.idx} onChange={(e) => onChange({ ...link, idx: Number(e.target.value) })} className={CONTROL}>
-            {Array.from({ length: count }, (_, i) => <option key={i} value={i}>{i + 1}</option>)}
-          </select>
-        </label>
+          <NativeSelect value={String(link.idx)} onChange={(e) => onChange({ ...link, idx: Number(e.target.value) })} className="w-auto">
+            {Array.from({ length: count }, (_, i) => <NativeSelectOption key={i} value={String(i)}>{i + 1}</NativeSelectOption>)}
+          </NativeSelect>
+        </Label>
       ) : null}
     </fieldset>
   )

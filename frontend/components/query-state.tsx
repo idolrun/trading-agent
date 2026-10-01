@@ -2,7 +2,10 @@
 
 import type { ReactNode } from "react"
 import type { UseQueryResult } from "@tanstack/react-query"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type QueryStateProps<TData> = {
   query: UseQueryResult<TData, Error>
@@ -48,23 +51,21 @@ export function QueryState<TData>({
   if (data === undefined) {
     if (query.isError) {
       return (
-        <div data-query-phase="error" data-freshness="none" role="alert" className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-          <div>
-            <p className="font-medium">Couldn&apos;t load this</p>
-            <p className="text-sm text-muted-foreground">{query.error.message}</p>
-          </div>
+        <Alert data-query-phase="error" data-freshness="none" variant="destructive" className="flex flex-col items-start gap-3">
+          <AlertTitle>Couldn&apos;t load this</AlertTitle>
+          <AlertDescription>{query.error.message}</AlertDescription>
           <Button type="button" variant="outline" size="sm" onClick={retry}>
             Retry
           </Button>
-        </div>
+        </Alert>
       )
     }
 
     return (
       <div data-query-phase="loading" data-freshness="none" aria-busy="true" className="flex flex-col gap-2">
         <p className="text-sm text-muted-foreground">{loadingLabel}</p>
-        <div className="h-16 animate-pulse rounded-lg bg-muted" />
-        <div className="h-16 animate-pulse rounded-lg bg-muted" />
+        <Skeleton className="h-16 rounded-lg" />
+        <Skeleton className="h-16 rounded-lg" />
       </div>
     )
   }
@@ -82,20 +83,20 @@ export function QueryState<TData>({
         {freshness === "none" ? "" : freshnessLabel[freshness]}
       </p>
       {query.isRefetchError ? (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-          <p className="text-sm text-muted-foreground">{query.error.message}</p>
+        <Alert className="flex flex-row items-center justify-between gap-3">
+          <AlertDescription>{query.error.message}</AlertDescription>
           <Button type="button" variant="outline" size="sm" onClick={retry}>
             Retry
           </Button>
-        </div>
+        </Alert>
       ) : null}
       {empty ? (
-        <div className="rounded-lg border border-dashed border-border px-4 py-8">
-          <p className="font-medium">{emptyTitle}</p>
-          {emptyDescription ? (
-            <p className="mt-1 text-sm text-muted-foreground">{emptyDescription}</p>
-          ) : null}
-        </div>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>{emptyTitle}</EmptyTitle>
+            {emptyDescription ? <EmptyDescription>{emptyDescription}</EmptyDescription> : null}
+          </EmptyHeader>
+        </Empty>
       ) : (
         children(data)
       )}

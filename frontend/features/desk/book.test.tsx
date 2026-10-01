@@ -10,7 +10,7 @@ import { PositionList } from "@/features/positions/position-list"
 import { lotDetailFixture, orderFixture, positionFixture, server } from "@/test/msw"
 import { renderWithQuery } from "@/test/render"
 
-const AVG = "system average — may differ from broker cost basis"
+const AVG = "system average: may differ from broker cost basis"
 
 describe("lot detail", () => {
   it("labels the average, lists stops and orders, and links the order", async () => {

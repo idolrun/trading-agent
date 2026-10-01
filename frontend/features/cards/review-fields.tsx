@@ -1,3 +1,7 @@
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { BreakevenChoice } from "@/features/cards/breakeven-choice"
 import { words } from "@/features/cards/types"
 import type { BreakevenPick, Card, CardEdits } from "@/features/cards/types"
@@ -77,17 +81,15 @@ export function ReviewFields({
         switch (field) {
           case "underlying_confirmation":
             return proposal.suggestedUnderlying ? (
-              <label key={field} className="flex min-h-11 items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-5"
+              <Label key={field} className="min-h-11 gap-3 font-normal leading-normal select-text">
+                <Checkbox
                   checked={draft.underlyingConfirmed}
-                  onChange={(event) => set({ underlyingConfirmed: event.target.checked })}
+                  onCheckedChange={(value) => set({ underlyingConfirmed: value === true })}
                 />
                 <span>
                   I confirm the underlying is <strong>{proposal.suggestedUnderlying}</strong>
                 </span>
-              </label>
+              </Label>
             ) : (
               <p key={field} className="text-sm text-muted-foreground">
                 No underlying could be suggested for this signal. Reject it, or wait for the provider.
@@ -100,33 +102,32 @@ export function ReviewFields({
                 {proposal.candidatePositions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No open position to choose from.</p>
                 ) : null}
-                {proposal.candidatePositions.map((id) => (
-                  <label
-                    key={id}
-                    className="flex min-h-11 items-center gap-3 rounded-md border border-border px-3 text-sm has-checked:border-primary has-checked:bg-muted"
-                  >
-                    <input
-                      type="radio"
-                      name={`position-${card.id}`}
-                      className="size-4"
-                      checked={draft.chosenPositionId === id}
-                      onChange={() => set({ chosenPositionId: id })}
-                    />
-                    <span>Position {id.slice(0, 8)}</span>
-                  </label>
-                ))}
+                <RadioGroup
+                  value={draft.chosenPositionId}
+                  onValueChange={(id) => set({ chosenPositionId: id })}
+                  className="gap-2"
+                >
+                  {proposal.candidatePositions.map((id) => (
+                    <Label
+                      key={id}
+                      className="min-h-11 gap-3 rounded-md border border-border px-3 font-normal leading-normal select-text has-data-[state=checked]:border-primary has-data-[state=checked]:bg-muted"
+                    >
+                      <RadioGroupItem value={id} />
+                      <span>Position {id.slice(0, 8)}</span>
+                    </Label>
+                  ))}
+                </RadioGroup>
               </fieldset>
             )
           case "entry_price":
             return (
               <label key={field} className="flex flex-col gap-1 text-sm">
                 Entry price
-                <input
+                <Input
                   type="number"
                   inputMode="decimal"
                   min={0}
                   step="any"
-                  className={inputClass}
                   value={draft.price}
                   onChange={(event) => set({ price: event.target.value })}
                 />
@@ -136,9 +137,8 @@ export function ReviewFields({
             return (
               <label key={field} className="flex flex-col gap-1 text-sm">
                 Expiry
-                <input
+                <Input
                   type="date"
-                  className={inputClass}
                   value={draft.expiry}
                   onChange={(event) => set({ expiry: event.target.value })}
                 />

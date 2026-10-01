@@ -1,7 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+
+import { Input } from "@/components/ui/input"
+
+import { useEffect, useRef, useState } from "react"
 import type { FormEvent } from "react"
+import { deskFrame, deskTitle } from "@/components/screen"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import { labelBadge } from "@/features/cards/labels"
@@ -10,18 +15,18 @@ import { useFeed } from "@/features/feed/queries"
 import { FEED_LABELS, feedItemKey } from "@/features/feed/types"
 import type { FeedFilters, FeedLabel } from "@/features/feed/types"
 
-const AWAY_PX = 80
-const FIELD =
-  "h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 function useScrolledAway() {
   const [away, setAway] = useState(false)
+  const sentinel = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const onScroll = () => setAway(window.scrollY > AWAY_PX)
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
+    const node = sentinel.current
+    if (!node) return
+    const observer = new IntersectionObserver(([entry]) => setAway(!entry.isIntersecting), { threshold: 0 })
+    observer.observe(node)
+    return () => observer.disconnect()
   }, [])
-  return away
+  return { away, sentinel }
 }
 
 function Filters({ value, onChange }: { value: FeedFilters; onChange: (next: FeedFilters) => void }) {
@@ -37,13 +42,13 @@ function Filters({ value, onChange }: { value: FeedFilters; onChange: (next: Fee
     <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
       <label className="flex flex-col gap-1 text-sm">
         Provider ID
-        <input
+        <Input
           value={provider}
           onChange={(event) => setProvider(event.target.value)}
           inputMode="numeric"
           autoComplete="off"
           aria-invalid={invalid}
-          className={`${FIELD} w-44`}
+          className="w-44"
         />
       </label>
       <Button type="submit" variant="outline" className="h-9" disabled={invalid}>
@@ -51,18 +56,18 @@ function Filters({ value, onChange }: { value: FeedFilters; onChange: (next: Fee
       </Button>
       <label className="flex flex-col gap-1 text-sm">
         Label
-        <select
+        <NativeSelect
           value={value.label ?? ""}
           onChange={(event) => onChange({ ...value, label: (event.target.value || undefined) as FeedLabel | undefined })}
-          className={FIELD}
+         
         >
-          <option value="">All</option>
+          <NativeSelectOption value="">All</NativeSelectOption>
           {FEED_LABELS.map((label) => (
-            <option key={label} value={label}>
+            <NativeSelectOption key={label} value={label}>
               {labelBadge(label)}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       {invalid ? (
         <p role="alert" className="w-full text-sm text-destructive">
@@ -76,7 +81,7 @@ function Filters({ value, onChange }: { value: FeedFilters; onChange: (next: Fee
 export function FeedScreen() {
   const [filters, setFilters] = useState<FeedFilters>({})
   const query = useFeed(filters)
-  const scrolled = useScrolledAway()
+  const { away: scrolled, sentinel } = useScrolledAway()
 
   // Hold the list steady while the user reads: rows above `baseline` are new and stay behind the
   // "New messages" pill. Following the newest row is automatic while at the top of a first page.
@@ -90,14 +95,17 @@ export function FeedScreen() {
 
   const showNew = () => {
     setBaseline(top)
-    window.scrollTo({ top: 0, behavior: "smooth" })
+    const reduce =
+      typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" })
     void query.refetch()
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
+    <div className={`relative ${deskFrame}`}>
+      <div ref={sentinel} aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-20" />
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Feed</h1>
+        <h1 className={deskTitle}>Feed</h1>
         <p className="text-sm text-muted-foreground">
           Every message event, with how it was handled. Nothing is filtered unless you choose.
         </p>
@@ -110,7 +118,7 @@ export function FeedScreen() {
         }}
       />
       {hidden > 0 ? (
-        <div className="sticky top-2 z-10 flex justify-center">
+        <div className="sticky top-[calc(var(--desk-header-height,3.5rem)+0.5rem)] z-10 flex justify-center">
           <Button type="button" size="sm" onClick={showNew} className="shadow-md">
             New messages
           </Button>
@@ -150,6 +158,6 @@ export function FeedScreen() {
           </>
         )}
       </QueryState>
-    </main>
+    </div>
   )
 }

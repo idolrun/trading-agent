@@ -1,7 +1,7 @@
-# TRD — Discord Signal Copy-Trading Assistant (Draft v0.5)
+# TRD — Discord Signal Copy-Trading Assistant (Draft v0.6)
 
-**Status:** Draft for review. Implements `docs/prd.md` v0.3.
-**Scope:** Architecture, tech stack, model choice (Jev + provider-agnostic LLM: Claude, OpenAI, DeepSeek), orchestration (LangGraph / LangChain), decision engine, data model, build order. No code yet.
+**Status:** Draft for review. Implements `docs/prd.md` v0.4. **Synchronized with the codebase on 2026-09-30:** where this document and the code disagreed, the text below now describes the code (see "Changes from v0.5" and §17).
+**Scope:** Architecture, tech stack, model choice (Jev + provider-agnostic LLM: Claude, OpenAI, DeepSeek), orchestration (LangGraph / LangChain), decision engine, data model, build order, and as-built status.
 **Traceability:** `FR-x`, `AC-x`, `[Cxx]` refer to the PRD. `[VERIFY]` means the claim must be proved in a week-0 spike before we build on it.
 
 **Changes from v0.1:**
@@ -37,6 +37,16 @@
 - Every model in the chain must pass the same replay gate.
 - Names are made generic: `interpret.claude` → `interpret.llm`, `claude_extract` → `llm_extract`, `t_claude` → `t_llm`.
 
+**Changes from v0.5** (as built; user-confirmed decisions are marked ✔, and the register is `docs/implementation/README.md` §10):
+- **Stack (§3):** Python 3.13; **SQLModel + SQLAlchemy 2 async + Alembic + psycopg 3** instead of asyncpg + numbered SQL ✔; **PostgreSQL 17** ✔; the dashboard is a **Next.js 16 app over a FastAPI JSON API**, not Jinja + HTMX; `uv` and `pnpm`.
+- **Graphs (§2.1, §5.1):** the message graph ends at `apply → notify`. Each card gets its **own approval graph**, one LangGraph thread per card (`card:<card_id>`) ✔.
+- **Discord source (§2.4, §7.1):** a `discord_source` listener (user-account token) feeds the same `inbox.accept()` as the webhook.
+- **Auth (§10):** email + password allowlist and an append-only `audit_log` replace passkeys and `logins`.
+- **Data model (§8):** the authoritative schema is `docs/implementation/database-schema.md`. It adds users, sessions, audit log, push subscriptions, system flags, `*_events` history tables and `stage_timings`. Migrations are Alembic.
+- **Decisions confirmed in the build (§17):** shadow-mode fills, off-hours clock, OCO bracket linkage, exit floor, underlying-stop trigger, kill-switch and flatten scope.
+- **Card states (§6):** `disabled` is a terminal card state.
+- **Testing (§12):** suites and load results as built. **§17 (new):** implementation status and deviations.
+
 ---
 
 ## 1. Design principles
@@ -57,11 +67,12 @@
 
 ## 2. Architecture
 
-### 2.1 Per-message graph (LangGraph `StateGraph`, one thread per message)
+### 2.1 Per-message graph and per-card approval graph (LangGraph `StateGraph`)
 
 ```
-Message API ──webhook──▶ inbox.accept()  (commit, then 200)          §2.4
-gap detector ──backfill──▶ inbox.accept()
+Discord listener ──gateway events──▶ inbox.accept()                    §2.4
+Message API ──webhook──▶ inbox.accept()  (commit, then 200)            §2.4
+gap detector ──backfill (Discord history / history port)──▶ inbox.accept()
                               │ NOTIFY
                               ▼
 dispatcher: per-provider worker takes the next event in snowflake order
@@ -97,6 +108,9 @@ apply ── ONE Postgres transaction: signals + message_links + provider ledger
 notify ── SSE + Web Push; spawns note_writer (async, off critical path)
   ═══════════ provider slot RELEASED here (never held across interrupt) ═══════════
   ▼
+END  (message graph; thread msg:<message_id>:<event_type>:<event_seq>:<attempt>)
+
+Approval graph — one per card, started by apply/notify (thread card:<card_id>, OD-11):
 await_approval ── langgraph interrupt(); resumed by: user approve/edit/reject, expiry timer,
   │                superseding message, or crash-recovery (expire)
   ▼
@@ -107,16 +121,21 @@ submit_order ── code: FR-20 invariants → broker (idempotent, see §5.6)
 END  (fills, stops, reprice loops continue in the execution module)
 ```
 
+One message can produce several cards (one per signal and action), so the approval step is a separate graph per card. This amends v0.5's single per-message graph with a mid-graph `interrupt()`.
+
 Everything outside the graph stays plain async code: ingest, market-data streams, execution loops (re-pricing, stop watcher), timers, reconciliation, web.
 
 ### 2.2 Modules
 
 | Module | Responsibility | PRD |
 |---|---|---|
-| `ingest` | Webhook, signature check, feed-health watchdog, gap detector + backfill. It writes only through `inbox.accept()`. | FR-1–4 |
+| `ingest` | Webhook, signature check, provisional payload adapter, feed-health watchdog, gap detector + backfill. It writes only through `inbox.accept()`. | FR-1–4 |
+| `discord_source` | Discord gateway listener (`discord.py-self`, user-account token): maps create/edit/delete events to the provisional payload, ignores bot authors, appends embed text, backfills gaps from channel history, reports status. Same path as the webhook (C95). | FR-1, FR-1d |
+| `messageapi` | Port + fake for the user's Message API (history/backfill); the real adapter is not built (F050 blocked). | §7.1 |
 | `inbox` | `accept()`, `next_for_provider()`, `mark()`. The only transport boundary; Postgres-backed (§2.4). | FR-1 |
 | `dispatcher` | Per-provider workers, snowflake ordering, staleness check, model semaphores, poison handling. Starts one graph run per event. | §2.4 |
-| `graph` | The LangGraph `StateGraph` above and its checkpointer. | — |
+| `graph` | The message graph, the per-card approval graph and the Postgres checkpointer/store. | — |
+| `pipeline` | `plan` (validate + decide), `apply` (the one transaction), off-hours release. | FR-11–19, §7.7 |
 | `interpret.candidates` | Regex candidate finders (tickers, numbers, expiries, fraction words). | FR-7, FR-12 |
 | `interpret.jev` | Builds Jev state + questions (Appendix A), calls Jev, maps answers to fields with provenance. | FR-5–7, FR-10 |
 | `interpret.llm` | `create_agent` slow path: read-only tools, middleware guardrails, structured output. Note writer. Provider-agnostic; the model comes from the registry (§4.8). | FR-6, FR-9, C80 |
@@ -129,8 +148,13 @@ Everything outside the graph stays plain async code: ingest, market-data streams
 | `broker`, `marketdata` | Thin adapters. | §15 |
 | `timers` | Persisted deadlines (card expiry, cutoffs, off-hours release). | 7.6, 7.7 |
 | `reconcile` | Startup and periodic broker reconciliation. | §11 |
-| `web` | Dashboard, SSE, Web Push, password auth, manual ops, labeling screen. | FR-25–27 |
-| `evalkit` | Replay runner and gate metrics. | §17 |
+| `api`, `notify` | FastAPI JSON API under `/api/v1` (OpenAPI is the frontend contract), SSE event bus, Web Push. | FR-25–27 |
+| `auth` | Email + password users, sessions, step-up, rate limit, audit log, user CLI. | §13 |
+| `manual` | Manual exit/stop/entry, kill switch, flatten, provider-position corrections, provider profile. | 7.9 |
+| `runtime_config`, `system`, `alerts` | Database-backed tunables with audit; system flags and heartbeat; alerts. | §18 |
+| `observability` | Stage timings, health metrics, spend check, checkpoint pruning. | §16 |
+| `evalkit` | Labels, replay runner and gate metrics. | §17 |
+| `frontend/` (separate app) | Next.js 16 dashboard (App Router, TanStack Query, shadcn/ui, PWA) generated against the OpenAPI snapshot `frontend/openapi.json`. | FR-25 |
 
 ### 2.3 Latency budget (p95 ≤ 5 s)
 
@@ -162,6 +186,14 @@ The p95 is over all messages, **including bursts**. The slow-path share matters,
 - **Targets:** p95 ≤ 5 s, p99 ≤ 8 s (PRD §12, AC-22).
 
 ### 2.4 Ingest, inbox and sequencing
+
+**Sources.** Two producers call `inbox.accept()`: the Discord listener (`discord_source`) and the webhook. Both map to the same provisional payload (`ingest/adapter.py`), so the inbox, dispatcher and graph do not know which delivered a message.
+- The listener is off when `DISCORD_TOKEN` is unset. Watched channels are the runtime-config `channels` list (the dispatcher enforces it too).
+- It uses the Discord snowflake for post time, Discord author IDs as `provider_id`, and `reference.message_id` for reply-to.
+- Edits and deletes become `message.update` / `message.delete` events. Updates that are not text edits (embed unfurls, pins) are dropped.
+- Gap backfill goes through the gap detector using a `MessageHistory` port implemented over the Discord channel history (`after` the last seen snowflake). It recovers **created** messages only: edits and deletes made while the listener was down are not replayed (PRD §21).
+- A 30 s listener heartbeat keeps feed health alive while channels are quiet.
+- The account is a user account (a "selfbot"), which Discord's terms forbid (PRD open item (h)).
 
 **Transport boundary (the only path in).** The `inbox` module exposes three functions:
 
@@ -235,21 +267,23 @@ Without either, a Postgres outage loses messages (PRD FR-1d, C91).
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Language | Python 3.12, asyncio | `Decimal` for all money. |
-| **Semantic decisions** | **TypeSafe Jev** via `typesafe-sdk` (`AsyncTypeSafeClient`), model `jev-latest` pinned to a dated version once chosen | Choice / Score / Noul (§4, Appendix A). |
-| **Generative slow path + note** | **Provider-agnostic** through LangChain `init_chat_model("<provider>:<model>")`. Supported: **Anthropic** (`langchain-anthropic`), **OpenAI** (`langchain-openai`), **DeepSeek** (`langchain-deepseek`). Optional: an OpenAI-compatible endpoint (`ChatOpenAI(base_url=…)`), Bedrock (`langchain-aws`) | Model registry and fallback chain in config (§4.8). |
+| Language | Python 3.13, asyncio; `uv` for dependencies | `Decimal` for all money. `ruff` and strict `mypy` gate every change. |
+| **Semantic decisions** | **TypeSafe Jev** via `typesafe-sdk` (`AsyncTypeSafeClient`), model `jev-latest` pinned to a dated version once chosen | Choice / Score / Noul (§4, Appendix A). Built; **off by default** (`jev.enabled = false`, no `TYPESAFE_API_KEY`) until the week-0 bench (PRD (i)); with it off every message takes the LLM path. |
+| **Generative slow path + note** | **Provider-agnostic** through LangChain `init_chat_model("<provider>:<model>")`. Supported: **Anthropic** (`langchain-anthropic`), **OpenAI** (`langchain-openai`), **DeepSeek** (`langchain-deepseek`). Optional: an OpenAI-compatible endpoint (`ChatOpenAI(base_url=…)`), Bedrock (`langchain-aws`, **not implemented**: the registry accepts `anthropic`, `openai`, `deepseek`, `openai_compat`) | Model registry and fallback chain in config (§4.8). |
 | **Orchestration** | **LangGraph** `StateGraph`, `interrupt()` / `Command(resume=…)` | §5. |
 | **Agent harness** | **LangChain** `create_agent` + middleware | LLM slow path only. |
 | Short-term memory | LangGraph checkpointer: `AsyncPostgresSaver` (same Postgres) | Thread per message run. |
 | Long-term memory | LangGraph store: `PostgresStore` (same Postgres) | Provider profiles (§5.3). |
-| Web | FastAPI + Jinja + HTMX + SSE, PWA | |
+| API | FastAPI, JSON under `/api/v1`, SSE for live updates, Pydantic camelCase schemas; OpenAPI snapshot committed | Discord IDs are serialized as strings. |
+| Frontend | **Next.js 16** (App Router), React 19, TanStack Query, shadcn/ui + Tailwind 4, `openapi-typescript`, PWA; `pnpm` | Same origin through Next `rewrites`, so cookies stay `SameSite=Strict`. Tests: Vitest + MSW; E2E: Playwright. |
+| Discord | `discord.py-self` listener in the backend | User-account token (ToS risk, PRD (h)). |
 | Push | Web Push (VAPID), `pywebpush` | iOS needs the PWA added to the Home Screen. |
-| Auth | Email + password (stdlib scrypt), allowlist `users` table | |
-| Database | PostgreSQL 16, `asyncpg`, numbered SQL migrations | LangGraph checkpoint/store tables live beside the domain tables. |
+| Auth | Email + password (stdlib scrypt), allowlist `users` table, server-side sessions, append-only `audit_log` | §10. |
+| Database | **PostgreSQL 17**; **SQLModel + SQLAlchemy 2 async + psycopg 3**; **Alembic** migrations | psycopg 3 is also LangGraph's Postgres driver, so there is one driver. Roles `trading_owner` (migrations) and `trading_app` (DML only). LangGraph tables live in their own schema `langgraph`. |
 | Time | `zoneinfo` + `exchange_calendars` (XNYS) | |
-| Tests | `pytest`, `hypothesis` | |
+| Tests | `pytest` + `pytest-asyncio` + `hypothesis` against real PostgreSQL (never SQLite); markers `integration`, `graph`, `load`, `live` | §12. |
 | Tracing | Postgres `model_calls` (required, 7-year retention); LangSmith optional for dev | |
-| Hosting | App: one US-East VM, Docker Compose (app + Caddy), external uptime monitor. **Postgres: managed HA in the same region** (e.g. RDS/Cloud SQL Multi-AZ, or a primary plus a synchronous standby), with PITR | Postgres off the app VM (§9). |
+| Hosting | **Target (not built, F064):** app on one US-East VM, Docker Compose (app + Caddy), external uptime monitor. **Postgres: managed HA in the same region** (e.g. RDS/Cloud SQL Multi-AZ, or a primary plus a synchronous standby), with PITR. **Today:** local Docker Compose runs PostgreSQL 17 only; the app and frontend run from `uv` and `pnpm`. | Postgres off the app VM (§9). |
 | Queue / transport | Postgres `inbox` + `LISTEN/NOTIFY` | Boundary for a later Kafka (§2.4, §15.1). |
 | Caches | In-process only: live quotes (broker stream), option chains (TTL) | Boundary for a later Redis (§15.2). |
 
@@ -409,8 +443,8 @@ llm:
 ## 5. Orchestration and agent features (LangGraph + LangChain)
 
 ### 5.1 Graph and human-in-the-loop (PRD G3, §9)
-- The per-message pipeline (§2.1) is a LangGraph `StateGraph`, compiled with `AsyncPostgresSaver`. `thread_id = "msg:<message_id>:<event_seq>"`.
-- **Approval** is an `await_approval` node that calls `interrupt({card_id, …})`. Resume paths:
+- The per-message pipeline (§2.1) is a LangGraph `StateGraph`, compiled with `AsyncPostgresSaver`. `thread_id = "msg:<message_id>:<event_type>:<event_seq>:<attempt>"`. It ends at `apply → notify`.
+- **Approval** is a second graph, **one thread per card** (`thread_id = "card:<card_id>"`), because one message can carry several signals and so several cards. Its `await_approval` node calls `interrupt({card_id, …})`. Resume paths:
 
 | Trigger | Resume value |
 |---|---|
@@ -426,12 +460,13 @@ llm:
 ### 5.2 Short-term memory
 - **The checkpointer** holds graph state across the approval interrupt. That covers minutes for entry cards, and up to the provider's exit for exit cards.
 - **No free-running chat history.** Each run rebuilds provider context from Postgres (`load_context`), limited to what C71 allows. That keeps context scope explicit and testable, rather than accumulating in a thread.
-- Checkpoints for finished runs are pruned after 30 days. The audit trail lives in domain tables.
+- Checkpoints for finished runs are pruned after 30 days by a daily job (`observability`). The audit trail lives in domain tables.
 
 ### 5.3 Long-term memory (LangGraph store)
 - Namespace `("provider", author_id)`, with keys `lexicon`, `habits` and `aliases`. Examples: "'.95' means $0.95", "'con' prices are per-contract dollars (÷100)", "'spx' means SPXW for 0DTE".
 - **Read:** into Jev state (`provider_profile`) and into the LLM prompt through `@dynamic_prompt`.
-- **Write:** only by code, and only from user-approved sources: provider-position corrections (C73) and the labeling screen. Each write is audited in `config_changes`. **Models never write to the store**, which guards against memory poisoning from provider messages.
+- **Write:** only by code, and only from user-approved sources: `PUT /api/v1/providers/{id}/profile` (provider-position corrections, C73) and the labeling screen. Each write happens in the same transaction as its audit row in `manual_corrections` (target `provider_profile`, with a reason). **Models never write to the store**, which guards against memory poisoning from provider messages.
+- The store is `AsyncPostgresStore` on the shared pool.
 
 ### 5.4 Context engineering
 - **Model context:** `@dynamic_prompt` injects `now_et`, the provider profile and the C71-scoped context. The system prompt is static and comes first, with volatile content last, so each provider's prefix cache can reuse it. Caching is per provider (§4.8): explicit cache breakpoints for Anthropic, automatic prefix caching for OpenAI and DeepSeek [VERIFY].
@@ -494,7 +529,8 @@ decide(signal, provider_ledger, user_lots, config, quotes, now_et) -> list[Propo
   - zero or several matches give no suggestion;
   - always a review card requiring confirmation (C79).
 - **Risk limits** (FR-18): daily loss, open positions, exposure. Foreign positions included. A breach produces a disabled card.
-- **State machines:** Card `pending → approved → submitted | rejected | expired | invalidated`; Order `intent → submitted → working → partially_filled → filled | cancelled | rejected | unknown`; Provider position `open → trimmed → closed` (+ `corrected`).
+- **Incomplete config:** money values have no defaults. Until they are all set, every entry becomes a disabled card "config incomplete".
+- **State machines:** Card `pending → approved → submitted | rejected | expired | invalidated`, plus the terminal `disabled` (card type `disabled`); Order `intent → submitted → working → partially_filled → filled | cancelled | rejected | unknown`; Provider position `open → trimmed → closed` (+ `corrected`).
 - **Invariants** (FR-20) are checked inside `submit_order()` with a fresh broker position read:
   1. never open a short;
   2. sell qty ≤ that provider's lot;
@@ -502,7 +538,8 @@ decide(signal, provider_ledger, user_lots, config, quotes, now_et) -> list[Propo
 
 ## 7. External integrations
 
-### 7.1 Message API (blocking)
+### 7.1 Message API (blocking for the webhook path; the Discord listener covers the source meanwhile)
+- The **Discord listener** (§2.4) is built and needs no spike: it has snowflakes, author IDs, edit/delete events and channel-history backfill. The Message API is now the alternative source, for a user who does not want to run a user-account token. Everything below is still open for it, and the real adapter (F050) is not built.
 - HTTPS webhook `POST /ingest` with an HMAC signature (or a stream client if the API is websocket-based). All writes go through `inbox.accept()` (§2.4).
 - Idempotent insert: `ON CONFLICT (message_id, event_type, event_seq) DO NOTHING`.
 - **Week-0 spike [VERIFY]:**
@@ -541,15 +578,22 @@ decide(signal, provider_ledger, user_lots, config, quotes, now_et) -> list[Propo
 
 ## 8. Data model (PostgreSQL)
 
-The app DB role has `INSERT, SELECT` only on append-only tables.
+The authoritative schema is [`docs/implementation/database-schema.md`](implementation/database-schema.md) (Alembic migrations `0001`–`0015`). This section lists the tables the design needs; the schema document wins where they differ. The app DB role (`trading_app`) has `INSERT, SELECT` only on append-only tables.
+
+**As-built differences from the lists below:**
+- Stage timestamps are **not** columns on `message_events` (that table is append-only). They are `stage_timings` audit rows.
+- `logins` is replaced by the append-only `audit_log`, which also records user management and user-initiated trading actions.
+- Tables added because a requirement forced them: `users`, `sessions`, `push_subscriptions`, `system_flags`, alert acknowledgements, and `*_events` history tables for the current-state rows (`lot_events`, `provider_position_events`, `stop_events`, …).
+- Discord IDs are `bigint` in storage and strings in the API. Signal IDs are deterministic `uuid5` values so a re-run yields the same ID.
+- LangGraph checkpoint and store tables live in the separate schema `langgraph`.
 
 **Append-only (audit):**
 - `message_events`: PK `(message_id, event_type, event_seq)`; also `provider_id`, `channel_id`, `posted_at`, `reply_to_id`, raw payload, `backfilled` flag.
-  - Stage timestamps: `t_received`, `t_dequeued`, `t_jev`, `t_llm`, `t_validated`, `t_card`, `t_pushed`.
+  - Stage timestamps (`t_received`, `t_dequeued`, `t_jev`, `t_llm`, `t_validated`, `t_card`, `t_pushed`) are kept in `stage_timings`, not here.
 - `model_calls`: provider (`typesafe` / `anthropic` / `openai` / `deepseek` / `openai_compat` / `bedrock`), model, role (`extract` / `note` / `prelabel`), attempt number in the chain, request, response, latency, tokens, cost, outcome. Jev calls store every question's full probabilities and confidence.
 - `signals`: `signal_id = (message_id, idx)` (FR-6), with fields and provenance: `literal` + chosen candidate ID + span, `context` + source message ID, or `resolved`. This replaces `parsed_signals`.
 - `message_links`: `signal_id → provider_position_id`, plus `method` (`reply` | `jev` | `llm` | `user_correction`), `confidence`, `created_at`. A re-link after a correction is a new row; rows are never updated.
-- `card_events`, `approvals`, `order_events`, `fills`, `alerts`, `config_changes`, `manual_corrections`, `logins`, `eval_labels`, `eval_runs`
+- `card_events`, `approvals`, `order_events`, `fills`, `alerts`, `config_changes`, `manual_corrections`, `audit_log`, `eval_labels`, `eval_runs`
 
 **Current state:**
 - `inbox`: `event_id` (FK → `message_events`), `provider_id`, `posted_at`, `status` (`received | processing | done | failed | stale`), `attempts`, `last_error`, `flags` (`late`, `backfilled`). Indexed on `(provider_id, status, posted_at)`.
@@ -598,6 +642,8 @@ channel_id ── metadata; not a scope key (see §14: position scope)
   9. resubscribe quotes;
   10. start the dispatcher. Catch-up mode applies if a backlog exists.
   11. unblock.
+- **Failover without a restart:** on a database connection error the dispatcher holds its workers. When the database answers, it runs `recover_after_failover` once: block entries, reconcile, backfill, run due timers, release entries if clean, resume approvals. A failed event goes back to `received` with retries, never left `processing`. Proven in load test 6 (§12).
+- **Shadow mode:** the `SimulatedBroker` is in memory and fills at the live quote, so it is lost on restart. Reconciliation in shadow is skipped and treated as clean, and the database is the truth (proposed, awaiting confirmation: OD-33).
 - **Re-execution safety:** after a crash, a message is re-processed from `load_context`.
   - Model calls repeat; they have no side effects.
   - `apply` is one transaction.
@@ -613,14 +659,23 @@ channel_id ── metadata; not a scope key (see §14: position scope)
 - **Known gap:** system-held underlying stops do not fire while the process is down. The external uptime monitor pages the phone.
 
 ## 10. Security
-- Email + password login for allowlisted users (no self-registration), with password step-up for manual entry and flatten; append-only audit log. Server-side sessions; `SameSite=Strict` cookies.
+- Email + password login for allowlisted users. Passkeys were removed on 2026-09-29.
+  - No self-registration and no public register endpoint. The first user and any recovery come from the console (`python -m app.auth.cli create-user | reset-password | list`); a signed-in user can add, deactivate, reactivate or reset others (`/api/v1/users`).
+  - Temporary passwords must be changed at first login (`POST /api/v1/auth/change-password`); every other endpoint answers 403 `password_change_required` until then.
+  - Server-side sessions in an HttpOnly, Secure, `SameSite=Strict` cookie: 60 min idle, 12 h absolute, bound to the User-Agent (a change revokes it).
+  - State-changing `/api/*` calls must carry `Origin: DASHBOARD_ORIGIN`. Login is rate limited.
+  - Step-up = re-entering the password (120 s, single use) for manual entry, flatten and lot adjust. Approving a signal-sourced card does not need it.
+  - Append-only `audit_log` (DB grant SELECT + INSERT only). Route handlers call `audit.by(...)` for user-initiated trading actions.
+  - `seed-dev-user` creates a fixed local login and refuses to run unless `ENVIRONMENT=development`.
+- The Discord account token, like every API key, lives in the env file / secret storage and is never logged.
+- `ENVIRONMENT=test` mounts a control plane (`/api/v1/test/*`: clock, market quotes, interpretation fixtures, reset) for the browser E2E suite only. It is hidden from OpenAPI, and reset refuses any database except the app's own. Never set it elsewhere.
 - `/ingest`: HMAC + timestamp window.
 - API keys (TypeSafe, Anthropic, OpenAI, DeepSeek, AWS if used, broker) live in a root-only env file and are redacted from logs.
 - Only provider-side text and context leave the system (FR-8). This is enforced by the Jev state builder's types and by the LLM scope-guard middleware, which is the same for every provider.
 - The long-term store is written only by audited code paths (§5.3).
 
 ## 11. Observability
-Dashboard health page, all as SQL over the tables above:
+Dashboard health page (`GET /api/v1/health/details`), all as SQL over the tables above; `GET /health` is a public liveness check that also fails on a stale dispatcher heartbeat. A daily job checks LLM spend against `llm_monthly_budget_usd` and prunes checkpoints.
 - per-stage p50/p95/p99, split by fast and slow path;
 - **inbox:**
   - insert p99;
@@ -643,6 +698,23 @@ Dashboard health page, all as SQL over the tables above:
 - feed health.
 
 ## 12. Testing and evaluation
+
+**As built:** `backend/tests/` has `unit`, `integration` (real PostgreSQL 17, database `trading_test`), `api`, `graph`, `scenarios`, `load` and `live` levels; `frontend/` has Vitest + MSW component tests and a Playwright suite (`pnpm e2e`, its own `trading_e2e` database and ports 8100/3100) covering AC-18, trim on a 1-lot, TP legs, entry invalidation, edit/correction, missing underlying, 0DTE cutoffs, manual-entry step-up, feed silence and password sign-in. `live` tests call real model APIs and are excluded from default runs.
+
+**Load and fault results** (`docs/reviews/load-2026-09-29.md`, model latency **simulated** from seeded lognormals until real bench numbers exist):
+
+| Test | Result |
+|---|---|
+| 1. Day at 1× and 10× | Pass (p95 ≈ 1.3 s, p99 ≈ 2.0–2.3 s) |
+| 1. Day at 50× | **Miss:** p95 5.8 s, inbox insert p99 50.3 ms; sits at the limit on a busy laptop |
+| 2. 50 messages in 5 s, 10 providers | **Miss:** per-provider queue wait p95 1.03 s (limit 1 s); end-to-end passes |
+| 3. 5 messages in 3 s from one provider, slow path forced | Pass (spread p95 2.7 s; packed p95 4.8 s). The §2.3 upgrade path is **not** needed yet |
+| 4. 10-minute Message API outage, then backlog | Pass, zero lost, zero duplicate cards |
+| 5. `kill -9` in every graph node, then restart | Pass, 23 of 23 cases, no duplicate card or order |
+| 6. Postgres stop/start during a burst | Pass, RTO ≈ 28 s, no lost event, entries blocked until reconciled |
+
+The 50× and test 2 misses must be re-measured with real model latency and on the target hardware before they count.
+
 - **Unit and scenario tests** for `decide`, invariants, validity, re-pricing and reconciliation. Property tests (`hypothesis`) cover no-short and no-oversell.
 - **Graph tests:**
   - interrupt/resume for each resume value;
@@ -705,9 +777,11 @@ Dashboard health page, all as SQL over the tables above:
 | Request to any provider containing a user-portfolio field | Blocked by the scope guard |
 
 - **Jev question tuning:** when a question fails, inspect the state, candidates, probabilities and the label, and fix the question wording or the candidate regex. Never lower a threshold without re-running the gate.
-- **Shadow mode** runs the graph end to end, but `submit_order()` records without calling the broker. **Paper mode** uses the paper account.
+- **Shadow mode** (runtime-config `trading_mode = shadow`, the default) runs the graphs end to end. `submit_order()` writes the intent and never calls a broker; a `SimulatedBroker` fills marketable orders at the live quote so lots, exits and stops are exercised (C97). **Paper mode** uses the paper account; **live** uses the real one. Only the fake and simulated brokers exist today.
 
 ## 13. Build order
+
+The original plan below was executed as the feature roadmap in `docs/implementation/README.md` (F001–F064). Status is in §17.
 
 | Phase | Deliverable | Exit criterion |
 |---|---|---|
@@ -728,14 +802,15 @@ Dashboard health page, all as SQL over the tables above:
 7. **Seed config values** (PRD §18): tiers, max exposure and max daily loss are yours to set. The history only gives observed ranges.
 8. **Transactions/order-history export** (PRD §22 f): needed to measure holding time.
 
-9. **Provider position scope:** per **author**, or per **(author, channel)**? This matters if one provider runs separate channels (e.g. 0DTE vs swings) that can hold the same contract. The default in this TRD is per author.
+9. ~~**Provider position scope**~~ **Resolved 2026-09-28: per author.** `channel_id` is metadata only (PRD C96).
 10. **Managed Postgres provider** and the RPO/RTO targets (§9).
 11. **Staleness threshold** `stale_entry_s` (default 30 s) and the catch-up trigger (§2.4).
 12. **Allowed LLM vendors and chain order** (§4.8):
     - Is **DeepSeek's first-party API** acceptable for provider message text? Its API is operated from China [VERIFY terms].
     - If not, use DeepSeek open weights on a US-hosted OpenAI-compatible endpoint, or leave DeepSeek out.
     - PRD C36 allows cloud LLM providers in general; vendor choice is yours.
-13. **Initial chain:** suggested `anthropic → openai → deepseek` for `extract`. The final order comes from the LLM bench.
+13. **Initial chain:** suggested `anthropic → openai → deepseek` for `extract`. The final order comes from the LLM bench. The chain is empty in the shipped config, and a chain entry without a passing gate run is rejected unless `ALLOW_UNGATED_MODELS` is set in development.
+14. **Discord listener:** keep the user-account token (ToS risk, throwaway account), or wait for the Message API (PRD open item (h)).
 
 *Resolved in v0.3:* 1-contract trims (C82: blank qty + warning) and the TP split (C83: fill from TP1).
 
@@ -907,6 +982,66 @@ This is the fallback if the Jev bench fails its latency or accuracy targets. The
 - The file holds real personal financial data and a partial account number.
 - `docs/data/` is listed in `.gitignore`.
 - The file is never sent to model providers, and only aggregates appear in docs.
+
+## 17. Implementation status and as-built decisions (2026-09-30)
+
+Detail and per-feature specs: `docs/implementation/README.md` (roadmap, decision register), `database-schema.md`, `backend/coding-practices.md`.
+
+### 17.1 Status
+
+| Area | Features | Status |
+|---|---|---|
+| Infrastructure, schema, config, time, alerts, auth, ports + fakes | F001–F010 | Done |
+| Ingest, inbox, dispatcher, feed health, gap backfill, signal contract, candidates, context, normalization, validation, ledgers, decide, cards, apply, timers, `submit_order`, SSE/push, read API | F011–F030 | Done |
+| LLM provider layer, extraction agent, Jev fast path, advisory note | F031–F034 | Done (Jev off by default; no bench yet) |
+| Message graph, approval graph, out-of-order, corrections, off-hours | F035–F039 | Done |
+| Fill intake, entry, brackets, exit re-pricing, underlying stops, expiration, reconciliation, manual ops, evalkit, observability | F040–F049 | Done, on the fake and simulated broker |
+| Real Message API adapter | F050 | **Not built** (blocked: spike S1) |
+| Real broker + market-data adapters | F051 | **Not built** (blocked: spikes S2, S3) |
+| Next.js dashboard (all FR-25 views) | F052–F061 | Done |
+| Browser E2E suite, load and fault suite | F062–F063 | Done (§12) |
+| Discord listener + dashboard Discord page | post-F063 | Done |
+| Deployment, runbooks, stage-gate audit | F064 | **Not started** |
+
+Backend completion checklist: all boxes ticked except "Jev bench result recorded".
+
+### 17.2 Decisions confirmed during the build
+
+| ID | Decision | PRD |
+|---|---|---|
+| R-DB | SQLModel + SQLAlchemy 2 async + Alembic + psycopg 3 (amends §3) | — |
+| R-PG | PostgreSQL 17 (amends §3) | — |
+| OD-5 | Provider-position scope = per author | C96 |
+| OD-11 | Approval graph per card (amends §2.1, §5.1) | — |
+| OD-28 | Shadow mode simulates fills at the live quote | C97 |
+| R-INTERP | Until the model interpreters were wired, production had no interpreter: every message became a raw review card + `parser_degraded` alert. The fixture interpreter is dev/test only | — |
+| OD-29 | Off-hours held messages start validity/staleness at the 9:30 ET release | C98 |
+| OD-30 | Bracket legs share an OCO group; invariant counts max(stop qty, Σ TP qty); TP fill resizes the stop, stop fill cancels TPs. The real adapter should use native OCO to close the simultaneous-fill race | C99 |
+| OD-20 | Exit re-price floor = `exit_floor_pct` below the mid at start, never below one tick | C100 |
+| OD-32 | Underlying stops trigger on the last trade | C101 |
+| OD-27 | Kill switch disables entry/add cards and entries; exit and stop cards remain | C102 |
+| OD-31 | Flatten exits tracked lots only | C103 |
+| — | Passwords instead of passkeys; no roles, no signup | C39 |
+| — | Discord listener as a message source | C95 |
+| X1 | Next.js frontend over a FastAPI JSON API; same origin through `rewrites` (amends §3) | — |
+| X3 | `disabled` is a card state and a card type (amends §6) | — |
+| X7 | Stage timings as rows, not columns on `message_events` | — |
+
+### 17.3 Still open (do not assume)
+
+| ID | Question | Default in the code |
+|---|---|---|
+| OD-1, OD-2 | Message API delivery, fields, backfill | Provisional payload; webhook + history port with a fake |
+| OD-3, OD-4, OD-16 | Broker, account type (PDT), market data + SPX entitlement, paper stage | Fake broker and market data; `pdt_day_trade_limit` absent from config |
+| OD-6 | Note guard accepted? | Built behind `note_guard_enabled`, default on |
+| OD-7 | LLM vendors and chain order | Registry supports all four providers; chains empty |
+| OD-8 | Jev go/no-go | Both paths built; Jev off |
+| OD-9, OD-17 | Managed Postgres provider, network path | Local PostgreSQL 17 |
+| OD-12 | Market data unavailable | Validation failure → review card + `market_data` alert; entries not approvable |
+| OD-18 | `add` with no lot, `tp_hit_notice`, `conditional` | `add` without a lot → ledger + feed only; `tp_hit_notice` → ledger + feed; `conditional` → feed with label |
+| OD-26 | "X% commons" sizing extraction | Not actionable → review card |
+| OD-33 | Reconciliation in shadow mode | Skipped, treated as clean |
+| (h) | Discord user-account token (ToS) | Listener on only when `DISCORD_TOKEN` is set |
 
 ---
 

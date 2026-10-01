@@ -1,8 +1,11 @@
 "use client"
 
+import { Textarea } from "@/components/ui/textarea"
+
 import { useState, type FormEvent } from "react"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { ConflictPanel, type ConflictRow } from "@/features/config/conflict-panel"
 import { FormProvider, UNSET_HINT } from "@/features/config/fields"
 import { ConfigHistory } from "@/features/config/history"
@@ -32,12 +35,12 @@ import {
   type Draft,
   type ServerErrors,
 } from "@/features/config/types"
-import { textareaClass } from "@/features/manual/fields"
+
 
 function MissingSummary({ keys }: { keys: string[] }) {
   if (keys.length === 0) return null
   return (
-    <div role="status" className="rounded-lg border border-amber-500 bg-amber-500/5 p-4 text-sm">
+    <div role="status" className="rounded-lg border border-warning bg-warning/5 p-4 text-sm">
       <p className="font-medium">Missing for entries: new entry cards stay disabled until these are set.</p>
       <ul aria-label="Missing for entries" className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
         {keys.map((key) => (
@@ -133,13 +136,13 @@ function Editor({ loaded }: { loaded: ConfigResponse }) {
             {message}
           </p>
         ))}
-        <label htmlFor="config-reason" className="text-sm font-medium">
+        <Label htmlFor="config-reason" className="leading-normal select-text">
           Reason for this change
-        </label>
-        <textarea
+        </Label>
+        <Textarea
           id="config-reason"
           rows={1}
-          className={textareaClass}
+         
           value={reason}
           onChange={(event) => setReason(event.target.value)}
         />

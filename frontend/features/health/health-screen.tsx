@@ -1,18 +1,20 @@
 "use client"
 
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+
 import { useId, useState, type ReactNode } from "react"
 import { QueryState } from "@/components/query-state"
+import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow, Table as UiTable } from "@/components/ui/table"
 import { words } from "@/features/cards/types"
 import { useHealthDetails } from "@/features/health/queries"
 import { HEALTH_WINDOWS, type HealthDetails, type HealthWindow } from "@/features/health/types"
 import { formatTime } from "@/lib/format"
 
-const FIELD =
-  "h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 const ms = (value: number) => `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} ms`
 const seconds = (value: number | null) =>
-  value == null ? "—" : `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} s`
+  value == null ? "-" : `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} s`
 const percent = (ratio: number) => `${(ratio * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`
 const usd = (value: string) =>
   `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
@@ -39,32 +41,34 @@ function Table({
         {title}
       </h2>
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No data in this window.</p>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyDescription>No data in this window.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table aria-labelledby={id} className="w-full text-sm">
-            <thead className="bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                {head.map((label, column) => (
-                  <th key={label} scope="col" className={`px-3 py-2 font-medium ${numeric.includes(column) ? "text-right" : ""}`}>
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((row, index) => (
-                <tr key={index}>
-                  {row.map((cell, column) => (
-                    <td key={column} className={`px-3 py-2 tabular-nums ${numeric.includes(column) ? "text-right" : ""}`}>
-                      {cell}
-                    </td>
-                  ))}
-                </tr>
+        <UiTable aria-labelledby={id}>
+          <TableHeader>
+            <TableRow>
+              {head.map((label, column) => (
+                <TableHead key={label} scope="col" className={numeric.includes(column) ? "text-right" : undefined}>
+                  {label}
+                </TableHead>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, index) => (
+              <TableRow key={index}>
+                {row.map((cell, column) => (
+                  <TableCell key={column} className={`tabular-nums ${numeric.includes(column) ? "text-right" : ""}`}>
+                    {cell}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </UiTable>
       )}
     </section>
   )
@@ -117,7 +121,7 @@ function Details({ health }: { health: HealthDetails }) {
       ])}
       {metrics("LLM spend", [
         ["Month to date vs budget", spendVsBudget],
-        ["Slow-path share", llm.slowPathShare == null ? "—" : percent(llm.slowPathShare)],
+        ["Slow-path share", llm.slowPathShare == null ? "-" : percent(llm.slowPathShare)],
       ])}
       <Table
         title="LLM models"
@@ -187,13 +191,13 @@ export function HealthScreen() {
     <div className="flex flex-col gap-4">
       <label className="flex w-fit flex-col gap-1 text-sm">
         Window
-        <select className={FIELD} value={range} onChange={(event) => setRange(event.target.value as HealthWindow)}>
+        <NativeSelect value={range} onChange={(event) => setRange(event.target.value as HealthWindow)}>
           {HEALTH_WINDOWS.map(({ value, label }) => (
-            <option key={value} value={value}>
+            <NativeSelectOption key={value} value={value}>
               {label}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <QueryState query={query} loadingLabel="Loading system health" emptyTitle="No health data">
         {(health) => <Details health={health} />}

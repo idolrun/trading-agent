@@ -1,3 +1,4 @@
+import { Input } from "@/components/ui/input"
 import { formatPrice } from "@/lib/format"
 import type { CardProposal } from "@/features/cards/types"
 
@@ -62,7 +63,7 @@ export function BracketLegs({
       {legs.map((leg, index) => (
         <label key={leg.level + index} className="flex items-center justify-between gap-3 text-sm">
           <span className="tabular-nums">TP{index + 1} @ {formatPrice(leg.level)}</span>
-          <input
+          <Input
             type="number"
             inputMode="numeric"
             min={1}
@@ -71,7 +72,7 @@ export function BracketLegs({
             aria-label={`TP${index + 1} quantity`}
             aria-invalid={problem != null}
             aria-describedby={problem ? `legs-problem-${cardId}` : undefined}
-            className="h-11 w-24 rounded-md border border-input bg-background px-2 text-right tabular-nums"
+            className="w-24 text-right tabular-nums"
             value={values[index] ?? ""}
             onChange={(event) => onChange(values.map((v, i) => (i === index ? event.target.value : v)))}
           />

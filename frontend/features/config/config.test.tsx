@@ -46,7 +46,7 @@ describe("ConfigScreen", () => {
     for (const label of ["Max daily loss (USD)", "Max total exposure (USD)", "LLM monthly budget (USD)"]) {
       const input = screen.getByLabelText(label)
       expect(input).toHaveAttribute("data-unset", "true")
-      expect(input).toHaveAccessibleDescription("not set — entries disabled")
+      expect(input).toHaveAccessibleDescription("not set: entries disabled")
     }
     expect(screen.getByLabelText("Feed silence alert (s)")).not.toHaveAttribute("data-unset")
 

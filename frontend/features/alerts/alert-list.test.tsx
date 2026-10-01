@@ -46,6 +46,15 @@ describe("AlertList", () => {
     expect(screen.getAllByRole("button", { name: "Acknowledge" })).toHaveLength(1)
   })
 
+  it("colors each row by severity", async () => {
+    statefulAlerts()
+    renderWithQuery(<AlertList />)
+    const urgent = (await screen.findByText("Feed silent for 300s")).closest("li")
+    const warning = screen.getByText("Parser degraded for author 111").closest("li")
+    expect(urgent).toHaveClass("bg-destructive/10")
+    expect(warning).toHaveClass("bg-warning/10")
+  })
+
   it("filters by severity", async () => {
     statefulAlerts()
     renderWithQuery(<AlertList />)

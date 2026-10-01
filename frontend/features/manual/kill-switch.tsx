@@ -5,7 +5,8 @@ import { Dialog } from "@/components/dialog"
 import { Button } from "@/components/ui/button"
 import { useHealthDetails } from "@/features/health/queries"
 import { postKillSwitch, useManualMutation } from "@/features/manual/api"
-import { Field, FormError, inputClass } from "@/features/manual/fields"
+import { Input } from "@/components/ui/input"
+import { Field, FormError } from "@/features/manual/fields"
 
 function KillSwitchDialog({ turnOn, onClose }: { turnOn: boolean; onClose: () => void }) {
   const [reason, setReason] = useState("")
@@ -33,7 +34,7 @@ function KillSwitchDialog({ turnOn, onClose }: { turnOn: boolean; onClose: () =>
       }
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
-        <Field label="Reason">{(id) => <input id={id} value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />}</Field>
+        <Field label="Reason">{(id) => <Input id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
         <FormError error={toggle.error} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>

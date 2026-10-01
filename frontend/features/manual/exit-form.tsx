@@ -2,8 +2,9 @@
 
 import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { postExit, useManualMutation } from "@/features/manual/api"
-import { Field, FormError, inputClass } from "@/features/manual/fields"
+import { Field, FormError } from "@/features/manual/fields"
 import type { LotDetail } from "@/features/lots/types"
 
 /** Manual exit (FR-27): sells `qty` of this lot. No step-up; allowed for foreign lots too. */
@@ -26,7 +27,7 @@ export function ExitForm({ lot }: { lot: LotDetail }) {
       <h3 className="font-medium">Exit</h3>
       <Field label="Exit qty" hint={`Up to ${lot.qty}`}>
         {(id) => (
-          <input
+          <Input
             id={id}
             type="number"
             inputMode="numeric"
@@ -35,7 +36,6 @@ export function ExitForm({ lot }: { lot: LotDetail }) {
             step={1}
             value={qty}
             onChange={(e) => setQty(e.target.value)}
-            className={inputClass}
           />
         )}
       </Field>

@@ -39,6 +39,12 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-muted: var(--info-muted);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -81,6 +87,12 @@
   --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
   --sidebar-border: oklch(0.925 0.005 214.3);
   --sidebar-ring: oklch(0.723 0.014 214.4);
+  --warning: oklch(0.75 0.14 75);
+  --warning-foreground: oklch(0.42 0.11 55);
+  --warning-muted: oklch(0.95 0.03 85);
+  --info: oklch(0.62 0.12 237);
+  --info-foreground: oklch(0.4 0.09 240);
+  --info-muted: oklch(0.94 0.025 230);
 }
 
 .dark {
@@ -115,6 +127,12 @@
   --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.56 0.021 213.5);
+  --warning: oklch(0.8 0.13 85);
+  --warning-foreground: oklch(0.88 0.08 85);
+  --warning-muted: oklch(0.4 0.06 75);
+  --info: oklch(0.75 0.1 230);
+  --info-foreground: oklch(0.9 0.04 230);
+  --info-muted: oklch(0.38 0.05 235);
 }
 
 @layer base {
@@ -129,5 +147,24 @@
   }
   html {
     @apply font-sans;
+  }
+  h1 {
+    font-family: var(--font-heading), sans-serif;
+  }
+}
+
+/* Radius lock: controls, cards, and chips use --radius (0.45rem).
+   rounded-full is only the live-status dot and the sign-in spinner. */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

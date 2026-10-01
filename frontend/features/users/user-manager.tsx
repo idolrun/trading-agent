@@ -1,8 +1,8 @@
 "use client"
 
-import { Dialog } from "radix-ui"
 import { useState } from "react"
 import { Badge } from "@/components/badge"
+import { Dialog } from "@/components/dialog"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import { TextField } from "@/features/auth/submit"
@@ -15,42 +15,40 @@ function TemporaryPassword({ issued, onClose }: { issued: UserWithPassword | nul
   const [copiedFor, setCopiedFor] = useState<UserWithPassword | null>(null)
   const copied = issued !== null && copiedFor === issued
   return (
-    <Dialog.Root open={issued !== null} onOpenChange={(open) => !open && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-background p-5 shadow-lg">
-          <div>
-            <Dialog.Title className="text-lg font-semibold">Temporary password</Dialog.Title>
-            <Dialog.Description className="text-sm text-muted-foreground">
-              Give this to {issued?.user.email}. It is shown once and must be changed at first sign-in.
-            </Dialog.Description>
-          </div>
-          <code className="rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm break-all select-all">
-            {issued?.temporaryPassword}
-          </code>
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={async () => {
-                if (!issued || !navigator.clipboard) return
-                try {
-                  await navigator.clipboard.writeText(issued.temporaryPassword)
-                  setCopiedFor(issued)
-                } catch {
-                  setCopiedFor(null)
-                }
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </Button>
-            <Button type="button" onClick={onClose}>
-              Done
-            </Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog
+      open={issued !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title="Temporary password"
+      description={
+        issued
+          ? `Give this to ${issued.user.email}. It is shown once and must be changed at first sign-in.`
+          : "It is shown once and must be changed at first sign-in."
+      }
+    >
+      <code className="rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm break-all select-all">
+        {issued?.temporaryPassword}
+      </code>
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={async () => {
+            if (!issued || !navigator.clipboard) return
+            try {
+              await navigator.clipboard.writeText(issued.temporaryPassword)
+              setCopiedFor(issued)
+            } catch {
+              setCopiedFor(null)
+            }
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </Button>
+        <Button type="button" onClick={onClose}>
+          Done
+        </Button>
+      </div>
+    </Dialog>
   )
 }
 

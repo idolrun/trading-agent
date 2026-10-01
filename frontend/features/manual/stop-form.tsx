@@ -2,8 +2,10 @@
 
 import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { postStop, useManualMutation, type StopBody } from "@/features/manual/api"
-import { Field, FormError, inputClass } from "@/features/manual/fields"
+import { Field, FormError } from "@/features/manual/fields"
 import type { LotDetail } from "@/features/lots/types"
 
 type Op = StopBody["op"]
@@ -42,19 +44,19 @@ export function StopForm({ lot }: { lot: LotDetail }) {
       <h3 className="font-medium">Stop</h3>
       <Field label="Stop operation">
         {(id) => (
-          <select id={id} value={op} onChange={(e) => setOp(e.target.value as Op)} className={inputClass}>
+          <NativeSelect id={id} value={op} onChange={(e) => setOp(e.target.value as Op)}>
             {OPS.map((o) => (
-              <option key={o.value} value={o.value}>
+              <NativeSelectOption key={o.value} value={o.value}>
                 {o.label}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </Field>
       {needsLevel ? (
         <Field label="Stop level">
           {(id) => (
-            <input
+            <Input
               id={id}
               type="number"
               inputMode="decimal"
@@ -62,7 +64,6 @@ export function StopForm({ lot }: { lot: LotDetail }) {
               step="any"
               value={level}
               onChange={(e) => setLevel(e.target.value)}
-              className={inputClass}
             />
           )}
         </Field>
@@ -70,15 +71,10 @@ export function StopForm({ lot }: { lot: LotDetail }) {
       {op === "add" ? (
         <Field label="Stop basis">
           {(id) => (
-            <select
-              id={id}
-              value={basis}
-              onChange={(e) => setBasis(e.target.value as typeof basis)}
-              className={inputClass}
-            >
-              <option value="premium">Option premium</option>
-              <option value="underlying">Underlying price</option>
-            </select>
+            <NativeSelect id={id} value={basis} onChange={(e) => setBasis(e.target.value as typeof basis)}>
+              <NativeSelectOption value="premium">Option premium</NativeSelectOption>
+              <NativeSelectOption value="underlying">Underlying price</NativeSelectOption>
+            </NativeSelect>
           )}
         </Field>
       ) : null}

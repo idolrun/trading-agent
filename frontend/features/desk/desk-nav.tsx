@@ -2,43 +2,83 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import {
+  Activity,
+  Bell,
+  Briefcase,
+  ClipboardList,
+  Inbox,
+  MessageSquare,
+  PenLine,
+  Rss,
+  ScrollText,
+  Settings,
+  Tags,
+  Users,
+  type LucideIcon,
+} from "lucide-react"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarSeparator,
+  useSidebar,
+} from "@/components/ui/sidebar"
 
-const LINKS = [
-  { href: "/", label: "Inbox" },
-  { href: "/feed", label: "Feed" },
-  { href: "/positions", label: "Positions" },
-  { href: "/orders", label: "Orders" },
-  { href: "/alerts", label: "Alerts" },
-  { href: "/health", label: "Health" },
-  { href: "/manual/entry", label: "Manual entry" },
-  { href: "/discord", label: "Discord" },
-  { href: "/config", label: "Config" },
-  { href: "/users", label: "Users" },
-  { href: "/audit", label: "Audit" },
-  { href: "/labels", label: "Labels" },
+const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/", label: "Inbox", icon: Inbox },
+  { href: "/feed", label: "Feed", icon: Rss },
+  { href: "/positions", label: "Positions", icon: Briefcase },
+  { href: "/orders", label: "Orders", icon: ClipboardList },
+  { href: "/alerts", label: "Alerts", icon: Bell },
+  { href: "/health", label: "Health", icon: Activity },
+  { href: "/manual/entry", label: "Manual entry", icon: PenLine },
+  { href: "/discord", label: "Discord", icon: MessageSquare },
+  { href: "/config", label: "Config", icon: Settings },
+  { href: "/users", label: "Users", icon: Users },
+  { href: "/audit", label: "Audit", icon: ScrollText },
+  { href: "/labels", label: "Labels", icon: Tags },
 ]
 
 export function DeskNav() {
   const pathname = usePathname()
+  const { setOpenMobile } = useSidebar()
   return (
-    <nav aria-label="Desk" className="flex items-center gap-1">
-      {LINKS.map(({ href, label }) => {
-        const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "rounded-md px-2.5 py-1.5 text-sm outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
-              active ? "bg-muted font-medium underline underline-offset-4" : "text-muted-foreground",
-            )}
-          >
-            {label}
-          </Link>
-        )
-      })}
-    </nav>
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="group-data-[collapsible=icon]:hidden">
+        <span className="px-2 py-1.5 font-heading text-sm font-semibold">Desk</span>
+      </SidebarHeader>
+      <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
+      <SidebarContent>
+        <nav aria-label="Desk">
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {LINKS.map(({ href, label, icon: Icon }) => {
+                  const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
+                  return (
+                    <SidebarMenuItem key={href}>
+                      <SidebarMenuButton asChild isActive={active} tooltip={label}>
+                        <Link href={href} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)}>
+                          <Icon />
+                          <span>{label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </nav>
+      </SidebarContent>
+      <SidebarRail />
+    </Sidebar>
   )
 }

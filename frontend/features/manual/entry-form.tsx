@@ -2,10 +2,12 @@
 
 import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { StepUpDialog } from "@/features/auth/step-up-dialog"
 import { useStepUp } from "@/features/auth/use-step-up"
 import { postEntry, useManualMutation, type EntryBody } from "@/features/manual/api"
-import { Field, FormError, inputClass } from "@/features/manual/fields"
+import { Field, FormError } from "@/features/manual/fields"
 
 type Instrument = EntryBody["instrument"]
 
@@ -52,20 +54,19 @@ export function EntryForm() {
       <form onSubmit={submit} aria-label="Manual entry" className="flex flex-col gap-3">
         <Field label="Instrument">
           {(id) => (
-            <select id={id} value={form.instrument} onChange={(e) => set({ instrument: e.target.value })} className={inputClass}>
-              <option value="option">Option</option>
-              <option value="stock">Stock</option>
-            </select>
+            <NativeSelect id={id} value={form.instrument} onChange={(e) => set({ instrument: e.target.value })}>
+              <NativeSelectOption value="option">Option</NativeSelectOption>
+              <NativeSelectOption value="stock">Stock</NativeSelectOption>
+            </NativeSelect>
           )}
         </Field>
         <Field label="Underlying">
           {(id) => (
-            <input
+            <Input
               id={id}
               value={form.underlying}
               autoCapitalize="characters"
               onChange={(e) => set({ underlying: e.target.value })}
-              className={inputClass}
             />
           )}
         </Field>
@@ -73,12 +74,12 @@ export function EntryForm() {
           <>
             <Field label="Expiry">
               {(id) => (
-                <input id={id} type="date" value={form.expiry} onChange={(e) => set({ expiry: e.target.value })} className={inputClass} />
+                <Input id={id} type="date" value={form.expiry} onChange={(e) => set({ expiry: e.target.value })} />
               )}
             </Field>
             <Field label="Strike">
               {(id) => (
-                <input
+                <Input
                   id={id}
                   type="number"
                   inputMode="decimal"
@@ -86,23 +87,22 @@ export function EntryForm() {
                   step="any"
                   value={form.strike}
                   onChange={(e) => set({ strike: e.target.value })}
-                  className={inputClass}
                 />
               )}
             </Field>
             <Field label="Right">
               {(id) => (
-                <select id={id} value={form.right} onChange={(e) => set({ right: e.target.value })} className={inputClass}>
-                  <option value="call">Call</option>
-                  <option value="put">Put</option>
-                </select>
+                <NativeSelect id={id} value={form.right} onChange={(e) => set({ right: e.target.value })}>
+                  <NativeSelectOption value="call">Call</NativeSelectOption>
+                  <NativeSelectOption value="put">Put</NativeSelectOption>
+                </NativeSelect>
               )}
             </Field>
           </>
         ) : null}
         <Field label="Quantity">
           {(id) => (
-            <input
+            <Input
               id={id}
               type="number"
               inputMode="numeric"
@@ -110,13 +110,12 @@ export function EntryForm() {
               step={1}
               value={form.qty}
               onChange={(e) => set({ qty: e.target.value })}
-              className={inputClass}
             />
           )}
         </Field>
         <Field label="Limit price" hint="Needs a password check.">
           {(id) => (
-            <input
+            <Input
               id={id}
               type="number"
               inputMode="decimal"
@@ -124,7 +123,6 @@ export function EntryForm() {
               step="any"
               value={form.limitPrice}
               onChange={(e) => set({ limitPrice: e.target.value })}
-              className={inputClass}
             />
           )}
         </Field>

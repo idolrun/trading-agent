@@ -148,7 +148,9 @@ describe("session gate", () => {
       </RequireSession>,
     )
     expect(await screen.findByText("secret")).toBeInTheDocument()
-    expect(screen.getByText("me@example.com")).toBeInTheDocument()
+    const email = screen.getByText("me@example.com")
+    expect(email).not.toHaveClass("hidden")
+    expect(email).toHaveAttribute("title", "me@example.com")
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }))
     await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/login"))
   })

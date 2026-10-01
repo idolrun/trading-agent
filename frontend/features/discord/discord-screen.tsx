@@ -1,18 +1,21 @@
 "use client"
 
+import { Input } from "@/components/ui/input"
+
 import { useState, type FormEvent } from "react"
 import { Badge } from "@/components/badge"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
-import { FormError, inputClass } from "@/features/manual/fields"
+import { Label } from "@/components/ui/label"
+import { FormError } from "@/features/manual/fields"
 import { useChangeChannel } from "@/features/discord/mutations"
 import { useDiscordStatus } from "@/features/discord/queries"
 import { isChannelId, STATE_LABEL, type DiscordStatus } from "@/features/discord/types"
 
 const STATE_STYLE: Record<DiscordStatus["state"], string> = {
   not_configured: "",
-  connecting: "border-amber-500 text-amber-600",
-  connected: "border-emerald-500 text-emerald-600",
+  connecting: "border-warning text-warning-foreground",
+  connected: "border-primary text-primary",
   login_failed: "border-destructive text-destructive",
 }
 
@@ -87,13 +90,13 @@ export function DiscordScreen() {
             )}
 
             <form onSubmit={add} className="flex flex-col gap-2">
-              <label htmlFor="discord-channel-id" className="text-sm font-medium">
+              <Label htmlFor="discord-channel-id" className="leading-normal select-text">
                 Channel ID
-              </label>
+              </Label>
               <div className="flex gap-2">
-                <input
+                <Input
                   id="discord-channel-id"
-                  className={`${inputClass} flex-1`}
+                  className="flex-1"
                   inputMode="numeric"
                   placeholder="Right-click a channel, Copy Channel ID"
                   value={text}

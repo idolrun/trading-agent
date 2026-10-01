@@ -1,5 +1,7 @@
 "use client"
 
+import { Input } from "@/components/ui/input"
+
 import { useEffect, useRef, useState } from "react"
 import { BracketLegs, legsProblem, parseLegs } from "@/features/cards/bracket-legs"
 import { BreakevenChoice } from "@/features/cards/breakeven-choice"
@@ -87,7 +89,7 @@ function ActionsForm({ card, pending, blocked = false, error = null, onDecide }:
     latest.current = { canApprove, idle, approve, reject }
   })
   useEffect(() => {
-    const article = root.current?.closest("article")
+    const article = root.current?.closest<HTMLElement>("article, [role='article']")
     if (!article) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
@@ -110,12 +112,12 @@ function ActionsForm({ card, pending, blocked = false, error = null, onDecide }:
         <div className="flex flex-col gap-1">
           <label className="flex items-center justify-between gap-3 text-sm font-medium">
             Quantity
-            <input
+            <Input
               type="number"
               inputMode="numeric"
               min={1}
               step={1}
-              className="h-11 w-28 rounded-md border border-input bg-background px-2 text-right tabular-nums"
+              className="w-28 text-right tabular-nums"
               value={qty}
               aria-invalid={qtyMalformed}
               aria-describedby={`qty-help-${card.id}`}

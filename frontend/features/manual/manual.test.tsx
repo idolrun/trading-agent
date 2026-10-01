@@ -1,7 +1,9 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { Sidebar, SidebarProvider } from "@/components/ui/sidebar"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { DeskNav } from "@/features/desk/desk-nav"
 import { LotDetail } from "@/features/lots/lot-detail"
 import { EntryForm } from "@/features/manual/entry-form"
@@ -207,8 +209,52 @@ describe("kill switch", () => {
   })
 
   it("has a Manual entry link in the desk nav", () => {
-    renderWithQuery(<DeskNav />)
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }))
+    renderWithQuery(
+      <TooltipProvider>
+        <SidebarProvider>
+          <DeskNav />
+        </SidebarProvider>
+      </TooltipProvider>,
+    )
     expect(screen.getByRole("link", { name: "Manual entry" })).toHaveAttribute("href", "/manual/entry")
+    vi.unstubAllGlobals()
+  })
+})
+
+describe("sidebar shortcut", () => {
+  it("toggles from the page and leaves text fields alone", async () => {
+    render(
+      <TooltipProvider>
+        <SidebarProvider>
+          <Sidebar>
+            <label>
+              Reason
+              <textarea />
+            </label>
+          </Sidebar>
+        </SidebarProvider>
+      </TooltipProvider>,
+    )
+    const sidebar = document.querySelector("[data-slot=sidebar]")
+    expect(sidebar).toHaveAttribute("data-state", "expanded")
+
+    const typed = new KeyboardEvent("keydown", { key: "b", ctrlKey: true, bubbles: true, cancelable: true })
+    screen.getByRole("textbox").dispatchEvent(typed)
+    expect(typed.defaultPrevented).toBe(false)
+    expect(sidebar).toHaveAttribute("data-state", "expanded")
+
+    const global = new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true, cancelable: true })
+    await act(async () => {
+      window.dispatchEvent(global)
+    })
+    expect(global.defaultPrevented).toBe(true)
+    expect(sidebar).toHaveAttribute("data-state", "collapsed")
+    document.cookie = "sidebar_state=; path=/; max-age=0"
   })
 })
 

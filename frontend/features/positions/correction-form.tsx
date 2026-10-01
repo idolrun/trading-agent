@@ -1,10 +1,14 @@
 "use client"
 
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+
+import { Input } from "@/components/ui/input"
+
 import { useState, type FormEvent } from "react"
 import { Dialog } from "@/components/dialog"
 import { Button } from "@/components/ui/button"
 import { patchPosition, postPosition, useManualMutation } from "@/features/manual/api"
-import { Field, FormError, inputClass } from "@/features/manual/fields"
+import { Field, FormError } from "@/features/manual/fields"
 import type { PositionDetail } from "@/features/positions/types"
 import type { Schemas } from "@/lib/api/types"
 
@@ -118,50 +122,50 @@ export function CorrectionDialog({
         {mode === "add" ? (
           <Field label="Instrument">
             {(id) => (
-              <select id={id} value={form.instrument} onChange={(e) => set({ instrument: e.target.value as Form["instrument"] })} className={inputClass}>
-                <option value="option">Option</option>
-                <option value="stock">Stock</option>
-              </select>
+              <NativeSelect id={id} value={form.instrument} onChange={(e) => set({ instrument: e.target.value as Form["instrument"] })}>
+                <NativeSelectOption value="option">Option</NativeSelectOption>
+                <NativeSelectOption value="stock">Stock</NativeSelectOption>
+              </NativeSelect>
             )}
           </Field>
         ) : null}
         {fields ? (
           <>
-            <Field label="Underlying">{(id) => <input id={id} value={form.underlying} onChange={(e) => set({ underlying: e.target.value })} className={inputClass} />}</Field>
+            <Field label="Underlying">{(id) => <Input id={id} value={form.underlying} onChange={(e) => set({ underlying: e.target.value })} />}</Field>
             {isOption ? (
               <>
-                <Field label="Expiry">{(id) => <input id={id} type="date" value={form.expiry} onChange={(e) => set({ expiry: e.target.value })} className={inputClass} />}</Field>
-                <Field label="Strike">{(id) => <input id={id} type="number" inputMode="decimal" min={0} step="any" value={form.strike} onChange={(e) => set({ strike: e.target.value })} className={inputClass} />}</Field>
+                <Field label="Expiry">{(id) => <Input id={id} type="date" value={form.expiry} onChange={(e) => set({ expiry: e.target.value })} />}</Field>
+                <Field label="Strike">{(id) => <Input id={id} type="number" inputMode="decimal" min={0} step="any" value={form.strike} onChange={(e) => set({ strike: e.target.value })} />}</Field>
                 <Field label="Right">
                   {(id) => (
-                    <select id={id} value={form.right} onChange={(e) => set({ right: e.target.value as Form["right"] })} className={inputClass}>
-                      <option value="call">Call</option>
-                      <option value="put">Put</option>
-                    </select>
+                    <NativeSelect id={id} value={form.right} onChange={(e) => set({ right: e.target.value as Form["right"] })}>
+                      <NativeSelectOption value="call">Call</NativeSelectOption>
+                      <NativeSelectOption value="put">Put</NativeSelectOption>
+                    </NativeSelect>
                   )}
                 </Field>
               </>
             ) : null}
-            <Field label="Entry price">{(id) => <input id={id} type="number" inputMode="decimal" min={0} step="any" value={form.entryPrice} onChange={(e) => set({ entryPrice: e.target.value })} className={inputClass} />}</Field>
+            <Field label="Entry price">{(id) => <Input id={id} type="number" inputMode="decimal" min={0} step="any" value={form.entryPrice} onChange={(e) => set({ entryPrice: e.target.value })} />}</Field>
           </>
         ) : null}
         {mode === "edit" ? (
           <>
-            <Field label="Stop level">{(id) => <input id={id} type="number" inputMode="decimal" min={0} step="any" value={form.stopLevel} onChange={(e) => set({ stopLevel: e.target.value })} className={inputClass} />}</Field>
+            <Field label="Stop level">{(id) => <Input id={id} type="number" inputMode="decimal" min={0} step="any" value={form.stopLevel} onChange={(e) => set({ stopLevel: e.target.value })} />}</Field>
             <Field label="Stop basis">
               {(id) => (
-                <select id={id} value={form.stopBasis} onChange={(e) => set({ stopBasis: e.target.value as Form["stopBasis"] })} className={inputClass}>
-                  <option value="premium">Option premium</option>
-                  <option value="underlying">Underlying price</option>
-                </select>
+                <NativeSelect id={id} value={form.stopBasis} onChange={(e) => set({ stopBasis: e.target.value as Form["stopBasis"] })}>
+                  <NativeSelectOption value="premium">Option premium</NativeSelectOption>
+                  <NativeSelectOption value="underlying">Underlying price</NativeSelectOption>
+                </NativeSelect>
               )}
             </Field>
             <Field label="Take-profit levels" hint="Comma separated.">
-              {(id) => <input id={id} value={form.tpLevels} onChange={(e) => set({ tpLevels: e.target.value })} className={inputClass} />}
+              {(id) => <Input id={id} value={form.tpLevels} onChange={(e) => set({ tpLevels: e.target.value })} />}
             </Field>
           </>
         ) : null}
-        <Field label="Reason">{(id) => <input id={id} value={form.reason} onChange={(e) => set({ reason: e.target.value })} className={inputClass} />}</Field>
+        <Field label="Reason">{(id) => <Input id={id} value={form.reason} onChange={(e) => set({ reason: e.target.value })} />}</Field>
         <FormError error={save.error} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>

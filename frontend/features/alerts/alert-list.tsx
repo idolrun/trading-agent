@@ -1,18 +1,32 @@
 "use client"
 
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import Link from "next/link"
 import { useState } from "react"
 import { Badge } from "@/components/badge"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import { useAcknowledgeAlert } from "@/features/alerts/mutations"
 import { useAlertList } from "@/features/alerts/queries"
 import type { AlertSeverity } from "@/features/alerts/types"
+import { cn } from "@/lib/utils"
 
-const FIELD =
-  "h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 const SEVERITIES: AlertSeverity[] = ["urgent", "warning", "info"]
+
+const SEVERITY_ROW: Record<AlertSeverity, string> = {
+  urgent: "border-destructive/50 bg-destructive/10",
+  warning: "border-warning/60 bg-warning/10",
+  info: "border-info/60 bg-info/10",
+}
+
+const SEVERITY_LABEL: Record<AlertSeverity, string> = {
+  urgent: "text-destructive",
+  warning: "text-warning-foreground",
+  info: "text-info-foreground",
+}
 
 /** `compact` is the desk panel: adds its own heading and a link to the full page. */
 export function AlertList({ compact = false }: { compact?: boolean }) {
@@ -37,27 +51,23 @@ export function AlertList({ compact = false }: { compact?: boolean }) {
       <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
         <label className="flex w-fit flex-col gap-1 text-sm">
           Severity
-          <select
-            className={FIELD}
+          <NativeSelect
+           
             value={severity}
             onChange={(event) => setSeverity(event.target.value as AlertSeverity | "")}
           >
-            <option value="">All</option>
+            <NativeSelectOption value="">All</NativeSelectOption>
             {SEVERITIES.map((value) => (
-              <option key={value} value={value}>
+              <NativeSelectOption key={value} value={value}>
                 {value}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </label>
-        <label className="flex min-h-9 items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={showAcknowledged}
-            onChange={(event) => setShowAcknowledged(event.target.checked)}
-          />
+        <Label className="min-h-9 font-normal leading-normal select-text">
+          <Checkbox checked={showAcknowledged} onCheckedChange={(value) => setShowAcknowledged(value === true)} />
           Show acknowledged
-        </label>
+        </Label>
       </div>
       {acknowledge.isError ? (
         <p role="alert" className="text-sm text-destructive">
@@ -75,10 +85,18 @@ export function AlertList({ compact = false }: { compact?: boolean }) {
             {data.items.map((alert) => (
               <li
                 key={alert.id}
-                className="flex flex-col gap-2 rounded-lg border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                className={cn(
+                  "flex flex-col gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+                  SEVERITY_ROW[alert.severity as AlertSeverity],
+                )}
               >
                 <p className="text-sm">
-                  <span className="mr-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  <span
+                    className={cn(
+                      "mr-2 text-xs font-medium uppercase tracking-wide",
+                      SEVERITY_LABEL[alert.severity as AlertSeverity],
+                    )}
+                  >
                     {alert.severity}
                   </span>
                   {alert.message}

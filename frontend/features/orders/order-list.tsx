@@ -1,5 +1,7 @@
 "use client"
 
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+
 import Link from "next/link"
 import { useState } from "react"
 import { Badge } from "@/components/badge"
@@ -9,8 +11,6 @@ import { words } from "@/features/cards/types"
 import { useOrderList } from "@/features/orders/queries"
 import { ORDER_STATUSES, type OrderStatus } from "@/features/orders/types"
 
-const FIELD =
-  "h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 /** `compact` is the desk panel: adds its own heading and a link to the full page. */
 export function OrderList({ compact = false }: { compact?: boolean }) {
@@ -29,18 +29,18 @@ export function OrderList({ compact = false }: { compact?: boolean }) {
       ) : null}
       <label className="flex w-fit flex-col gap-1 text-sm">
         Status
-        <select
+        <NativeSelect
           value={status}
           onChange={(event) => setStatus(event.target.value as OrderStatus | "")}
-          className={FIELD}
+         
         >
-          <option value="">All</option>
+          <NativeSelectOption value="">All</NativeSelectOption>
           {ORDER_STATUSES.map((value) => (
-            <option key={value} value={value}>
+            <NativeSelectOption key={value} value={value}>
               {words(value)}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <QueryState
         query={query}

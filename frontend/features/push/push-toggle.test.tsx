@@ -63,9 +63,9 @@ describe("PushToggle", () => {
     requestPermission.mockResolvedValue("granted")
     renderWithQuery(<PushToggle />)
 
-    await userEvent.click(await screen.findByRole("button", { name: "Enable notifications" }))
+    await userEvent.click(await screen.findByRole("switch", { name: "Enable notifications" }))
 
-    expect(await screen.findByRole("button", { name: "Disable notifications" })).toBeInTheDocument()
+    expect(await screen.findByRole("switch", { name: "Disable notifications" })).toBeInTheDocument()
     expect(navigator.serviceWorker.register).toHaveBeenCalledWith("/sw.js", { scope: "/", updateViaCache: "none" })
     expect(pushManager.subscribe).toHaveBeenCalledWith({
       userVisibleOnly: true,
@@ -78,9 +78,9 @@ describe("PushToggle", () => {
     browser({ permission: "granted", existing: subscription })
     renderWithQuery(<PushToggle />)
 
-    await userEvent.click(await screen.findByRole("button", { name: "Disable notifications" }))
+    await userEvent.click(await screen.findByRole("switch", { name: "Disable notifications" }))
 
-    expect(await screen.findByRole("button", { name: "Enable notifications" })).toBeInTheDocument()
+    expect(await screen.findByRole("switch", { name: "Enable notifications" })).toBeInTheDocument()
     expect(deleted).toEqual([SUB_ID])
     expect(subscription.unsubscribe).toHaveBeenCalled()
   })
@@ -90,7 +90,7 @@ describe("PushToggle", () => {
     requestPermission.mockResolvedValue("denied")
     renderWithQuery(<PushToggle />)
 
-    await userEvent.click(await screen.findByRole("button", { name: "Enable notifications" }))
+    await userEvent.click(await screen.findByRole("switch", { name: "Enable notifications" }))
 
     expect(await screen.findByText(/blocked/i)).toBeInTheDocument()
     expect(screen.queryByRole("button")).not.toBeInTheDocument()
@@ -113,11 +113,11 @@ describe("PushToggle", () => {
     )
     renderWithQuery(<PushToggle />)
 
-    await userEvent.click(await screen.findByRole("button", { name: "Enable notifications" }))
+    await userEvent.click(await screen.findByRole("switch", { name: "Enable notifications" }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent("boom")
     expect(subscription.unsubscribe).toHaveBeenCalled()
-    expect(screen.getByRole("button", { name: "Enable notifications" })).toBeInTheDocument()
+    expect(screen.getByRole("switch", { name: "Enable notifications" })).toBeInTheDocument()
   })
 
   it("says so when the browser has no push support", async () => {

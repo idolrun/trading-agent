@@ -1,8 +1,12 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react"
+import { ModeToggle } from "@/components/mode-toggle"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { Spinner } from "@/features/auth/submit"
 import { loginUrl, useLogout, useSession } from "@/features/auth/use-session"
 import { onUnauthorized } from "@/lib/api/client"
@@ -13,10 +17,21 @@ function currentPath() {
 }
 
 /** Client gate for the desk. proxy.ts only checks the cookie exists; this asks the backend. */
-export function RequireSession({ children, header }: { children: ReactNode; header?: ReactNode }) {
+export function RequireSession({
+  children,
+  header,
+  sidebar,
+  actions,
+}: {
+  children: ReactNode
+  header?: ReactNode
+  sidebar?: ReactNode
+  actions?: ReactNode
+}) {
   const router = useRouter()
   const session = useSession()
   const logout = useLogout()
+  const headerRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     onUnauthorized(() => {
@@ -37,6 +52,24 @@ export function RequireSession({ children, header }: { children: ReactNode; head
     if (mustChange) router.replace("/change-password")
   }, [mustChange, router])
 
+  const headerVisible = Boolean(session.data) && !mustChange && !(session.isError && !unauthorized)
+  // The feed's "New messages" pill sticks under this bar. The bar wraps, so its height is measured.
+  useLayoutEffect(() => {
+    const node = headerRef.current
+    if (!node) return
+    const publish = () => {
+      const height = Math.ceil(node.getBoundingClientRect().height)
+      if (height > 0) document.documentElement.style.setProperty("--desk-header-height", `${height}px`)
+    }
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty("--desk-header-height")
+    }
+  }, [headerVisible])
+
   if (session.isError && !unauthorized) {
     return (
       <div role="alert" className="mx-auto flex max-w-sm flex-col items-start gap-3 p-6">
@@ -55,11 +88,24 @@ export function RequireSession({ children, header }: { children: ReactNode; head
     )
   }
 
-  return (
-    <>
-      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 border-b border-border px-4 py-2 sm:px-6">
-        {header}
-        <span className="text-sm text-muted-foreground">{session.data.email}</span>
+  const bar = (
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6"
+    >
+      {sidebar ? (
+        <>
+          <SidebarTrigger />
+          <Separator orientation="vertical" className="h-4 self-center" />
+        </>
+      ) : null}
+      {header}
+      <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+        {actions}
+        <ModeToggle />
+        <span title={session.data.email} className="max-w-32 truncate text-sm text-muted-foreground sm:max-w-48">
+          {session.data.email}
+        </span>
         <Button
           type="button"
           variant="ghost"
@@ -70,7 +116,27 @@ export function RequireSession({ children, header }: { children: ReactNode; head
           Sign out
         </Button>
       </div>
-      {children}
-    </>
+    </header>
+  )
+
+  if (!sidebar) {
+    return (
+      <>
+        {bar}
+        {children}
+      </>
+    )
+  }
+
+  return (
+    <TooltipProvider>
+      <SidebarProvider>
+        {sidebar}
+        <SidebarInset className="min-w-0">
+          {bar}
+          {children}
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   )
 }

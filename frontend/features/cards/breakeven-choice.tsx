@@ -1,3 +1,5 @@
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { formatPrice } from "@/lib/format"
 import type { BreakevenPick, CardProposal } from "@/features/cards/types"
 
@@ -21,27 +23,22 @@ export function BreakevenChoice({
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1 text-sm font-medium">Breakeven stop at</legend>
-      {choices.map((choice) => (
-        <label
-          key={choice.id}
-          className="flex min-h-11 items-center gap-3 rounded-md border border-border px-3 text-sm has-checked:border-primary has-checked:bg-muted has-disabled:opacity-50"
-        >
-          <input
-            type="radio"
-            name={`breakeven-${cardId}`}
-            className="size-4"
-            checked={value === choice.id}
-            disabled={choice.price == null}
-            onChange={() => onChange(choice.id)}
-          />
-          <span>
-            {choice.label}{" "}
-            <span className="tabular-nums text-muted-foreground">
-              {choice.price == null ? "(unknown)" : formatPrice(choice.price)}
+      <RadioGroup name={`breakeven-${cardId}`} value={value} onValueChange={(id) => onChange(id as BreakevenPick)} className="gap-2">
+        {choices.map((choice) => (
+          <Label
+            key={choice.id}
+            className="min-h-11 gap-3 rounded-md border border-border px-3 font-normal leading-normal select-text has-data-[state=checked]:border-primary has-data-[state=checked]:bg-muted has-data-[disabled]:opacity-50"
+          >
+            <RadioGroupItem value={choice.id} disabled={choice.price == null} />
+            <span>
+              {choice.label}{" "}
+              <span className="tabular-nums text-muted-foreground">
+                {choice.price == null ? "(unknown)" : formatPrice(choice.price)}
+              </span>
             </span>
-          </span>
-        </label>
-      ))}
+          </Label>
+        ))}
+      </RadioGroup>
     </fieldset>
   )
 }

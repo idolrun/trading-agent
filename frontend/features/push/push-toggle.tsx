@@ -1,7 +1,8 @@
 "use client"
 
 import { useSyncExternalStore } from "react"
-import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { usePushSubscription } from "@/features/push/use-push-subscription"
 
 /** iOS only allows web push for an app added to the Home Screen (TRD §3). */
@@ -30,17 +31,17 @@ export function PushToggle() {
         : null
 
   return (
-    <div className="flex flex-col items-end gap-1 text-xs text-muted-foreground">
+    <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-muted-foreground">
       {(state === "disabled" || state === "enabled") && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => void (state === "enabled" ? disable() : enable())}
-        >
-          {state === "enabled" ? "Disable notifications" : "Enable notifications"}
-        </Button>
+        <Label className="gap-2 text-xs font-normal leading-normal select-text">
+          <Switch
+            checked={state === "enabled"}
+            disabled={busy}
+            aria-label={state === "enabled" ? "Disable notifications" : "Enable notifications"}
+            onCheckedChange={(on) => void (on ? enable() : disable())}
+          />
+          {state === "enabled" ? "Notifications on" : "Notifications off"}
+        </Label>
       )}
       {hint && <p>{hint}</p>}
       {error && (

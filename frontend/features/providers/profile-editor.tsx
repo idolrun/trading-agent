@@ -1,5 +1,9 @@
 "use client"
 
+import { Textarea } from "@/components/ui/textarea"
+
+import { Input } from "@/components/ui/input"
+
 import { useState, type FormEvent } from "react"
 import { Dialog } from "@/components/dialog"
 import { Button } from "@/components/ui/button"
@@ -11,7 +15,7 @@ import {
   type Profile,
   type ProfileList,
 } from "@/features/manual/api"
-import { Field, FormError, inputClass, textareaClass } from "@/features/manual/fields"
+import { Field, FormError } from "@/features/manual/fields"
 
 const LABELS: Record<ProfileList, { label: string; hint: string }> = {
   aliases: { label: "Aliases", hint: "Other names this provider uses for tickers. One per line." },
@@ -45,10 +49,10 @@ function ProfileForm({ providerId, profile, onClose }: { providerId: string; pro
     <form onSubmit={submit} className="flex flex-col gap-3">
       {PROFILE_LISTS.map((k) => (
         <Field key={k} label={LABELS[k].label} hint={LABELS[k].hint}>
-          {(id) => <textarea id={id} rows={4} value={text[k]} onChange={(e) => setText({ ...text, [k]: e.target.value })} className={textareaClass} />}
+          {(id) => <Textarea id={id} rows={4} value={text[k]} onChange={(e) => setText({ ...text, [k]: e.target.value })} />}
         </Field>
       ))}
-      <Field label="Reason">{(id) => <input id={id} value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />}</Field>
+      <Field label="Reason">{(id) => <Input id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
       <FormError error={save.error} />
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onClose}>

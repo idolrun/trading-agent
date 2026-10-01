@@ -77,7 +77,7 @@ function payload(type: string, msg: Message, extra: Record<string, unknown> = {}
   }
 }
 
-/** X-Signature = hex(HMAC-SHA256(secret, "<ts>." + raw body)) — app/ingest/security.py. */
+/** X-Signature = hex(HMAC-SHA256(secret, "<ts>." + raw body)). See app/ingest/security.py. */
 export function signed(body: string, at: Date) {
   const ts = Math.floor(at.getTime() / 1000).toString()
   const signature = createHmac("sha256", HMAC_SECRET).update(`${ts}.`).update(body).digest("hex")

@@ -1,15 +1,22 @@
 import type { ReactNode } from "react"
+import { Badge as UiBadge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-export function Badge({ children, className }: { children: ReactNode; className?: string }) {
+const chip =
+  "h-auto shrink overflow-visible rounded-md bg-muted whitespace-normal [&>svg]:size-3.5!"
+
+export function Badge({
+  children,
+  className,
+  asChild = false,
+}: {
+  children: ReactNode
+  className?: string
+  asChild?: boolean
+}) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium",
-        className,
-      )}
-    >
+    <UiBadge asChild={asChild} variant="outline" className={cn(chip, className)}>
       {children}
-    </span>
+    </UiBadge>
   )
 }

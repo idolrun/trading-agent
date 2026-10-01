@@ -1,5 +1,7 @@
 "use client"
 
+import { Input } from "@/components/ui/input"
+
 import { useEffect, useRef, useState } from "react"
 import type { FormEvent } from "react"
 import { LoadMore } from "@/components/load-more"
@@ -13,14 +15,13 @@ import { keyIgnored } from "@/features/labels/types"
 import type { LabelProgress } from "@/features/labels/types"
 import { formatTime } from "@/lib/format"
 
-const FIELD = "h-11 rounded-md border border-border bg-background px-2 text-sm"
 
 function Counter({ name, value, min }: { name: string; value: number; min: number }) {
   return (
     <div className="flex flex-col gap-1 text-sm">
       <span>{name} {value} / {min}</span>
-      <div role="progressbar" aria-label={name} aria-valuenow={value} aria-valuemin={0} aria-valuemax={min} className="h-2 rounded-full bg-muted">
-        <div className="h-2 rounded-full bg-foreground" style={{ width: `${Math.min(100, (value / Math.max(min, 1)) * 100)}%` }} />
+      <div role="progressbar" aria-label={name} aria-valuenow={value} aria-valuemin={0} aria-valuemax={min} className="h-2 rounded-md bg-muted">
+        <div className="h-2 rounded-md bg-foreground" style={{ width: `${Math.min(100, (value / Math.max(min, 1)) * 100)}%` }} />
       </div>
     </div>
   )
@@ -83,7 +84,7 @@ export function LabelQueue() {
       <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-sm">
           Provider ID
-          <input value={providerText} onChange={(e) => setProviderText(e.target.value)} inputMode="numeric" autoComplete="off" aria-invalid={invalid} className={`${FIELD} w-44`} />
+          <Input value={providerText} onChange={(e) => setProviderText(e.target.value)} inputMode="numeric" autoComplete="off" aria-invalid={invalid} className="w-44" />
         </label>
         <Button type="submit" variant="outline" className="h-11" disabled={invalid}>Filter</Button>
         {invalid ? <p role="alert" className="w-full text-sm text-destructive">Provider ID is a number.</p> : null}

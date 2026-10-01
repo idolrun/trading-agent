@@ -1,6 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes } from "react"
+import { Alert } from "@/components/ui/alert"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Spinner as SpinnerIcon } from "@/components/ui/spinner"
 
 export type SubmitState = { phase: "idle" | "pending" } | { phase: "failed"; message: string }
 
@@ -39,21 +43,21 @@ export function ErrorAlert({ state }: { state: SubmitState }) {
 
   if (state.phase !== "failed") return null
   return (
-    <div
+    <Alert
       ref={ref}
       tabIndex={-1}
-      role="alert"
-      className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm outline-none"
+      variant="destructive"
+      className="rounded-md border-destructive/30 bg-destructive/5 px-3 py-2 text-foreground outline-none"
     >
       {state.message}
-    </div>
+    </Alert>
   )
 }
 
 export function Spinner({ label }: { label: string }) {
   return (
     <p role="status" aria-busy="true" className="flex items-center gap-2 text-sm text-muted-foreground">
-      <span aria-hidden className="size-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+      <SpinnerIcon aria-hidden role="presentation" aria-label={undefined} />
       {label}
     </p>
   )
@@ -61,12 +65,12 @@ export function Spinner({ label }: { label: string }) {
 
 export function TextField({ label, ...input }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <label className="flex flex-col gap-1.5 text-sm font-medium">
+    <Label className="flex-col items-stretch gap-1.5 leading-normal select-text">
       {label}
-      <input
+      <Input
         {...input}
-        className="h-9 rounded-md border border-input bg-background px-2.5 text-sm font-normal outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="bg-background py-0 text-sm font-normal shadow-none select-text dark:bg-background"
       />
-    </label>
+    </Label>
   )
 }

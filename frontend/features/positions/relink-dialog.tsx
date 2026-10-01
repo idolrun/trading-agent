@@ -1,12 +1,16 @@
 "use client"
 
+import { Input } from "@/components/ui/input"
+
 import { useState, type FormEvent } from "react"
 import { Dialog } from "@/components/dialog"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useCardList } from "@/features/cards/queries"
 import { words } from "@/features/cards/types"
 import { postLink, useManualMutation } from "@/features/manual/api"
-import { Field, FormError, inputClass } from "@/features/manual/fields"
+import { Field, FormError } from "@/features/manual/fields"
 import type { PositionDetail } from "@/features/positions/types"
 import { formatContract, formatTime } from "@/lib/format"
 
@@ -53,23 +57,19 @@ export function RelinkDialog({ position, onClose }: { position: PositionDetail; 
           {cards.data && candidates.length === 0 ? (
             <p className="text-sm text-muted-foreground">No recent signals from this provider.</p>
           ) : null}
-          {candidates.map((card) => (
-            <label key={card.id} className="flex min-h-11 items-center gap-3 text-sm">
-              <input
-                type="radio"
-                name="relink-signal"
-                value={card.signalId!}
-                checked={signalId === card.signalId}
-                onChange={() => setSignalId(card.signalId!)}
-              />
-              <span>
-                {words(card.action)} {card.contract ? formatContract(card.contract) : (card.underlying ?? "")}
-                <span className="block text-xs text-muted-foreground">{formatTime(card.postedAt)}</span>
-              </span>
-            </label>
-          ))}
+          <RadioGroup value={signalId} onValueChange={setSignalId} className="gap-1">
+            {candidates.map((card) => (
+              <Label key={card.id} className="min-h-11 gap-3 font-normal leading-normal select-text">
+                <RadioGroupItem value={card.signalId!} />
+                <span>
+                  {words(card.action)} {card.contract ? formatContract(card.contract) : (card.underlying ?? "")}
+                  <span className="block text-xs text-muted-foreground">{formatTime(card.postedAt)}</span>
+                </span>
+              </Label>
+            ))}
+          </RadioGroup>
         </fieldset>
-        <Field label="Reason">{(id) => <input id={id} value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />}</Field>
+        <Field label="Reason">{(id) => <Input id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
         <FormError error={relink.error} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>

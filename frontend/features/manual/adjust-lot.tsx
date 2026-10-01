@@ -2,10 +2,11 @@
 
 import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { StepUpDialog } from "@/features/auth/step-up-dialog"
 import { useStepUp } from "@/features/auth/use-step-up"
 import { postAdjust, useManualMutation } from "@/features/manual/api"
-import { Field, FormError, inputClass } from "@/features/manual/fields"
+import { Field, FormError } from "@/features/manual/fields"
 import type { LotDetail } from "@/features/lots/types"
 
 /** Reconcile our lot quantity to what the broker shows (step-up). Qty 0 closes the lot. */
@@ -33,7 +34,7 @@ export function AdjustLot({ lot }: { lot: LotDetail }) {
       <h3 className="font-medium">Adjust to broker quantity</h3>
       <Field label="Broker qty" hint="Setting 0 closes this lot. Needs a password check.">
         {(id) => (
-          <input
+          <Input
             id={id}
             type="number"
             inputMode="numeric"
@@ -41,12 +42,11 @@ export function AdjustLot({ lot }: { lot: LotDetail }) {
             step={1}
             value={qty}
             onChange={(e) => setQty(e.target.value)}
-            className={inputClass}
           />
         )}
       </Field>
       <Field label="Adjust reason">
-        {(id) => <input id={id} value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass} />}
+        {(id) => <Input id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}
       </Field>
       <FormError error={adjust.error} />
       <Button type="submit" variant="outline" disabled={!valid || adjust.isPending} className="self-start">

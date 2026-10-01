@@ -1,6 +1,8 @@
 "use client"
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export type ConflictRow = { key: string; mine: unknown; server: unknown }
 
@@ -19,45 +21,41 @@ export function ConflictPanel({
   onReapply: () => void
 }) {
   return (
-    <div role="alert" className="flex flex-col gap-3 rounded-lg border border-amber-500 bg-amber-500/5 p-4">
-      <div>
-        <p className="font-medium">Config changed on the server (now version {version})</p>
-        <p className="text-sm text-muted-foreground">
-          Nothing was saved. Reload discards your edits. Reapply keeps your edited fields on top of the new version.
-        </p>
-      </div>
+    <Alert className="flex flex-col items-stretch gap-3 border-warning bg-warning/5">
+      <AlertTitle>Config changed on the server (now version {version})</AlertTitle>
+      <AlertDescription>
+        Nothing was saved. Reload discards your edits. Reapply keeps your edited fields on top of the new version.
+      </AlertDescription>
       {rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-md border border-border">
-          <table aria-label="Conflicting fields" className="w-full text-sm">
-            <thead className="bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th scope="col" className="px-3 py-2 font-medium">Field</th>
-                <th scope="col" className="px-3 py-2 font-medium">Yours</th>
-                <th scope="col" className="px-3 py-2 font-medium">Server</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((row) => (
-                <tr key={row.key}>
-                  <th scope="row" className="px-3 py-2 text-left font-mono text-xs">{row.key}</th>
-                  <td className="px-3 py-2 font-mono text-xs break-all">{show(row.mine)}</td>
-                  <td className="px-3 py-2 font-mono text-xs break-all">{show(row.server)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table aria-label="Conflicting fields">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Field</TableHead>
+              <TableHead>Yours</TableHead>
+              <TableHead>Server</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.key}>
+                <TableHead scope="row" className="font-mono text-xs">{row.key}</TableHead>
+                <TableCell className="font-mono text-xs break-all">{show(row.mine)}</TableCell>
+                <TableCell className="font-mono text-xs break-all">{show(row.server)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       ) : (
         <p className="text-sm">None of your edited fields differ from the server.</p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" className="h-11" onClick={onReload}>
+        <Button type="button" variant="outline" onClick={onReload}>
           Reload (discard my edits)
         </Button>
-        <Button type="button" className="h-11" onClick={onReapply}>
+        <Button type="button" onClick={onReapply}>
           Reapply my edits
         </Button>
       </div>
-    </div>
+    </Alert>
   )
 }

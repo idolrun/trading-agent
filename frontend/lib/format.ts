@@ -1,6 +1,6 @@
 /** Prices are decimal strings on the wire; parsed here for display only. */
 export function formatPrice(value: string | number | null): string {
-  if (value == null) return "—"
+  if (value == null) return "-"
   return Number(value).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

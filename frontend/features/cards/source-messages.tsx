@@ -30,7 +30,7 @@ export function highlightSpans(text: string, spans: Span[]): ReactNode[] {
         key={from}
         title={names}
         data-fields={names}
-        className="rounded-sm bg-sky-200 px-0.5 text-sky-950 underline decoration-solid underline-offset-2 dark:bg-sky-400/30 dark:text-sky-100"
+        className="rounded-sm bg-info-muted px-0.5 text-info-foreground underline decoration-solid underline-offset-2"
       >
         {piece}
       </mark>
@@ -65,7 +65,7 @@ export function SourceMessages({ card }: { card: Card }) {
                 href={`#${sourceAnchor(item.sourceMessageId)}`}
                 className="underline decoration-dotted underline-offset-2"
               >
-                <mark className="rounded-sm bg-amber-200 px-1 text-amber-950 dark:bg-amber-400/30 dark:text-amber-100">
+                <mark className="rounded-sm bg-warning-muted px-1 text-warning-foreground">
                   {words(item.field)}
                 </mark>
               </a>
@@ -81,7 +81,7 @@ export function SourceMessages({ card }: { card: Card }) {
               key={message.messageId}
               id={sourceAnchor(message.messageId)}
               data-supplies-inferred={supplies.length > 0}
-              className="scroll-mt-20 rounded-md border border-border bg-muted/40 px-3 py-2 target:ring-2 target:ring-ring data-[supplies-inferred=true]:border-amber-500"
+              className="scroll-mt-20 rounded-md border border-border bg-muted/40 px-3 py-2 target:ring-2 target:ring-ring data-[supplies-inferred=true]:border-warning"
             >
               <p className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted-foreground">
                 <span>

@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useState, type FormEvent } from "react"
 import { Dialog } from "@/components/dialog"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { StepUpDialog } from "@/features/auth/step-up-dialog"
 import { useStepUp } from "@/features/auth/use-step-up"
 import { words } from "@/features/cards/types"
@@ -75,18 +77,14 @@ function FlattenDialog({ onClose }: { onClose: () => void }) {
           <form onSubmit={submit} className="flex flex-col gap-3">
             <fieldset className="flex flex-col gap-1">
               <legend className="text-sm font-medium">Scope</legend>
-              {SCOPES.map((option) => (
-                <label key={option.value} className="flex min-h-11 items-center gap-3 text-sm">
-                  <input
-                    type="radio"
-                    name="flatten-scope"
-                    value={option.value}
-                    checked={scope === option.value}
-                    onChange={() => setScope(option.value)}
-                  />
-                  {option.label}
-                </label>
-              ))}
+              <RadioGroup value={scope} onValueChange={(value) => setScope(value as FlattenScope)} className="gap-1">
+                {SCOPES.map((option) => (
+                  <Label key={option.value} className="min-h-11 gap-3 font-normal leading-normal select-text">
+                    <RadioGroupItem value={option.value} />
+                    {option.label}
+                  </Label>
+                ))}
+              </RadioGroup>
             </fieldset>
             <FormError error={flatten.error} />
             <div className="flex justify-end gap-2">

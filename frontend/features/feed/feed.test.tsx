@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { FeedScreen } from "@/features/feed/feed-screen"
 import type { FeedItem } from "@/features/feed/types"
 import { applyEvent } from "@/features/live/event-map"
@@ -14,9 +14,27 @@ const item = (over: Partial<FeedItem> = {}): FeedItem => ({ ...feedFixture, ...o
 const serve = (items: FeedItem[]) =>
   server.use(http.get("*/api/v1/feed", () => HttpResponse.json({ items, nextCursor: null })))
 
-afterEach(() => {
-  Object.defineProperty(window, "scrollY", { value: 0, configurable: true })
-})
+let intersect: IntersectionObserverCallback | null = null
+
+class MockIntersectionObserver {
+  constructor(callback: IntersectionObserverCallback) {
+    intersect = callback
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return []
+  }
+}
+
+vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+
+function setScrolledAway(away: boolean) {
+  act(() => {
+    intersect?.([{ isIntersecting: !away } as IntersectionObserverEntry], {} as IntersectionObserver)
+  })
+}
 
 describe("feed item", () => {
   it("shows every label and status as text, plus type, author and time in local zone with ET title", async () => {
@@ -164,15 +182,15 @@ describe("feed screen", () => {
     expect(screen.queryByRole("button", { name: "New messages" })).not.toBeInTheDocument()
 
     // scrolled away: the row is held back
-    Object.defineProperty(window, "scrollY", { value: 500, configurable: true })
-    act(() => void window.dispatchEvent(new Event("scroll")))
+    setScrolledAway(true)
     items = [item({ messageId: "3", text: "third" }), ...items]
     await act(async () => {
       await applyEvent(client, "feed.message", "3")
     })
     const pill = await screen.findByRole("button", { name: "New messages" })
+    expect(pill.parentElement).toHaveClass("top-[calc(var(--desk-header-height,3.5rem)+0.5rem)]")
     expect(screen.queryByText("third")).not.toBeInTheDocument()
-    expect(within(screen.getByRole("main")).getAllByRole("article")).toHaveLength(2)
+    expect(screen.getAllByRole("article")).toHaveLength(2)
 
     const scrollTo = vi.fn()
     window.scrollTo = scrollTo as typeof window.scrollTo

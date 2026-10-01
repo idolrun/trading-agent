@@ -12,7 +12,10 @@ export function ConnectionIndicator({ status }: { status: LiveStatus }) {
     <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
       <span
         aria-hidden
-        className={cn("size-2 rounded-full", status === "live" ? "bg-emerald-500" : "animate-pulse bg-amber-500")}
+        className={cn(
+          "size-2 rounded-full motion-reduce:animate-none",
+          status === "live" ? "bg-primary" : "animate-pulse bg-warning",
+        )}
       />
       {LABEL[status]}
     </span>

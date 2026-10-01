@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { deskFrame, deskTitle } from "@/components/screen"
 import { QueryState } from "@/components/query-state"
 import { StepUpDialog } from "@/features/auth/step-up-dialog"
 import { useStepUp } from "@/features/auth/use-step-up"
@@ -17,11 +18,11 @@ export function CardDetailScreen({ cardId }: { cardId: string }) {
   const state = decisionStateFor(decide, cardId)
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
+    <div className={deskFrame}>
       <Link href="/" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground">
         Inbox
       </Link>
-      <h1 className="text-2xl font-semibold tracking-tight">Card</h1>
+      <h1 className={deskTitle}>Card</h1>
       {failure ? (
         <p role="alert" className="text-sm text-destructive">
           {failure}
@@ -44,6 +45,6 @@ export function CardDetailScreen({ cardId }: { cardId: string }) {
         )}
       </QueryState>
       <StepUpDialog {...stepUp.dialogProps} />
-    </main>
+    </div>
   )
 }

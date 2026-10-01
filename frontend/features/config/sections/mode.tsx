@@ -1,5 +1,6 @@
 "use client"
 
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { ConfigField, Section, useConfigForm } from "@/features/config/fields"
 import { TRADING_MODES } from "@/features/config/types"
 
@@ -8,14 +9,14 @@ export function ModeSection() {
   return (
     <Section title="Mode">
       <ConfigField name="trading_mode" label="Trading mode">
-        {({ className, ...control }) => (
-          <select {...control} className={className} value={draft.trading_mode} onChange={(event) => patch({ trading_mode: event.target.value })}>
+        {(control) => (
+          <NativeSelect {...control} value={draft.trading_mode} onChange={(event) => patch({ trading_mode: event.target.value })}>
             {TRADING_MODES.map((mode) => (
-              <option key={mode} value={mode}>
+              <NativeSelectOption key={mode} value={mode}>
                 {mode}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </ConfigField>
     </Section>

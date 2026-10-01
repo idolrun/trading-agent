@@ -1,7 +1,7 @@
-# PRD — Discord Signal Copy-Trading Assistant (Draft v0.3)
+# PRD — Discord Signal Copy-Trading Assistant (Draft v0.4)
 
-**Status:** Draft for review. Discovery complete except the items in §22.
-**Approving this PRD moves the project to architecture and implementation planning. It does not start coding.**
+**Status:** Draft for review. Discovery complete except the items in §22. **Backend and dashboard are built (F001–F049, F052–F063); the real broker, market-data and Message API adapters are not** (Appendix C).
+**Approving this PRD moves the project to architecture and implementation planning. It does not start coding.** *(v0.4: coding has started; this version records what the build decided or changed. It is not a re-approval of v0.3.)*
 **Changes from v0.1:** calibrated against the user's real realized gain/loss history (Jan 2 – Sep 18, 2026; Appendix B):
 - §3 trading profile; §12 scale;
 - new rules C82–C87: 1-contract trims, TP split, missing-underlying suggestion, SPX → SPXW, no ticker whitelist, trade-history data handling;
@@ -14,6 +14,16 @@
 - §6: provider-position scope.
 - §19: cost estimate.
 - New decisions C88–C94 and AC-18 to AC-23; open item (g).
+
+**Changes from v0.3** (synchronized with the codebase, 2026-09-30):
+- **Message source:** the backend now reads Discord itself through a listener (§2, §15, FR-1, C95). The user's Message API webhook stays as a second, still-provisional source.
+- **Auth:** email + password allowlist replaces passkeys (§13, AC-10, already revised 2026-09-29). Session rules made explicit.
+- **Resolved:** provider-position scope is per author (§6, C96; open item (g) closed).
+- **Decisions confirmed during the build** (C97–C103): shadow-mode fills, off-hours clock, bracket OCO linkage, exit floor, underlying-stop trigger, kill-switch and flatten scope.
+- **Dashboard:** adds Discord, users and audit-log views (FR-25).
+- **Config:** trading mode, LLM monthly budget, note-guard switch (§18).
+- **AC-14:** confirming a suggested underlying re-plans the card.
+- **New Appendix C:** implementation status.
 
 **Traceability:** `[Cxx]` refers to the decision log in Appendix A. Items marked **[CONFIRM]** were proposed during discovery but never explicitly confirmed. They must be accepted or rejected during this review.
 
@@ -42,7 +52,7 @@ The system turns this message stream into precise, validated, **human-approved**
 - Trading in extended hours (pre-market or after-hours).
 - Multiple users or multi-tenancy.
 - Executing any order without user approval, except the pre-approved automatic actions in §9.
-- Integrating with Discord directly. The user's existing message API is the only source [C11].
+- Bot accounts or an official Discord integration. Discord is read through a **user-account listener** (a "selfbot") that the user runs with their own token, alongside the user's message API [C11, C95]. This is against Discord's terms of service; the user accepts that risk and should use a throwaway account (open item (h)).
 
 ## 3. Target user
 One user, trading their own money, in an in-house application [C1]. The user's local timezone is UTC+5:45. They are available for the full US regular session (19:15–01:45 local) every trading day [C53]. They approve actions from a desktop and a phone [C21].
@@ -60,7 +70,7 @@ One user, trading their own money, in an in-house application [C1]. The user's l
 **It is a deterministic pipeline with an LLM used in narrow roles, not an autonomous trading agent.**
 
 ```
-Message API (push) → Ingest → Interpret (LLM) → Validate & normalize (code)
+Discord listener / Message API (push) → Ingest → Interpret (Jev or LLM) → Validate & normalize (code)
   → Provider ledger update (code) → Decide proposed action (code) → Approval card
   → User approves → Order execution (code) → Broker → Fills → User lot ledger
 ```
@@ -89,7 +99,7 @@ Message API (push) → Ingest → Interpret (LLM) → Validate & normalize (code
 - **Provider:** any author in a configured channel. All authors are parsed [C54]. The user can mute an author [C57].
 - **Provider position:** a position a provider has called (entry through exit), tracked whether or not the user took it [C72].
   - It is owned by exactly one provider, and links never cross providers.
-  - Its scope defaults to **per provider** (author). Whether it should be per (provider, channel) is open item (g).
+  - Its scope is **per provider** (author). `channel_id` is metadata only, never a scope key [C96].
 - **Signal:** one trade instruction extracted from a message. A message can contain several (FR-6).
   - Each signal is linked to at most one provider position.
   - The link records how it was made (reply-to, model, or user correction) and with what confidence.
@@ -128,16 +138,18 @@ The user is notified. No order is placed [C18].
    - With no quantity stated, the field is blank and the user enters it [C26].
    - A soft exit gets a card labeled "suggestion, provider still holding", quantity blank [C52].
 4. The exit card expires only on timeout or when the position is already closed [C22].
-5. On approval, the exit starts as a limit at the mid price. It re-prices toward the bid every few seconds until it fills or reaches the configured floor. At the floor it stops and notifies the user [C25].
+5. On approval, the exit starts as a limit at the mid price. It re-prices toward the bid every few seconds until it fills or reaches the configured floor. The floor is `exit_floor_pct` below the mid at exit start, never below one tick. At the floor it stops and notifies the user [C25, C100].
 6. Before submitting, working stops and take-profits are reduced or cancelled per C35. If the exit ends unfilled, they are restored.
 
 ### 7.4 Stops and take-profits
 - Stop on option premium: the card places a stop order held at the broker. After approval it fires with no further approval [C28].
-- Stop on the underlying price (e.g. "769 stop" on SPY 770C): the card places a stop held by the system. When the underlying crosses the level, the C25 exit fires automatically. Candle-close conditions are shown as information only [C49].
+- Stop on the underlying price (e.g. "769 stop" on SPY 770C): the card places a stop held by the system. When the underlying crosses the level, the C25 exit fires automatically. The trigger uses the **last trade**: calls and long stock fire at `last ≤ level`, puts at `last ≥ level` [C101]. Candle-close conditions are shown as information only [C49].
 - Stock stop: stop-market, good-till-cancelled, held at the broker [C61].
 - Breakeven stops show both the user's average fill and the provider's entry price; the user picks one [C29].
 - Stop moves and removals ("pulled stop") need a new approval card.
 - Take-profits are limit orders at the broker, split equally across TP levels (editable), and linked to the stop so one cancels the other [C50, C56].
+  - A bracket's stop and TP legs share one OCO group. The FR-20 invariant counts the group as max(stop qty, Σ TP qty).
+  - The linkage is system-managed and covered by the bracket's approval: a TP fill resizes the stop, and a stop fill cancels the TPs [C99].
 - When the quantity is smaller than the number of TP levels, the number of TP legs is min(levels, quantity). Contracts are assigned from TP1 onward (1 contract → TP1 only; 2 contracts with 3 levels → TP1 and TP2), and the user can edit this [C83].
 - A tier whose dollar amount cannot buy one contract at the signal price produces a disabled card with that reason. It is never rounded up to 1 contract.
 
@@ -155,7 +167,7 @@ The user is notified. No order is placed [C18].
 - This is a core path, not an edge case: 45% of the user's option trades close on expiry day (§3).
 
 ### 7.7 Off-hours messages [C59]
-Messages calling for action outside regular hours are held until 9:30 ET. The card is then built with fresh validation and the normal validity rules. The system submits orders during regular hours only.
+Messages calling for action outside regular hours are held until 9:30 ET. The card is then built with fresh validation and the normal validity rules. The validity and staleness clocks start at the **9:30 ET release**, not at the post time (this amends C90 for held messages only) [C98]. The system submits orders during regular hours only.
 
 ### 7.8 Stock signals [C55, C60, C76, C61]
 - Long only.
@@ -167,14 +179,17 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 ### 7.9 Manual operations [C40, C42, C77]
 - Manual exit of a tracked lot. Manual stop add/move/cancel.
 - Manual entry of any contract. Requires a fresh password confirmation (step-up).
-- Kill switch: pauses new cards and entries. The optional "flatten" asks which to close (options / stocks / all) and requires a fresh password confirmation.
+- Kill switch: pauses new entry and add cards and entries. Exit and stop cards are still created [C102]. The optional "flatten" asks which to close (options / stocks / all) and requires a fresh password confirmation. Flatten exits **tracked lots only**; foreign lots are untouched, though a foreign lot can still be sold by an explicit manual exit [C103].
 - Manual orders pass every check that signal orders pass.
 - Provider-position correction: the user can add, edit, or close provider positions. Every correction is audited and fed into evaluation data [C73].
 
 ## 8. Functional requirements
 
 **Ingestion**
-- FR-1. Consume the user's message API via push [C11, C13]. Persist every message event (create, edit, delete) exactly once, keyed by message ID.
+- FR-1. Consume messages from two sources through one intake path [C11, C13, C95]:
+  - the **Discord listener** (the backend reads the watched channels itself, and backfills gaps from channel history);
+  - the user's **message API** webhook (`POST /ingest`, HMAC-signed; payload still provisional).
+  - Persist every message event (create, edit, delete) exactly once, keyed by message ID, whichever source delivered it. Bot authors are ignored, and embed text is appended to the message text.
 - FR-2. Parse every author in configured channels unless muted [C54, C57].
 - FR-3. Use reply-to references from the API deterministically when present.
 - FR-1a. **Ordered processing per provider.**
@@ -238,7 +253,8 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 
 **Dashboard and notifications**
 - FR-25. Responsive web dashboard with push notifications (desktop and phone) [C17, C21].
-  - Views: live message feed, cards, provider positions, lots (tracked and foreign), orders and fills, alerts, system health, config, labeling screen [C64].
+  - Views: live message feed, cards, provider positions, lots (tracked and foreign), orders and fills, alerts, system health, config, labeling screen [C64], Discord (listener status and watched channels), users, audit log, manual operations.
+  - Built as a Next.js web app (installable PWA) over the backend JSON API.
 - FR-26. Push notifications for new cards, fills and automatic actions, alerts, and a risk limit being hit [C58]. Disabled (blocked) cards do not push [C75].
 - FR-27. Manual operations and kill switch per 7.9.
 
@@ -249,7 +265,7 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 | LLM | Classify, extract with provenance, link references, write the advisory note. Nothing else. |
 | Code only | Validation, normalization, dates, sizing, risk limits, invariants, pricing and re-pricing, validity and expiry, reconciliation, end-of-day forced close. |
 | Needs user approval | Every entry, add, exit, trim, stop placement/move/cancel, bracket, manual entry, flatten. |
-| Pre-approved automatic actions (the only exceptions) | A broker-held stop or TP firing after approval; a system-held underlying stop firing after approval; exit re-pricing within an approved intent; the end-of-day forced close at cutoff 2; automatic stop restore after an unfilled exit. |
+| Pre-approved automatic actions (the only exceptions) | A broker-held stop or TP firing after approval; a system-held underlying stop firing after approval; exit re-pricing within an approved intent; the end-of-day forced close at cutoff 2; automatic stop restore after an unfilled exit; system-managed bracket linkage (TP fill resizes the stop, stop fill cancels the TPs) [C99]. |
 
 ## 10. Uncertainty and hallucination handling
 - The system does not rely on the LLM's self-reported confidence [C31].
@@ -306,10 +322,11 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 
 ## 13. Security, privacy, authentication and authorization [C39, C42]
 - Publicly reachable dashboard. Email + password authentication against an allowlist of users; no self-registration (users are added from the console or by a signed-in user; temporary passwords must be changed at first login). Recovery via the server console.
-- Short, device-bound sessions. Login audit log. Rate limiting.
-- Step-up password confirmation for manual entry and flatten.
-- Single user; no roles.
-- Broker keys and LLM keys live in secret storage, never in code or logs.
+- Sessions: HttpOnly, Secure, SameSite=Strict cookie; 60 min idle and 12 h absolute (covers one US session); bound to the browser's User-Agent, so a change revokes the session. State-changing API calls must carry the dashboard origin. Login rate limiting.
+- Append-only audit log of logins, user management and user-initiated trading actions (card approvals, rejections and edits, manual operations).
+- Step-up password confirmation (120 s, single use) for manual entry, flatten and lot adjustment.
+- Any signed-in user can add, deactivate, reactivate or reset another user's password; all active users have the same access. No roles.
+- Broker keys, LLM keys and the Discord account token live in secret storage, never in code or logs.
 - Message text may be sent to cloud LLM providers [C36]. User holdings and money data are never sent to the LLM (FR-8).
 - The user's trade-history exports (e.g. `docs/data/`) contain personal financial data and a partial account number. They are kept out of version control and are never sent to model providers. Only aggregate figures appear in project documents [C87].
 
@@ -334,7 +351,8 @@ Every record below is persisted with a timestamp, and the whole audit trail is i
 - evaluation labels and runs.
 
 ## 15. External integrations and dependencies
-- **The user's message API.** Push delivery. Needed from it:
+- **Discord listener (built) [C95].** The backend logs in with the user's Discord account token (a "selfbot", using the `discord.py-self` library) and forwards watched-channel messages, edits and deletes into the inbox. It gives snowflake IDs, stable author IDs, reply-to references and edit/delete events, and it backfills gaps from channel history after a restart or reconnect. Unset token = listener off. Risk: user-account automation violates Discord's terms; the account can be banned (open item (h)).
+- **The user's message API.** Push delivery. It is optional now that the Discord listener exists, and still the source that would be used if the user prefers not to run a selfbot. The webhook, HMAC check and inbox are built against a provisional payload. Needed from it:
   - a sample payload;
   - fields: message, channel and author IDs, timezone-aware timestamp, reply-to ID, edit/delete events, attachments;
   - a heartbeat;
@@ -375,7 +393,7 @@ Every record below is persisted with a timestamp, and the whole audit trail is i
 - Data split: a dev set, plus a held-out test set used only for gate checks, split by trading day. Each check is logged, and the test set is refreshed after repeated failures [C67].
 - Staged go-live [C34, C66]:
   1. **Replay:** ≥ 500 actionable + 2,000 non-actionable labeled messages from ≥ 5 providers. Normal-card field accuracy 100%. Zero wrong contracts on normal cards. Actionable recall ≥ 98%.
-  2. **Shadow** (live messages, cards, no orders): ≥ 20 trading days.
+  2. **Shadow** (live messages and cards; approved orders never reach a broker, and a simulated broker fills marketable orders at the live quote so lots, exits and stops are exercised [C97]): ≥ 20 trading days.
      - Zero invariant violations in the orders it would have placed.
      - Latency p95 ≤ 5 s and p99 ≤ 8 s, including bursts.
      - Zero undetected feed outages; zero lost or silently dropped messages.
@@ -388,7 +406,9 @@ Every record below is persisted with a timestamp, and the whole audit trail is i
 - Hosting is decided in architecture [C37].
 - The database must not share a single server or disk with the application. It needs automatic failover and point-in-time recovery, per the durability NFR in §12 [C93].
 - Transport and caching: PostgreSQL is the only source of truth and the message queue. Kafka and Redis are not used [C94]. They may be introduced only behind the architecture's defined boundaries, and only when a measured trigger in the TRD is met.
-- Configuration: tiers (options and stocks), X, N, M, re-price step and floor, cutoffs 1 and 2, risk limits, feed-silence N, context window size, muted authors, channels, symbol map (C85), missing-underlying proximity % (C84), staleness threshold (FR-1c), retry limit (FR-1e). Initial values are tuned in the shadow and paper stages [C69].
+- Configuration: tiers (options and stocks), X, N, M, re-price step and floor, cutoffs 1 and 2, risk limits, feed-silence N, context window size, muted authors, channels, symbol map (C85), missing-underlying proximity % and look-back days (C84), staleness threshold (FR-1c), catch-up backlog size, retry limit (FR-1e), identity price tolerance and adjacent-strike ratio (FR-11, FR-13), routing thresholds, Jev on/off, LLM model chains, prices and per-vendor concurrency, note-guard switch (default on), LLM monthly budget, and the **trading mode** (shadow | paper | live; default shadow). Initial values are tuned in the shadow and paper stages [C69].
+  - Runtime configuration is stored in the database with an audited change history. Money values have no defaults: until every one is set, entry cards are disabled with the reason "config incomplete".
+  - Cutoffs 1 and 2 are expressed as minutes before the session close, so half days work.
 - Seed ranges from the user's history. These are observed ranges only; the user sets the final values:
 
 | Metric | Observed |
@@ -436,12 +456,14 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 **Blocking:**
 - (a) Message API details and historical export [C65], including delivery semantics and a backfill API (C91).
 - (b) Broker and account choice against §15. This includes confirming which broker produced the trade-history export, and the paper-stage approach if that broker has no paper account.
-- (c) The note guard (§4, [CONFIRM]).
+- (c) The note guard (§4, [CONFIRM]). Built behind a config switch, default on; still awaiting the user's confirmation.
 - (c2) Market-data source for option quotes and the SPX index level (paid feed / entitlement likely). Decided in architecture.
-- (g) Provider-position scope: per provider (the default), or per (provider, channel)? This matters if one provider runs separate channels (e.g. 0DTE vs swings) that can hold the same contract. It must be decided before ledgers are built.
+- ~~(g) Provider-position scope~~ **Resolved 2026-09-28: per provider (author); `channel_id` is metadata only [C96].** Revisit only if one provider runs separate channels that hold the same contract.
+- (h) The Discord listener uses a user-account token, which Discord's terms forbid (§15, C95). Decide: keep it (throwaway account), or wait for the Message API. Not a build blocker, but a go-live risk decision.
+- (i) Jev go/no-go. The Jev fast path is built and switched off by default; nothing is benchmarked yet (the TypeSafe bench needs vendor access). Until it is, the LLM-only path is the go-live default.
 
 **Non-blocking:**
-- (d) LLM cost ceiling.
+- (d) LLM cost ceiling. The build reads it as `llm_monthly_budget_usd` (no default); spend alerts use it.
 - (e) Initial config values (set during the shadow and paper stages). Seed ranges are in §18. This includes the staleness threshold (default 30 s).
 - (f) A transactions/order-history export with open times. The realized report has none, so holding time cannot be measured. That export is needed to validate the "0DTE opens and closes within about 7 minutes" assumption (§1) and the entry/exit validity timings (C22).
 
@@ -459,7 +481,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 - AC-11. A literal span that is not present in the source text is always rejected.
 - AC-12. All stage gates in §17 are passed in order before real money is used.
 - AC-13. The advisory note can never change a card's fields or actions. A note containing a number not present in the validated fields or source messages is hidden (if the note guard is confirmed).
-- AC-14. A signal with a missing underlying always produces a review card that requires explicit confirmation of the underlying.
+- AC-14. A signal with a missing underlying always produces a review card that requires explicit confirmation of the underlying. Confirming re-validates and re-decides the signal: the card gets its size, price and card type, the provider position the pipeline skipped is opened, and the provider's later follow-ups link to it. The card keeps its validity window, and a second confirmation is refused.
 - AC-15. "Trim half" on a 1-contract lot produces an exit card with a blank quantity and the "lot too small to trim" label. No order is sent until the user enters a quantity.
 - AC-16. Bracket TP legs never exceed the order quantity. With fewer contracts than TP levels, contracts are assigned from TP1 onward.
 - AC-17. "SPX" resolves to SPXW contracts through the symbol map. A missing-underlying suggestion is never approvable without explicit confirmation, even when the strike matches one underlying's live price.
@@ -480,6 +502,8 @@ C1 single user, own money · C2 Discord, multiple channels · C3 trusted provide
 · C80 LLM interprets only + advisory free-text note (provider-only context) · C81 chain + quote identity check with wide tolerance; scale normalization by quote.
 · C82 fraction rounding to 0 → blank qty + "lot too small to trim" label · C83 TP legs = min(levels, qty), assigned from TP1, editable · C84 missing-underlying suggestion by live-price proximity, never a fixed strike threshold · C85 configurable symbol map, "SPX" → SPXW · C86 no ticker whitelist; validate against optionable list + live chain · C87 trade-history exports kept out of git and model context; only aggregates in docs.
 · C88 per-provider ordered processing by post time; providers in parallel; approvals never block a provider · C89 out-of-order arrival → "late" flag + re-check → review card · C90 validity clocks start at post time; stale entries get no card, late exits still carded; catch-up mode · C91 message API must redeliver ≥ 10 min or offer backfill; gap detection · C92 no silent drops; poison → raw review card + alert · C93 RPO ≈ 0 for approvals/orders/fills/ledger, RTO ≤ 5 min; DB HA off the app host · C94 no Kafka/Redis; PostgreSQL is sole source of truth and queue; adopt only on measured triggers.
+· C39 (revised 2026-09-29) email + password allowlist, no passkeys, no roles, no self-registration; append-only audit log.
+· C95 (2026-09-30) Discord is read by a user-account listener in the backend, alongside the optional message API webhook; both feed one inbox; token in secret storage; ToS risk accepted, open item (h) · C96 (2026-09-28) provider-position scope = per author; channel is metadata · C97 (2026-09-29) shadow mode simulates fills at the live quote; it never calls a broker · C98 (2026-09-29) off-hours held messages start their validity/staleness clocks at the 9:30 ET release (amends C90 for held messages) · C99 (2026-09-29) bracket stop and TPs share an OCO group; invariant counts max(stop qty, Σ TP qty); system-managed linkage sits inside the bracket approval · C100 (2026-09-29) exit re-price floor = `exit_floor_pct` below the mid at exit start, never below one tick · C101 (2026-09-29) underlying stops trigger on the last trade (calls/long stock `last ≤ level`, puts `last ≥ level`) · C102 (2026-09-29) kill switch disables entry/add cards and entries; exit and stop cards still created · C103 (2026-09-29) flatten exits tracked lots only; foreign lots untouched (an explicit manual exit can still sell one).
 
 ## Appendix B — Evidence
 - **Sample messages:** the two channel snippets and the full day were supplied by the user during discovery. Observed patterns drove FR-5, FR-6, FR-12, FR-14, C48, C49, C50 and C51.
@@ -487,3 +511,23 @@ C1 single user, own money · C2 Discord, multiple channels · C3 trusted provide
   - It records the user's own manual trades, not provider messages. It calibrates scale, sizing and rules, but it is not replay data for §17.
   - Aggregates drove §3, §12, §18, FR-11, FR-12, FR-14, FR-15a and C82–C87. The full breakdown is in the TRD §16.
   - Limits: realized-only, so there are no open times. Rows are split per tax lot. The source broker is unconfirmed.
+
+## Appendix C — Implementation status (2026-09-30)
+
+Detail: `docs/implementation/README.md` (roadmap, decision register OD-x) and `docs/implementation/database-schema.md`.
+
+| Area | Status |
+|---|---|
+| Ingest, inbox, per-provider dispatcher, feed health, catch-up, gap backfill (FR-1–FR-4, FR-1a–FR-1e) | Built, tested on fakes. Discord listener built. Message API webhook payload provisional. |
+| Interpretation: candidates, LLM provider layer and extraction agent, advisory note and guard (FR-5–FR-10) | Built. Live provider tests need API keys. |
+| Jev fast path and routing | Built, **off by default**; benchmark not run (open item (i)). |
+| Validation, ledgers, decision engine, cards, apply transaction (FR-11–FR-19) | Built. |
+| Execution: `submit_order`, entry, stops, brackets, exit re-pricing, underlying stops, expiration, reconciliation (FR-20–FR-24, §11) | Built against a **fake and a simulated broker**. |
+| Real broker and market-data adapters | **Not built.** Blocked on the broker and data-source decisions (open items (b), (c2)). |
+| Real message API adapter | **Not built.** Blocked on the API spike (open item (a)). |
+| Dashboard, live updates, push (FR-25–FR-27) | Built. |
+| Manual operations, kill switch, provider corrections (§7.9) | Built. |
+| Evaluation kit: labeling, replay, gate metrics (§17) | Built. The 500 + 2,000 message replay corpus does not exist yet. |
+| Load and fault suite (AC-22, AC-23) | Run on simulated model latency. Tests 1 (1×, 10×), 3, 4, 5 and 6 pass. At 50× speed the day replay misses p95 (5.8 s) and inbox insert p99 (50.3 ms), and the 50-messages-in-5-s burst misses per-provider queue wait p95 (1.03 s vs 1 s); both sit at their limit on a busy laptop. Re-measure with real model numbers. |
+| End-to-end browser suite | Built (Playwright). |
+| Deployment, runbooks, stage-gate audit (§17, §18) | **Not started.** Managed database, hosting and uptime monitor undecided. |

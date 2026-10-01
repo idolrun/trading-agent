@@ -1,12 +1,12 @@
 "use client"
 
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+
 import { useState } from "react"
 import { LoadMore } from "@/components/load-more"
 import { QueryState } from "@/components/query-state"
 import { useAuditLog, type AuditAction } from "@/features/users/api"
 
-const FIELD =
-  "h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 const ACTIONS: AuditAction[] = [
   "login_success",
@@ -39,14 +39,14 @@ export function AuditLog() {
     <section className="flex flex-col gap-3">
       <label className="flex w-fit flex-col gap-1 text-sm">
         Action
-        <select className={FIELD} value={action} onChange={(event) => setAction(event.target.value as AuditAction | "")}>
-          <option value="">All</option>
+        <NativeSelect value={action} onChange={(event) => setAction(event.target.value as AuditAction | "")}>
+          <NativeSelectOption value="">All</NativeSelectOption>
           {ACTIONS.map((value) => (
-            <option key={value} value={value}>
+            <NativeSelectOption key={value} value={value}>
               {label(value)}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <QueryState
         query={query}
