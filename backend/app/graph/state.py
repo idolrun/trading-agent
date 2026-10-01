@@ -13,6 +13,7 @@ class MessageState(TypedDict, total=False):
     candidates: dict[str, Any]  # Candidates (F016)
     lot_ids: list[str]  # the user's open lot ids: scope-guard input only, never sent to a model
     route: str  # feed_only | assemble | slow_path | fixture
+    route_reasons: list[str]  # why the fast path did not settle the message
     hints: dict[str, Any] | None  # Jev answers for the slow path
     parsed: dict[str, Any] | None  # ParsedSignals
     interpreter: str | None  # jev | llm | none
@@ -35,6 +36,7 @@ def initial_state(
         candidates={},
         lot_ids=[],
         route="",
+        route_reasons=[],
         hints=None,
         parsed=None,
         interpreter=None,

@@ -179,6 +179,34 @@ async def test_exhausted_is_raw_review_and_degraded_until_next_success(
     assert not flag.active  # cleared by the next successful LLM answer (AC-9)
 
 
+async def test_llm_is_optional_unsure_jev_goes_to_review_without_degrading(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    """No chain configured (the LLM is slow and optional): no call, no parser_degraded flag, and
+    the card says why Jev did not settle the message."""
+    no_llm = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
+    env = await example(no_llm)
+    unsure = jev(no_llm, msg_type=c("entry", 0.6))
+    await no_llm.process(env, processor=no_llm.processor(fixture=False, jev=unsure))
+    [card] = await cards(db_session)
+    [reason] = card.proposal["review_reasons"]
+    assert reason.startswith("needs_review: ") and "t_field" in reason
+    flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
+    assert flag is None or not flag.active
+    assert await db_session.scalar(select(func.count()).select_from(ModelCall.__table__)) == 1
+
+
+async def test_llm_is_optional_jev_unavailable_is_a_review_card(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    no_llm = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
+    env = await example(no_llm)
+    await no_llm.process(env, processor=no_llm.processor(fixture=False))
+    [card] = await cards(db_session)
+    assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]
+    assert await db_session.scalar(select(func.count()).select_from(ModelCall.__table__)) == 0
+
+
 async def test_content_rejected_is_raw_review_without_fallback(
     h: Harness, db_session: AsyncSession
 ) -> None:

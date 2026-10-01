@@ -114,7 +114,11 @@ def build_message_graph(
     g.add_conditional_edges("fixture_interpret", _after_interpret)
     g.add_conditional_edges(
         "jev_interpret",
-        lambda s: "llm_extract" if s["route"] == "slow_path" else _after_interpret(s),
+        lambda s: (
+            "llm_extract"
+            if s["route"] == "slow_path" and not s["raw_reason"]
+            else _after_interpret(s)
+        ),
     )
     g.add_conditional_edges("llm_extract", _after_interpret)
     g.add_conditional_edges("decide_apply", _raw_review_or("notify"))  # span mismatch
@@ -194,13 +198,19 @@ class _Nodes:
             )
             await self._stage(state, ctx, Stage.JEV)
         decision = route(result, self.d.cfg())
-        return {
+        update: dict[str, Any] = {
             "route": decision.path,
+            "route_reasons": list(decision.reasons),
             "hints": decision.hints,
             "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
             "interpreter": "jev",
             "model_call_id": result.model_call_id if result else None,
         }
+        if decision.path == "slow_path" and not self.d.llm.configured():
+            # The LLM is optional (4-8 s per call): without one the human decides, and the
+            # card says why Jev did not. No degraded-parser flag: nothing failed.
+            update["raw_reason"] = ("needs_review: " + "; ".join(decision.reasons))[:200]
+        return update
 
     async def llm_extract(self, state: MessageState) -> dict[str, Any]:
         ctx = _processing(state)

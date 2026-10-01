@@ -128,6 +128,11 @@ class LlmChain:
         self._breakers: dict[str, CircuitBreaker] = {}
         self._limiter = ProviderLimiter(lambda p: self._config().concurrency.get(p))
 
+    def configured(self, role: Role) -> bool:
+        """At least one chain entry for `role` has a provider with an API key. False = the role
+        is optional-and-off: callers skip it instead of reporting a degraded parser."""
+        return any(e.provider in self._enabled for e in getattr(self._config().roles, role).chain)
+
     def breaker(self, provider: str) -> CircuitBreaker:
         return self._breakers.setdefault(provider, CircuitBreaker(self._clock))
 

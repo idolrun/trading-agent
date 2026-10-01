@@ -67,6 +67,10 @@ class LlmInterpreter:
         self._alerts = alerts
         self._agents: dict[tuple[int, str], CompiledStateGraph[Any, Any, Any, Any]] = {}
 
+    def configured(self) -> bool:
+        """The LLM slow path is optional: with no usable chain entry the graph skips it."""
+        return self._chain.configured("extract")
+
     async def extract(
         self,
         ctx: ProviderContext,

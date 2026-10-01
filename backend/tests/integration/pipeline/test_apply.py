@@ -226,16 +226,16 @@ async def test_literal_span_mismatch_gives_raw_review(h: Harness, db_session: As
     assert await count(db_session, ProviderPosition) == 0
 
 
-async def test_no_interpreter_gives_raw_review_and_parser_degraded(
+async def test_no_interpreter_configured_gives_a_review_card_not_a_degraded_parser(
     h: Harness, db_session: AsyncSession
 ) -> None:
-    """Production before any model is configured: Jev off, empty LLM chain -> FR-9."""
+    """Before any model is configured (Jev off, empty LLM chain) the LLM is optional: the
+    message is a review card saying so (FR-9), and nothing is reported as failing."""
     env = await h.message("Bought GOOGL 357.5C 10/2 @ 0.71", None, author=PROVIDER_A)
     await h.process(env, processor=h.processor(fixture=False))
     card = (await db_session.scalars(select(Card))).one()
-    assert card.proposal["review_reasons"] == ["parser_degraded"]
+    assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]
     flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
-    assert flag is not None and flag.active
-    alert = (await db_session.scalars(select(Alert))).one()
-    assert alert.kind == "system_flag"
+    assert flag is None or not flag.active
+    assert (await db_session.scalars(select(Alert))).all() == []
     assert (await db_session.scalars(select(InboxItem.status))).one() == "done"

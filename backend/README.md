@@ -83,6 +83,17 @@ listener off. Watched channels are `channels` in the runtime config, managed on 
 `POST /ingest`; gap backfill uses the channel history after a restart. Bot authors are ignored;
 embed text is appended to the message. `GET /api/v1/discord/status` reports the connection.
 
+## Interpretation order
+
+Jev (TypeSafe) reads every message first. What it settles with confidence is decided at once
+(feed-only or an assembled signal). The LLM extraction agent is **optional**: it runs only when a
+chain entry in `llm.roles.extract` has a provider with an API key. Without one, a message Jev
+does not settle becomes a review card whose reason says why (`needs_review: msg_type: below
+t_field`, `needs_review: jev_unavailable`), and no "parser degraded" flag is raised. With an LLM
+configured, a slow or failing chain still raises `parser_degraded` as before. LLM calls take
+seconds (the default `extract` deadline is 3000 ms and a slower provider will exhaust it), so
+size `deadline_ms` to the provider you use.
+
 ## Message ingest (F011)
 
 `POST /ingest` takes the (provisional) Message API payload, signed with
