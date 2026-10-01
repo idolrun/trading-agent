@@ -25,8 +25,8 @@ def route(result: JevResult | None, cfg: RuntimeConfig) -> RouteDecision:
         if result.msg_type_confidence >= cfg.t_chat:
             return RouteDecision("feed_only", parsed=result.parsed)
         return RouteDecision("slow_path", ("msg_type: below t_chat",), hints=hints)
-    if result.msg_type_confidence < cfg.t_field:
-        return RouteDecision("slow_path", ("msg_type: below t_field",), hints=hints)
+    if result.msg_type_confidence < cfg.t_type:
+        return RouteDecision("slow_path", ("msg_type: below t_type",), hints=hints)
     if result.signal_count == "multiple":
         return RouteDecision("slow_path", ("signal_count: multiple",), hints=hints)
     if result.slow_reasons or result.parsed is None:

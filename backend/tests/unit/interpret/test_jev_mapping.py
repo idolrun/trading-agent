@@ -127,6 +127,42 @@ def test_a_worded_condition_or_a_likely_correction_still_goes_to_the_llm() -> No
     assert run(PLAIN, is_correction=n(0.3))[1].path == "assemble"
 
 
+def decide(text: str, cfg=CFG, **kw):  # type: ignore[no-untyped-def]
+    """map_answers + route with extra keyword args / a config copy (`run` takes neither)."""
+    overrides = kw.pop("answers", {})
+    result = map_answers(example_answers(**overrides), ctx(text), find_candidates(text), cfg, **kw)
+    return route(result, cfg)
+
+
+def test_an_unsure_number_that_is_surely_not_a_field_does_not_block() -> None:
+    junk = "spy 770c .95 size for 0"  # the 0 is neither strike, price nor stop
+    sure_not_a_field = c("other", 0.4, date_or_time=0.3, pnl_or_percent=0.2)
+    assert decide(junk, answers={"role_n3": sure_not_a_field}).path == "assemble"
+    could_be_the_strike = c("other", 0.4, strike=0.35)
+    assert decide(junk, answers={"role_n3": could_be_the_strike}).path == "slow_path"
+
+
+def test_missing_underlying_becomes_a_card_only_when_asked_and_only_for_options() -> None:
+    no_ticker = {"ticker": c("not_stated")}
+    assert decide(PLAIN, answers=no_ticker).path == "slow_path"  # an LLM may infer it (A.3)
+    optional = decide(PLAIN, answers=no_ticker, underlying_optional=True)
+    assert optional.path == "assemble" and optional.parsed is not None
+    assert optional.parsed.signals[0].fields.underlying is None  # validation asks the user
+    stock = {"msg_type": c("stock_entry"), "ticker": c("not_stated")}
+    assert decide(PLAIN, answers=stock, underlying_optional=True).path == "slow_path"
+    no_strike = {"role_n1": c("other", 0.95)}
+    assert decide(PLAIN, answers=no_strike, underlying_optional=True).path == "slow_path"
+
+
+def test_t_type_gates_the_message_type_without_loosening_the_field_picks() -> None:
+    unsure_type = {"msg_type": c("entry", 0.7)}
+    assert decide(PLAIN, answers=unsure_type).path == "slow_path"  # default t_type 0.8
+    loose = CFG.model_copy(update={"t_type": Decimal("0.6")})
+    assert decide(PLAIN, loose, answers=unsure_type).path == "assemble"
+    weak_strike = {**unsure_type, "role_n1": c("strike", 0.7)}
+    assert decide(PLAIN, loose, answers=weak_strike).path == "slow_path"  # t_field unchanged
+
+
 def test_weak_link_is_an_ambiguous_hint_not_an_upgrade() -> None:
     _, decision = run(book=[(P1, "SPY 770C")], links_to=c(str(P1), 0.6))
     assert decision.path == "assemble" and decision.link_ambiguous

@@ -127,6 +127,7 @@ class RuntimeConfig(_Strict):
     # Routing thresholds (TRD §4.4 start values)
     t_chat: Probability = Decimal("0.9")
     t_field: Probability = Decimal("0.8")
+    t_type: Probability = Decimal("0.8")  # message-type confidence needed to act on a message
     t_link: Probability = Decimal("0.8")
     # Models
     jev: JevConfig = JevConfig()

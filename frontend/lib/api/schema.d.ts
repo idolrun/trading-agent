@@ -2388,6 +2388,11 @@ export interface components {
              * @default 0.8
              */
             t_link: number | string;
+            /**
+             * T Type
+             * @default 0.8
+             */
+            t_type: number | string;
             /** @default shadow */
             trading_mode: components["schemas"]["TradingMode"];
         };

@@ -37,6 +37,7 @@ export const DECIMAL_FIELDS = [
   "missing_underlying_proximity_pct",
   "t_chat",
   "t_field",
+  "t_type",
   "t_link",
   "llm_monthly_budget_usd",
 ] as const
@@ -72,6 +73,7 @@ export function defaultDocument(): ConfigDoc {
     missing_underlying_proximity_pct: "10",
     t_chat: "0.9",
     t_field: "0.8",
+    t_type: "0.8",
     t_link: "0.8",
     option_tiers: null,
     stock_tiers: null,

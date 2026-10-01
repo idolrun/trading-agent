@@ -190,7 +190,7 @@ async def test_llm_is_optional_unsure_jev_goes_to_review_without_degrading(
     await no_llm.process(env, processor=no_llm.processor(fixture=False, jev=unsure))
     [card] = await cards(db_session)
     [reason] = card.proposal["review_reasons"]
-    assert reason.startswith("needs_review: ") and "t_field" in reason
+    assert reason.startswith("needs_review: ") and "t_type" in reason
     flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
     assert flag is None or not flag.active
     assert await db_session.scalar(select(func.count()).select_from(ModelCall.__table__)) == 1
@@ -205,6 +205,20 @@ async def test_llm_is_optional_jev_unavailable_is_a_review_card(
     [card] = await cards(db_session)
     assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]
     assert await db_session.scalar(select(func.count()).select_from(ModelCall.__table__)) == 0
+
+
+async def test_without_an_llm_a_missing_underlying_is_a_confirm_the_underlying_card(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    """FR-14: the card carries the contract Jev read; the user supplies the ticker."""
+    no_llm = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
+    env = await no_llm.message("770c .95 0dte lotto", None, author=PROVIDER_A)
+    no_ticker = jev(no_llm, ticker=c("not_stated"), expiry=c("e1", 0.95))
+    await no_llm.process(env, processor=no_llm.processor(fixture=False, jev=no_ticker))
+    [signal] = await signals(db_session)
+    assert (signal.msg_type, signal.interpreter) == ("entry", "jev")
+    [card] = await cards(db_session)
+    assert "underlying_missing" in card.proposal["review_reasons"]
 
 
 async def test_content_rejected_is_raw_review_without_fallback(

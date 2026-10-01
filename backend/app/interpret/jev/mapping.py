@@ -37,6 +37,9 @@ SINGLE_ROLES = {
     "share_or_contract_qty": "qty_stated",
 }
 FLAGS = ("candle_close", "is_add", "breakeven_stop", "stop_removed")
+# Number roles that no field is read from; the rest are read (SINGLE_ROLES, take_profit_level).
+IRRELEVANT_ROLES = ("underlying_level", "exit_fraction", "pnl_or_percent", "date_or_time", "other")
+OPTION_ENTRY_TYPES = frozenset({MsgType.ENTRY, MsgType.ADD})
 STOP_TYPES = frozenset({MsgType.STOP_SET, MsgType.STOP_MOVE, MsgType.STOP_CANCEL})
 EXIT_TYPES = frozenset({MsgType.TRIM, MsgType.FULL_EXIT, MsgType.SOFT_EXIT, MsgType.STOCK_EXIT})
 # Flags that change what an order does only when the message carries a stop; `is_add` changes
@@ -78,8 +81,10 @@ def map_answers(
     ctx: ProviderContext,
     candidates: Candidates,
     cfg: RuntimeConfig,
+    *,
+    underlying_optional: bool = False,
 ) -> JevResult:
-    t_field, t_link = cfg.t_field, cfg.t_link
+    t_field, t_type, t_link = cfg.t_field, cfg.t_type, cfg.t_link
     reasons: list[str] = []
     text = ctx.message.text or ""
 
@@ -105,10 +110,10 @@ def map_answers(
     msg_type, conf = MsgType(mt.choice), _d(mt.confidence)
     # C52: "trim or soft exit?" at a middling exit intent is a soft exit, never a sell order.
     exit_intent = answers.get("exit_intent")
-    if msg_type in (MsgType.TRIM, MsgType.SOFT_EXIT) and conf < t_field:
+    if msg_type in (MsgType.TRIM, MsgType.SOFT_EXIT) and conf < t_type:
         both = _d(mt.probabilities.get("trim", 0) + mt.probabilities.get("soft_exit", 0))
         if (
-            both >= t_field
+            both >= t_type
             and isinstance(exit_intent, ScoreAnswer)
             and round(exit_intent.score) == 2
         ):
@@ -139,6 +144,10 @@ def map_answers(
     by_role: dict[str, list[tuple[Candidate, float]]] = {}
     for c in candidates.numbers:
         a = choice(f"role_{c.id}")
+        if _d(a.confidence) < t_field:
+            irrelevant = sum(a.probabilities.get(r, 0.0) for r in IRRELEVANT_ROLES)
+            if _d(irrelevant) >= t_field:
+                continue  # unsure which junk it is, sure it is not a number we read
         if confident(f"role_{c.id}", a):
             by_role.setdefault(a.choice, []).append((c, a.confidence))
     for role, name in SINGLE_ROLES.items():
@@ -206,6 +215,8 @@ def map_answers(
         reasons.append("is_correction: needs the slow path")
 
     for name in REQUIRED.get(msg_type, ()):
+        if name == "underlying" and underlying_optional and msg_type in OPTION_ENTRY_TYPES:
+            continue  # validation makes the "confirm the underlying" review card (FR-14)
         if name not in fields:
             reasons.append(f"{name}: required for {msg_type} but not stated")
 

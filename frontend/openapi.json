@@ -4960,6 +4960,21 @@
             "default": "0.8",
             "title": "T Link"
           },
+          "t_type": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0.8",
+            "title": "T Type"
+          },
           "trading_mode": {
             "$ref": "#/components/schemas/TradingMode",
             "default": "shadow"

@@ -30,6 +30,7 @@
   "missing_underlying_lookback_days": null,
   "t_chat": "0.9",
   "t_field": "0.8",
+  "t_type": "0.8",
   "t_link": "0.8",
   "jev": {
     "model": null,

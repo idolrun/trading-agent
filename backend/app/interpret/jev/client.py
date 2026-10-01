@@ -87,6 +87,7 @@ class JevInterpreter:
         *,
         ref: CallRef,
         lot_ids: frozenset[str] = frozenset(),
+        underlying_optional: bool = False,
     ) -> JevResult | None:
         """None = no Jev answer (disabled, down, rate limited twice): route to the slow path."""
         if not self.available():
@@ -98,7 +99,7 @@ class JevInterpreter:
         if answered is None:
             return None
         answers, call_id = answered
-        result = map_answers(answers, ctx, candidates, cfg)
+        result = map_answers(answers, ctx, candidates, cfg, underlying_optional=underlying_optional)
         return replace(result, model_call_id=call_id)
 
     async def _ask(

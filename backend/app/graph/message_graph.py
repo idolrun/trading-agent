@@ -195,6 +195,10 @@ class _Nodes:
                 _candidates(state),
                 ref=_ref(ctx),
                 lot_ids=frozenset(state["lot_ids"]),
+                # No LLM to infer it from context: an option entry that names no ticker still
+                # becomes a card with its contract filled in and the user confirms the
+                # underlying (FR-14), instead of a blank review card.
+                underlying_optional=not self.d.llm.configured(),
             )
             await self._stage(state, ctx, Stage.JEV)
         decision = route(result, self.d.cfg())
