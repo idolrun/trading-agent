@@ -21,9 +21,9 @@ def test_fakes_need_no_credentials() -> None:
 
 
 def test_alpaca_needs_both_keys() -> None:
-    with pytest.raises(ValidationError, match="ALPACA_API_KEY"):
+    with pytest.raises(ValidationError, match="APCA_API_KEY"):
         settings(broker_adapter="alpaca")
-    with pytest.raises(ValidationError, match="ALPACA_SECRET_KEY"):
+    with pytest.raises(ValidationError, match="APCA_SECRET_KEY"):
         settings(marketdata_adapter="alpaca", alpaca_api_key="k")
     assert settings(broker_adapter="alpaca", **KEYS).alpaca_endpoint.startswith("https://paper-")
 

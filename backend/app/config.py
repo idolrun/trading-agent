@@ -40,8 +40,12 @@ class Settings(BaseSettings):
         "https://paper-api.alpaca.markets",
         validation_alias=AliasChoices("APCA_API_BASE_URL", "ALPACA_ENDPOINT"),
     )
-    alpaca_api_key: str | None = None  # one key pair per process: never paper and live together
-    alpaca_secret_key: SecretStr | None = None
+    # APCA_* are Alpaca's own variable names (ALPACA_* still work); one key pair per process:
+    # never paper and live together
+    alpaca_api_key: str | None = Field(None, validation_alias=AliasChoices("APCA_API_KEY", "ALPACA_API_KEY"))
+    alpaca_secret_key: SecretStr | None = Field(
+        None, validation_alias=AliasChoices("APCA_SECRET_KEY", "ALPACA_SECRET_KEY")
+    )
     alpaca_stock_feed: Literal["iex", "sip"] = "iex"  # iex is free; sip needs a paid plan
     alpaca_options_feed: Literal["indicative", "opra"] = "indicative"  # opra needs a paid plan
     alpaca_poll_interval_s: float = 5.0  # underlying-price polling (the order stream is pushed)
@@ -73,7 +77,7 @@ class Settings(BaseSettings):
         if "alpaca" not in (self.broker_adapter, self.marketdata_adapter):
             return self
         if not self.alpaca_api_key or self.alpaca_secret_key is None:
-            raise ValueError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
+            raise ValueError("APCA_API_KEY and APCA_SECRET_KEY are required")
         host = urlparse(self.alpaca_endpoint).netloc
         if host not in ALPACA_HOSTS:
             raise ValueError(f"APCA_API_BASE_URL must be one of {sorted(ALPACA_HOSTS)}")

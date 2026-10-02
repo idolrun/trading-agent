@@ -2,22 +2,26 @@
 built with fresh validation; validity starts at the release (OD-29); no order off-hours."""
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
 from sqlmodel import col
 
+from app.alerts.models import Alert, AlertKind
 from app.cards.models import Card, CardAction, CardState
 from app.inbox.envelope import Envelope
 from app.inbox.queries import list_feed
+from app.interpret.models import Signal
 from app.ledger.models import ProviderPosition
 from app.pipeline.release import ReleaseService
 from app.system.flags import FlagService
 from app.timers.models import Timer, TimerKind, TimerStatus
 from app.timers.service import TimerService
 from tests.integration.graph.conftest import World
+from tests.integration.graph.test_approval_graph import GOOGL
 from tests.integration.pipeline.harness import follow_up, opened_position, option_entry
-from tests.messages import PROVIDER_A
+from tests.messages import PROVIDER_A, PROVIDER_B
 
 pytestmark = pytest.mark.graph
 EVENING = datetime(2026, 9, 29, 0, 0, tzinfo=UTC)  # Monday 20:00 ET
@@ -28,13 +32,27 @@ def at(w: World, when: datetime) -> None:
     w.h.clock.advance(when - w.h.clock.now())
 
 
-async def entry_at(w: World, when: datetime) -> Envelope:
+async def entry_at(
+    w: World, when: datetime, price: str = "0.71", author: int = PROVIDER_A
+) -> Envelope:
     at(w, when)
     env = await w.h.message(
-        "Bought GOOGL 357.5C 10/2 @ 0.71",
-        [option_entry("GOOGL", "357.5", "357.5C", "10/2", "0.71")],
+        f"Bought GOOGL 357.5C 10/2 @ {price}",
+        [option_entry("GOOGL", "357.5", "357.5C", "10/2", price)],
         at=when,
-        author=PROVIDER_A,
+        author=author,
+    )
+    await w.h.process(env, processor=w.processor)
+    return env
+
+
+async def edit_at(w: World, original: Envelope, when: datetime, price: str) -> Envelope:
+    at(w, when)
+    env = await w.h.edit(
+        original,
+        f"Bought GOOGL 357.5C 10/2 @ {price}",
+        [option_entry("GOOGL", "357.5", "357.5C", "10/2", price)],
+        at=when,
     )
     await w.h.process(env, processor=w.processor)
     return env
@@ -126,3 +144,100 @@ async def test_no_order_after_the_close(w: World) -> None:
     await w.decide(card.card_id)
     assert (await w.card(card.card_id)).state == CardState.INVALIDATED
     assert await w.orders() == []
+
+
+def quote_near_one_seventy(w: World) -> None:
+    """The fixture quote is 0.70/0.71: move it so 1.67-1.80 pass the identity band (FR-11)."""
+    w.h.md.set_quote(GOOGL, Decimal("1.70"), Decimal("1.75"))
+
+
+async def released_cards(w: World) -> list[Card]:
+    at(w, TUESDAY_OPEN)
+    await timer_service(w).run_due()
+    return await cards(w)
+
+
+async def test_edit_while_held_releases_the_edited_entry(w: World) -> None:
+    quote_near_one_seventy(w)
+    """create @ 1.67 held, edited to 1.75 before the open: the card is for 1.75 (PRD 7.5, 7.7)."""
+    env = await entry_at(w, EVENING, "1.67")
+    await edit_at(w, env, EVENING + timedelta(minutes=5), "1.75")
+    assert await cards(w) == []
+    [card] = await released_cards(w)
+    print("PROPOSAL", card.proposal)
+    assert card.state == CardState.PENDING and card.action == CardAction.ENTRY
+    assert card.proposal["signal_price"] == "1.75"
+    assert card.provider_position_id == opened_position(env)
+    async with w.h.factory() as db:
+        position = await db.get(ProviderPosition, opened_position(env))
+    assert position is not None and position.provider_entry_price == Decimal("1.75")
+    assert await w.orders() == []
+
+
+async def test_several_edits_while_held_release_the_latest(w: World) -> None:
+    quote_near_one_seventy(w)
+    env = await entry_at(w, EVENING, "1.67")
+    await edit_at(w, env, EVENING + timedelta(minutes=5), "1.75")
+    await edit_at(w, env, EVENING + timedelta(minutes=10), "1.80")
+    [card] = await released_cards(w)  # no stale 1.67 / 1.75 card
+    assert card.proposal["signal_price"] == "1.80"
+
+
+async def test_edit_after_the_open_before_the_release_timer_runs(w: World) -> None:
+    quote_near_one_seventy(w)
+    env = await entry_at(w, EVENING, "1.67")
+    await edit_at(w, env, TUESDAY_OPEN, "1.75")
+    [card] = await released_cards(w)
+    assert card.proposal["signal_price"] == "1.75"
+
+
+async def test_edit_after_release_replaces_the_card(w: World) -> None:
+    quote_near_one_seventy(w)
+    env = await entry_at(w, EVENING, "1.67")
+    [first] = await released_cards(w)
+    assert first.proposal["signal_price"] == "1.67"
+    await edit_at(w, env, TUESDAY_OPEN + timedelta(seconds=5), "1.75")
+    by_state = {c.state: c for c in await cards(w)}
+    assert by_state[CardState.INVALIDATED].card_id == first.card_id
+    assert by_state[CardState.PENDING].proposal["signal_price"] == "1.75"
+    assert len(by_state) == 2 and await w.orders() == []
+
+
+async def test_edit_after_the_trade_alerts_and_proposes_nothing(w: World) -> None:
+    quote_near_one_seventy(w)
+    env = await entry_at(w, EVENING, "1.67")
+    [card] = await released_cards(w)
+    await w.decide(card.card_id)
+    [order] = await w.orders()
+    await edit_at(w, env, TUESDAY_OPEN + timedelta(seconds=5), "1.75")
+    async with w.h.factory() as db:
+        kind = col(Alert.kind) == AlertKind.LATE_CORRECTION
+        alerts = (await db.scalars(select(Alert).where(kind))).all()
+    assert len(alerts) == 1
+    assert [c.card_id for c in await cards(w)] == [card.card_id]
+    assert [o.order_id for o in await w.orders()] == [order.order_id]
+
+
+async def test_duplicate_delivery_and_double_release_stay_idempotent(w: World) -> None:
+    quote_near_one_seventy(w)
+    env = await entry_at(w, EVENING, "1.67")
+    edit = await edit_at(w, env, EVENING + timedelta(minutes=5), "1.75")
+    await w.h.process(edit, processor=w.processor)  # redelivered edit
+    await w.h.process(env, processor=w.processor)  # redelivered create
+    [card] = await released_cards(w)
+    await timer_service(w).run_due()
+    assert [c.card_id for c in await cards(w)] == [card.card_id]
+    assert card.proposal["signal_price"] == "1.75"
+    async with w.h.factory() as db:
+        signals = (await db.scalars(select(Signal).where(col(Signal.event_type) == "create"))).all()
+    assert len(signals) == 1 and await w.orders() == []
+
+
+async def test_providers_stay_isolated(w: World) -> None:
+    quote_near_one_seventy(w)
+    a = await entry_at(w, EVENING, "1.67", PROVIDER_A)
+    b = await entry_at(w, EVENING + timedelta(minutes=1), "1.78", PROVIDER_B)
+    await edit_at(w, a, EVENING + timedelta(minutes=5), "1.75")
+    got = {c.provider_id: c.proposal["signal_price"] for c in await released_cards(w)}
+    assert got == {PROVIDER_A: "1.75", PROVIDER_B: "1.78"}
+    assert b.provider_id == PROVIDER_B

@@ -7,8 +7,9 @@ test("edit before trade: new card needing approval", async ({ page, driver }) =>
     optionEntry("GOOGL", "357.5", "357.5C", "10/2", "0.71"),
   ])
   const first = await driver.cardFor("entry", { state: "pending" })
-  const contract = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL").getByRole("heading", { level: 3 })
-  await expect(contract).toHaveText("entry GOOGL 2026-10-02 357.5 call")
+  const onCard = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL")
+  await expect(onCard.getByRole("heading", { level: 3 })).toHaveText("BuyGOOGL")
+  await expect(onCard.getByRole("group", { name: "Contract" })).toContainText(/\$357\.5 Call\s*·\s*Oct 2, 2026/)
 
   await driver.advance(15)
   await driver.edit(a1, "Bought GOOGL 360C 10/2 @ 0.47", [optionEntry("GOOGL", "360", "360C", "10/2", "0.47")])
@@ -28,7 +29,7 @@ test("edit before trade: new card needing approval", async ({ page, driver }) =>
 
   const card = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL")
   await expect(card).toHaveCount(1)
-  await expect(contract).toHaveText("entry GOOGL 2026-10-02 360 call")
+  await expect(card.getByRole("group", { name: "Contract" })).toContainText(/\$360 Call\s*·\s*Oct 2, 2026/)
   await card.getByRole("button", { name: "Approve" }).click() // the re-approval
   const lot = await driver.lotOf(PROVIDER_A, "GOOGL")
   expect(lot).toMatchObject({ qty: 20, contract: { strike: "360" } })

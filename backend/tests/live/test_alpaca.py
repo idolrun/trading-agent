@@ -1,5 +1,5 @@
-"""F051 contract suite against the Alpaca PAPER account. Needs ALPACA_API_KEY and
-ALPACA_SECRET_KEY (paper keys) in the repo-root .env.
+"""F051 contract suite against the Alpaca PAPER account. Needs APCA_API_KEY and
+APCA_SECRET_KEY (paper keys) in the repo-root .env.
 Run: pytest -m live tests/live/test_alpaca.py
 Orders are placed far from the market and cancelled; nothing is left working."""
 
@@ -32,7 +32,7 @@ def _clean_tables() -> None:
 async def api() -> AsyncIterator[AlpacaApi]:
     settings = get_settings()
     if not settings.alpaca_api_key or settings.alpaca_secret_key is None:
-        pytest.skip("ALPACA_API_KEY / ALPACA_SECRET_KEY not set")
+        pytest.skip("APCA_API_KEY / APCA_SECRET_KEY not set")
     assert "paper-api" in settings.alpaca_endpoint, "contract tests place orders: paper only"
     client = AlpacaApi(
         settings.alpaca_api_key,

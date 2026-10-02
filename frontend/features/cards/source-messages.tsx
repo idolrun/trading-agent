@@ -81,13 +81,10 @@ export function SourceMessages({ card }: { card: Card }) {
               key={message.messageId}
               id={sourceAnchor(message.messageId)}
               data-supplies-inferred={supplies.length > 0}
-              className="scroll-mt-20 rounded-md border border-border bg-muted/40 px-3 py-2 target:ring-2 target:ring-ring data-[supplies-inferred=true]:border-warning"
+              className="scroll-mt-20 border-l-2 border-border pl-3 target:border-ring data-[supplies-inferred=true]:border-warning"
             >
-              <p className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted-foreground">
-                <span>
-                  {message.messageId === card.messageId ? "Signal message" : "Earlier message"} ·
-                  author {message.authorId}
-                </span>
+              <p className="flex items-baseline justify-between gap-x-3 text-xs text-muted-foreground">
+                <span>{message.messageId === card.messageId ? "Signal" : "Earlier message"}</span>
                 <time dateTime={message.postedAt}>
                   {new Date(message.postedAt).toLocaleTimeString("en-US", { timeStyle: "short" })}
                 </time>
@@ -95,16 +92,8 @@ export function SourceMessages({ card }: { card: Card }) {
               <p className="text-sm break-words whitespace-pre-wrap">
                 {message.text == null ? "(no text)" : highlightSpans(message.text, message.spans)}
               </p>
-              {message.text != null && message.spans.length > 0 ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Read from this text:{" "}
-                  {[...new Set(message.spans.map((span) => words(span.field)))].join(", ")}
-                </p>
-              ) : null}
               {supplies.length > 0 ? (
-                <p className="mt-1 text-xs font-medium">
-                  Supplies: {supplies.map(words).join(", ")}
-                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Supplies: {supplies.map(words).join(", ")}</p>
               ) : null}
             </li>
           )

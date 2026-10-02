@@ -9,7 +9,8 @@ describe("screens against the real contract shapes", () => {
     renderWithQuery(<CardInbox />)
     expect(await screen.findByText("SPY")).toBeInTheDocument()
     expect(screen.getByText("Signal is 4 minutes old")).toBeInTheDocument()
-    expect(screen.getByText("2 × 1.25")).toBeInTheDocument()
+    expect(screen.getByLabelText("Quantity")).toHaveValue(2)
+    expect(screen.getByText("Price").nextElementSibling).toHaveTextContent("$1.25")
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled()
   })
 

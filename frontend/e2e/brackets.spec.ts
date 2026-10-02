@@ -24,7 +24,7 @@ test("entry of 2 contracts with 3 TPs", async ({ page, driver }) => {
   await expect(card.getByLabel("TP1 quantity")).toHaveValue("1")
   await expect(card.getByLabel("TP2 quantity")).toHaveValue("1")
   await expect(card.getByLabel("TP3 quantity")).toHaveCount(0)
-  await expect(card.getByText("Stop 2.50")).toBeVisible()
+  await expect(card.getByLabel("Targets and stop")).toContainText("$2.50")
   await card.getByRole("button", { name: "Approve" }).click()
   await expect(card).toBeHidden()
 

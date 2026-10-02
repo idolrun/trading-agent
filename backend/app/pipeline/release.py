@@ -18,13 +18,13 @@ from app.cards.models import CardAction, CardSource
 from app.db import in_transaction
 from app.decide.types import ProposedAction
 from app.dispatcher.types import ProcessingContext
-from app.inbox.models import MessageEvent
+from app.inbox.models import EventType, MessageEvent
 from app.inbox.repo import to_envelope_row
 from app.interpret.models import LinkOutcome, Signal
 from app.ledger import repo as ledger
 from app.ledger.correlation import LinkDecision
 from app.ledger.models import PositionStatus, ProviderPosition
-from app.ledger.positions import state_of
+from app.ledger.positions import OPENING, state_of
 from app.markettime import Clock
 from app.pipeline.apply import insert_card, stored_signal
 from app.pipeline.plan import Planner
@@ -76,6 +76,7 @@ class ReleaseService:
                     )
                 ).all()
             )
+            edits = await _latest_edits(db, event)
             inputs = [(sig, *(await _link_and_position(db, sig.signal_id))) for sig in signals]
         env = to_envelope_row(event)
         ctx = ProcessingContext(
@@ -86,7 +87,7 @@ class ReleaseService:
             linked = link is not None and link.outcome == LinkOutcome.LINKED
             proposals = await self._planner.redecide(
                 ctx,
-                stored_signal(sig),
+                stored_signal(edits.get(sig.idx, sig) if sig.msg_type in OPENING else sig),
                 link,
                 row.provider_position_id if row is not None else None,
                 state_of(row) if row is not None and linked else None,
@@ -120,6 +121,23 @@ class ReleaseService:
         logger.info("off-hours event released", extra={"cards": len(created)})
         if self._approvals is not None:
             await self._approvals.start_many(created)
+
+
+async def _latest_edits(db: AsyncSession, event: MessageEvent) -> dict[int, Signal]:
+    """The message's latest opening signal per index from its edits (PRD 7.5, C48): an edit
+    while the card is held only corrected the ledger, so the card must carry the edited fields.
+    Link, position and card key stay the held create signal's, as for any release."""
+    rows = await db.scalars(
+        select(Signal)
+        .where(
+            col(Signal.message_id) == event.message_id,
+            col(Signal.provider_id) == event.provider_id,
+            col(Signal.event_type) == EventType.EDIT,
+            col(Signal.msg_type).in_(OPENING),
+        )
+        .order_by(col(Signal.created_at), col(Signal.event_seq), col(Signal.idx))
+    )
+    return {sig.idx: sig for sig in rows}  # later edits overwrite earlier ones
 
 
 async def _link_and_position(

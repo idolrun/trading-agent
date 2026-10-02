@@ -3,7 +3,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { BreakevenChoice } from "@/features/cards/breakeven-choice"
-import { words } from "@/features/cards/types"
 import type { BreakevenPick, Card, CardEdits } from "@/features/cards/types"
 
 export type ReviewDraft = {
@@ -75,8 +74,8 @@ export function ReviewFields({
   const set = (patch: Partial<ReviewDraft>) => onChange({ ...draft, ...patch })
 
   return (
-    <fieldset className="flex flex-col gap-3 rounded-md border border-border p-3">
-      <legend className="px-1 text-sm font-medium">Complete the review</legend>
+    <fieldset className="flex flex-col gap-3">
+      <legend className="sr-only">Complete the review</legend>
       {proposal.missingFields.map((field) => {
         switch (field) {
           case "underlying_confirmation":
@@ -90,18 +89,11 @@ export function ReviewFields({
                   I confirm the underlying is <strong>{proposal.suggestedUnderlying}</strong>
                 </span>
               </Label>
-            ) : (
-              <p key={field} className="text-sm text-muted-foreground">
-                No underlying could be suggested for this signal. Reject it, or wait for the provider.
-              </p>
-            )
+            ) : null
           case "chosen_position_id":
-            return (
+            return proposal.candidatePositions.length === 0 ? null : (
               <fieldset key={field} className="flex flex-col gap-2">
                 <legend className="mb-1 text-sm">Which position does this apply to?</legend>
-                {proposal.candidatePositions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No open position to choose from.</p>
-                ) : null}
                 <RadioGroup
                   value={draft.chosenPositionId}
                   onValueChange={(id) => set({ chosenPositionId: id })}
@@ -110,7 +102,7 @@ export function ReviewFields({
                   {proposal.candidatePositions.map((id) => (
                     <Label
                       key={id}
-                      className="min-h-11 gap-3 rounded-md border border-border px-3 font-normal leading-normal select-text has-data-[state=checked]:border-primary has-data-[state=checked]:bg-muted"
+                      className="min-h-11 gap-3 rounded-md px-3 font-normal leading-normal select-text has-data-[state=checked]:bg-muted"
                     >
                       <RadioGroupItem value={id} />
                       <span>Position {id.slice(0, 8)}</span>
@@ -153,18 +145,9 @@ export function ReviewFields({
                 value={draft.breakeven}
                 onChange={(breakeven) => set({ breakeven })}
               />
-            ) : (
-              <p key={field} className="text-sm text-muted-foreground">
-                The stop level is missing and cannot be entered here.
-              </p>
-            )
+            ) : null
           default:
-            return (
-              <p key={field} className="text-sm text-muted-foreground">
-                {words(field)} is missing and cannot be entered here. Reject the card, or wait for the
-                provider.
-              </p>
-            )
+            return null
         }
       })}
     </fieldset>

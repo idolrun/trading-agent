@@ -75,9 +75,20 @@ describe("card inbox", () => {
   it("shows author, contract, qty x price, warnings and an advisory note; approve is one click", async () => {
     const { decisions } = serve([card({ note: "Provider says: scale out", providerId: "42" })])
     renderWithQuery(<CardInbox />)
-    expect(await screen.findByText("Provider 42")).toBeInTheDocument()
-    expect(screen.getByText("2026-10-16")).toBeInTheDocument()
-    expect(screen.getByText("2 × 1.25")).toBeInTheDocument()
+    const article = await screen.findByRole("article", { name: "Provider 42, entry SPY" })
+    expect(within(article).getByText("Buy")).toBeInTheDocument()
+    expect(within(article).getByText("SPY")).toBeInTheDocument()
+    expect(within(article).getByText("Pending approval")).toBeInTheDocument()
+    const contract = within(article).getByRole("group", { name: "Contract" })
+    expect(contract).toHaveTextContent(/\$550 Call\s*·\s*Oct 16, 2026/)
+    expect(within(contract).getByText("Oct 16, 2026")).toHaveAttribute("datetime", "2026-10-16")
+    expect(within(article).getByLabelText("Quantity")).toHaveValue(2) // the editable qty stands in for the Qty metric
+    expect(within(article).getByText("Price").nextElementSibling).toHaveTextContent("$1.25")
+    expect(within(article).getByText("Est. value").nextElementSibling).toHaveTextContent("~$250.00") // 2 x 1.25 x 100
+    expect(within(article).queryByText("42")).not.toBeInTheDocument() // the provider id is behind Details
+    await userEvent.click(within(article).getByRole("button", { name: "Details" }))
+    expect(within(article).getByText("42")).toBeInTheDocument()
+    expect(within(article).queryByText("No risk flags")).not.toBeInTheDocument() // the warning is the status
     expect(screen.getByText("Signal is 4 minutes old")).toBeInTheDocument()
     expect(screen.getByText("Advisory")).toBeInTheDocument()
 
@@ -239,10 +250,10 @@ describe("card inbox", () => {
     const link = await screen.findByRole("link", { name: "Strike" })
     expect(link).toHaveAttribute("href", `#source-${earlier}`)
     expect(link.querySelector("mark")).not.toBeNull()
-    expect(within(screen.getByRole("heading", { level: 3 })).getByText("550").tagName).toBe("MARK") // the strike in the contract line
+    expect(within(screen.getByRole("group", { name: "Contract" })).getByText("$550").tagName).toBe("MARK") // the strike in the contract line
 
     // literal spans are marked at their offsets; overlapping pieces list every field
-    const own = screen.getByText("Signal message", { exact: false }).closest("li")!
+    const own = document.getElementById(`source-${cardFixture.messageId}`)!
     const marks = [...own.querySelectorAll("mark")].map((m) => [m.textContent, m.getAttribute("title")])
     expect(marks).toEqual([
       ["SPY", "Underlying"],

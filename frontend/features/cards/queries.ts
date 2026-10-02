@@ -2,6 +2,7 @@ import { infiniteQueryOptions, queryOptions, useInfiniteQuery, useQuery } from "
 import { apiGet } from "@/lib/api/client"
 import type { Schemas } from "@/lib/api/types"
 import { domainKeys } from "@/lib/query/keys"
+import { orderListQuery } from "@/features/orders/queries"
 import type { CardDetail, CardListFilters } from "@/features/cards/types"
 
 export const cardKeys = domainKeys("cards")
@@ -49,4 +50,14 @@ export function useCardList(filters: CardListFilters) {
 
 export function useCard(cardId: string) {
   return useQuery(cardDetailQuery(cardId))
+}
+
+/** The broker order a card became, once it has a lot. Matched by card id among the lot's orders. */
+export function useCardOrder(card: { id: string; lotId: string | null }) {
+  const lotId = card.lotId
+  return useInfiniteQuery({
+    ...orderListQuery({ lotId }),
+    enabled: lotId != null,
+    select: (data) => data.pages.flatMap((page) => page.items).find((order) => order.cardId === card.id) ?? null,
+  })
 }

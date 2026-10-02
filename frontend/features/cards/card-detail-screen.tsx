@@ -8,7 +8,27 @@ import { useStepUp } from "@/features/auth/use-step-up"
 import { CardActions } from "@/features/cards/card-actions"
 import { CardSummary } from "@/features/cards/card-summary"
 import { decisionStateFor, generalDecisionError, useDecideCard } from "@/features/cards/mutations"
-import { useCard } from "@/features/cards/queries"
+import { useCard, useCardOrder } from "@/features/cards/queries"
+import type { Card } from "@/features/cards/types"
+
+function CardWithOrder({ card, decide, state }: { card: Card; decide: ReturnType<typeof useDecideCard>; state: ReturnType<typeof decisionStateFor> }) {
+  const order = useCardOrder(card)
+  return (
+    <CardSummary
+      card={card}
+      linked={false}
+      order={order.data}
+      actions={
+        <CardActions
+          card={card}
+          pending={state.pending}
+          error={state.fieldError}
+          onDecide={(decision) => decide.mutate({ cardId: card.id, decision })}
+        />
+      }
+    />
+  )
+}
 
 export function CardDetailScreen({ cardId }: { cardId: string }) {
   const query = useCard(cardId)
@@ -29,20 +49,7 @@ export function CardDetailScreen({ cardId }: { cardId: string }) {
         </p>
       ) : null}
       <QueryState query={query} loadingLabel="Loading card" emptyTitle="Card not found">
-        {(card) => (
-          <CardSummary
-            card={card}
-            linked={false}
-            actions={
-              <CardActions
-                card={card}
-                pending={state.pending}
-                error={state.fieldError}
-                onDecide={(decision) => decide.mutate({ cardId: card.id, decision })}
-              />
-            }
-          />
-        )}
+        {(card) => <CardWithOrder card={card} decide={decide} state={state} />}
       </QueryState>
       <StepUpDialog {...stepUp.dialogProps} />
     </div>

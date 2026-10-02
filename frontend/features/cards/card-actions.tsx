@@ -24,8 +24,8 @@ type Props = {
 }
 
 /** Actions with a quantity the user can see and change. */
-const QTY_ACTIONS = new Set(["entry", "add", "trim", "exit"])
-const SIZED_ACTIONS = new Set(["entry", "add"])
+export const QTY_ACTIONS = new Set(["entry", "add", "trim", "exit"])
+export const SIZED_ACTIONS = new Set(["entry", "add"])
 
 /**
  * Approve / reject / review completion for one pending card. Drafts start from the card and
@@ -107,7 +107,7 @@ function ActionsForm({ card, pending, blocked = false, error = null, onDecide }:
   const buttonClass = "h-12 min-h-11 text-base"
 
   return (
-    <div ref={root} className="flex flex-col gap-4 border-t border-border pt-3">
+    <div ref={root} className="flex flex-col gap-3">
       {hasQty ? (
         <div className="flex flex-col gap-1">
           <label className="flex items-center justify-between gap-3 text-sm font-medium">
@@ -140,13 +140,9 @@ function ActionsForm({ card, pending, blocked = false, error = null, onDecide }:
           </div>
         </div>
       ) : null}
-      <BracketLegs
-        cardId={card.id}
-        legs={proposal.tpLegs}
-        qty={qtyValue}
-        values={legsEditable ? legs : undefined}
-        onChange={legsEditable ? setLegs : undefined}
-      />
+      {legsEditable ? (
+        <BracketLegs cardId={card.id} legs={proposal.tpLegs} qty={qtyValue} values={legs} onChange={setLegs} />
+      ) : null}
       {pickBreakeven && proposal.breakevenOptions ? (
         <BreakevenChoice
           cardId={card.id}
@@ -161,15 +157,12 @@ function ActionsForm({ card, pending, blocked = false, error = null, onDecide }:
           <Button
             type="button"
             variant="secondary"
-            className={buttonClass}
+            className="min-h-11 self-start"
             disabled={!idle || !completion.complete || qtyMalformed}
             onClick={completeReview}
           >
             Complete review
           </Button>
-          <p className="text-sm text-muted-foreground">
-            Approve unlocks once the review is complete.
-          </p>
         </>
       ) : null}
       {pending ? (
@@ -182,7 +175,7 @@ function ActionsForm({ card, pending, blocked = false, error = null, onDecide }:
           {error}
         </p>
       ) : null}
-      <div className="flex gap-2">
+      <div className="flex gap-3 pt-1">
         <Button
           type="button"
           variant="outline"

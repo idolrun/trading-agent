@@ -27,7 +27,7 @@ export function BreakevenChoice({
         {choices.map((choice) => (
           <Label
             key={choice.id}
-            className="min-h-11 gap-3 rounded-md border border-border px-3 font-normal leading-normal select-text has-data-[state=checked]:border-primary has-data-[state=checked]:bg-muted has-data-[disabled]:opacity-50"
+            className="min-h-11 gap-3 rounded-md px-3 font-normal leading-normal select-text has-data-[state=checked]:bg-muted has-data-[disabled]:opacity-50"
           >
             <RadioGroupItem value={choice.id} disabled={choice.price == null} />
             <span>

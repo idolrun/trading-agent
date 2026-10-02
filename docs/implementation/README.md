@@ -194,6 +194,7 @@ cd frontend && pnpm dev                  # after F052
 | [F062](F062-e2e-tests.md) | End-to-end tests | F055–F061 | AC-18, AC-15, AC-6 |
 | [F063](F063-load-fault-tests.md) | Load & fault test suite | F046, F049 | AC-22, AC-23, §17 |
 | [F064](F064-deployment-runbooks.md) | Deployment, runbooks & stage gates | F062, F063 | §17, §18, AC-12 |
+| [F065](F065-shadow-lifecycle-verification.md) | Shadow position lifecycle verification (tests only) | F040–F043, F046, F062 | §7.1–7.4, FR-20, AC-2, AC-3, AC-15, AC-16 |
 
 ---
 
@@ -529,8 +530,8 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 | OD-20 | (2026-09-29) Exit re-price floor = `exit_floor_pct` below the mid at exit start, never below one tick | F006, F043 |
 | OD-32 | (2026-09-29) Underlying stops trigger on the last trade: calls / long stock at `last ≤ level`, puts at `last ≥ level` | F044 |
 | OD-27 | (2026-09-29) Kill switch scope: entry/add cards and entries are disabled; exit and stop cards are still created | F024, F047 |
-| OD-31 | (2026-09-29) Flatten scope: exits tracked lots only; foreign lots are untouched (C47 read-only; a foreign lot can still be sold by an explicit manual exit) | F047 |
 | OD-34 | (2026-10-02) **Broker and market data = Alpaca**; the paper stage runs on the Alpaca paper account (`BROKER_ADAPTER=alpaca`, `APCA_API_BASE_URL=https://paper-api.alpaca.markets`). Fills arrive on the `trade_updates` WebSocket (`execution_id` = fill id); `client_order_id` is Alpaca's own unique field. **Alpaca lists US equity/ETF options only: no SPX/SPXW**, so those signals become review cards (accepted by the user). Free data: stocks IEX, options indicative (delayed) | F051 |
+| OD-31 | (2026-09-29) Flatten scope: exits tracked lots only; foreign lots are untouched (C47 read-only; a foreign lot can still be sold by an explicit manual exit) | F047 |
 
 ### 10.1a Context-only decision-log entries
 C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple channels), C6 (= C14, approval for every order action — F036), C7 (no prediction), C10 (options; revised by C55 stocks), C3 (trusted providers), C9 (grouping per provider/company — realised as per-provider sequencing, C88), C27 (loss rule dropped), C68/C70 (non-goals: prediction, spreads, short selling, extended hours, multi-user, images) produce no feature. Any feature that would touch a non-goal must stop and ask.
