@@ -1,7 +1,10 @@
-"""Provider-scoped context for one message (C71), rebuilt from Postgres on every run.
+"""Lane-scoped context for one message (C71, F068), rebuilt from Postgres on every run.
 
-Structurally cannot carry the user's lots, balances or P&L (FR-8): `extra="forbid"` models
-with no field for them, and the only book is the provider's own (AC-18).
+The lane is (channel, provider): earlier messages and the book come from this author in this
+channel only. Another author's text appears only as the reply parent, read-only (never a
+source a model may copy a value from). Structurally cannot carry the user's lots, balances or
+P&L (FR-8): `extra="forbid"` models with no field for them, and the only book is the lane's own
+(AC-18).
 """
 
 import uuid
@@ -51,9 +54,8 @@ class ProviderContext(_Strict):
     now_et: str
     message: CurrentMessage
     reply_parent: ContextMessage | None  # any author; read-only context (never linked across)
-    recent_author_messages: list[ContextMessage]  # same provider, posted before, oldest first
-    mentioned_messages: list[ContextMessage]  # @mentioned authors, posted before
-    provider_book: list[BookEntry]  # this provider's open/trimmed positions only
+    recent_author_messages: list[ContextMessage]  # same lane, posted before, oldest first
+    provider_book: list[BookEntry]  # this lane's open/trimmed positions only
     provider_profile: dict[str, list[str]] = {}  # lexicon/aliases from the store (F035)
 
 
@@ -73,20 +75,11 @@ async def load_context(
     if env.reply_to_id is not None:
         found = await context_repo.message_as_of(db, env.reply_to_id, cutoff)
         parent = _message(*found) if found else None
-    recent = await context_repo.recent_by_author(
-        db, env.provider_id, cutoff, env.key.message_id, recent_n
-    )
-    mentioned: list[ContextMessage] = []
-    for author in dict.fromkeys(env.mentioned_author_ids):  # dedupe, keep order
-        if author != env.provider_id:
-            rows = await context_repo.recent_by_author(
-                db, author, cutoff, env.key.message_id, recent_n
-            )
-            mentioned += [_message(*row) for row in rows]
+    recent = await context_repo.recent_by_author(db, env.lane, cutoff, env.key.message_id, recent_n)
     if book is None:
         book = [
             BookEntry(id=p.provider_position_id, summary=summarize(p))
-            for p in await context_repo.open_book(db, env.provider_id)
+            for p in await context_repo.open_book(db, env.lane)
         ]
     return ProviderContext(
         now_et=_et(now),
@@ -101,7 +94,6 @@ async def load_context(
         ),
         reply_parent=parent,
         recent_author_messages=[_message(*row) for row in recent],
-        mentioned_messages=mentioned,
         provider_book=book,
         provider_profile=profile or {},
     )

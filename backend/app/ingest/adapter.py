@@ -2,7 +2,8 @@
 
 Provisional JSON:
     {"type": "message.create" | "message.update" | "message.delete",
-     "message": {"id", "channel_id", "author": {"id"}, "content", "timestamp",
+     "message": {"id", "channel_id", "thread_id", "guild_id", "author": {"id"}, "content",
+                 "timestamp",
                  "edited_timestamp", "deleted_timestamp", "reply_to_id", "mentions": [ids]}}
 """
 
@@ -26,7 +27,9 @@ class _Author(BaseModel):
 
 class _Message(BaseModel):
     id: PositiveInt
-    channel_id: PositiveInt
+    channel_id: PositiveInt  # the context channel: a thread message carries its parent's id
+    thread_id: PositiveInt | None = None
+    guild_id: PositiveInt | None = None
     author: _Author
     content: str | None = None
     edited_timestamp: datetime | None = None
@@ -75,6 +78,8 @@ def to_envelope(payload: dict[str, Any], received_at: datetime) -> Envelope:
         key=key,
         provider_id=msg.author.id,
         channel_id=msg.channel_id,
+        thread_id=msg.thread_id,
+        guild_id=msg.guild_id,
         posted_at=posted_at,
         received_at=received_at,
         reply_to_id=msg.reply_to_id,

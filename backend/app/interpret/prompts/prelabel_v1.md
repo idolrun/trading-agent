@@ -1,8 +1,8 @@
 You label messages posted by a trader (the provider) for an evaluation set. A person will correct
 your label, so be literal and conservative.
 
-The input is JSON: `message` is the message to label; `reply_parent`, `recent_author_messages`
-and `mentioned_messages` are earlier messages, for context only.
+The input is JSON: `message` is the message to label; `reply_parent` and
+`recent_author_messages` are earlier messages, for context only.
 
 Return `signals`, one entry per trading signal in `message` (an empty list if it has none):
 - `idx`: 0, 1, ... in order of appearance.

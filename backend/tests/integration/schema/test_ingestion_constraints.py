@@ -61,9 +61,9 @@ async def test_message_event_checks(db_session: AsyncSession) -> None:
 async def test_inbox_checks(db_session: AsyncSession) -> None:
     event = await add_message(db_session)
     sql = """
-        INSERT INTO inbox (message_id, event_type, event_seq, provider_id, posted_at, status,
-                           attempts)
-        VALUES (1001, 'create', 0, 7, now(), :status, :attempts)
+        INSERT INTO inbox (message_id, event_type, event_seq, provider_id, channel_id, posted_at,
+                           status, attempts)
+        VALUES (1001, 'create', 0, 7, 55, now(), :status, :attempts)
     """
     await expect_error(db_session, errors.CheckViolation, sql, {"status": "new", "attempts": 0})
     await expect_error(
@@ -77,8 +77,9 @@ async def test_inbox_requires_message_event(db_session: AsyncSession) -> None:
     await expect_error(
         db_session,
         errors.ForeignKeyViolation,
-        """INSERT INTO inbox (message_id, event_type, event_seq, provider_id, posted_at, status)
-           VALUES (999, 'create', 0, 7, now(), 'received')""",
+        """INSERT INTO inbox (message_id, event_type, event_seq, provider_id, channel_id,
+                               posted_at, status)
+           VALUES (999, 'create', 0, 7, 55, now(), 'received')""",
     )
 
 
@@ -154,17 +155,18 @@ async def test_message_link_cannot_use_other_providersadd_signal(db_session: Asy
     )
 
 
-async def test_next_for_provider_uses_partial_index(db_session: AsyncSession) -> None:
+async def test_next_for_lane_uses_partial_index(db_session: AsyncSession) -> None:
     await db_session.execute(text("SET enable_seqscan = off"))
     plan = "\n".join(
         (
             await db_session.execute(
                 text("""
                     EXPLAIN SELECT message_id, event_type, event_seq FROM inbox
-                    WHERE provider_id = 7 AND status IN ('received', 'processing')
+                    WHERE provider_id = 7 AND channel_id = 55
+                      AND status IN ('received', 'processing')
                     ORDER BY posted_at, message_id LIMIT 1
                 """)
             )
         ).scalars()
     )
-    assert "ix_inbox_next_for_provider" in plan, plan
+    assert "ix_inbox_next_for_lane" in plan, plan

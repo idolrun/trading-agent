@@ -67,11 +67,11 @@ class _Client(discord.Client):
         self._listener.disconnected()
 
     async def on_message(self, message: discord.Message) -> None:
-        await self._listener.handle(mapping.create_payload(message), message.channel.id)
+        await self._listener.handle(mapping.create_payload(message))
 
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent) -> None:
         if payload.message is not None:
-            await self._listener.handle(mapping.edit_payload(payload.message), payload.channel_id)
+            await self._listener.handle(mapping.edit_payload(payload.message))
 
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
         await self._listener.handle_delete(payload)
@@ -157,8 +157,12 @@ class DiscordListener:
         config = self._config.get()
         return config is not None and channel_id in config.channels
 
-    async def handle(self, payload: dict[str, Any] | None, channel_id: int) -> None:
-        if payload is None or not self.watching(channel_id):
+    async def handle(self, payload: dict[str, Any] | None) -> None:
+        """`payload["message"]["channel_id"]` is the context channel: a thread's parent."""
+        if payload is None:
+            return
+        channel_id = payload["message"]["channel_id"]
+        if not self.watching(channel_id):
             return
         try:
             env = to_envelope(payload, self._clock.now())
@@ -181,29 +185,37 @@ class DiscordListener:
         self._feed_health.note_message(now)
 
     async def handle_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
-        if not self.watching(payload.channel_id):
-            return
+        """A raw delete in a thread names the thread, not its parent: the stored event (or the
+        cached message) says which context it belonged to."""
         cached = payload.cached_message
-        author_id = (
-            cached.author.id if cached is not None else await self._author_of(payload.message_id)
-        )
-        if author_id is None:
+        if cached is not None:
+            channel_id, thread_id = mapping.context_channel(cached.channel)
+            identity: tuple[int, int, int | None] | None = (cached.author.id, channel_id, thread_id)
+        else:
+            identity = await self._stored_identity(payload.message_id)
+        if identity is None:
             return  # never stored, nothing to correct
+        author_id, channel_id, thread_id = identity
         await self.handle(
             mapping.delete_payload(
-                payload.message_id, payload.channel_id, author_id, self._clock.now()
-            ),
-            payload.channel_id,
+                payload.message_id, channel_id, author_id, self._clock.now(), thread_id
+            )
         )
 
-    async def _author_of(self, message_id: int) -> int | None:
+    async def _stored_identity(self, message_id: int) -> tuple[int, int, int | None] | None:
         async with self._sessions() as db:
-            result = await db.execute(
-                select(col(MessageEvent.provider_id))
-                .where(col(MessageEvent.message_id) == message_id)
-                .limit(1)
-            )
-            return result.scalar_one_or_none()
+            row = (
+                await db.execute(
+                    select(
+                        col(MessageEvent.provider_id),
+                        col(MessageEvent.channel_id),
+                        col(MessageEvent.thread_id),
+                    )
+                    .where(col(MessageEvent.message_id) == message_id)
+                    .limit(1)
+                )
+            ).first()
+            return None if row is None else (row[0], row[1], row[2])
 
     # --- read side -------------------------------------------------------------------------
 

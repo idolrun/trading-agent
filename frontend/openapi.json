@@ -3,6 +3,11 @@
     "schemas": {
       "AddPositionRequest": {
         "properties": {
+          "channelId": {
+            "exclusiveMinimum": 0.0,
+            "title": "Channelid",
+            "type": "integer"
+          },
           "entryPrice": {
             "anyOf": [
               {
@@ -88,6 +93,7 @@
         "required": [
           "underlying",
           "providerId",
+          "channelId",
           "instrument",
           "reason"
         ],
@@ -3857,6 +3863,17 @@
             "title": "Openedat",
             "type": "string"
           },
+          "openedChannelId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openedchannelid"
+          },
           "optionRight": {
             "anyOf": [
               {
@@ -3939,6 +3956,7 @@
         "required": [
           "id",
           "providerId",
+          "openedChannelId",
           "instrument",
           "underlying",
           "expiry",
@@ -3991,6 +4009,17 @@
             "title": "Openedat",
             "type": "string"
           },
+          "openedChannelId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openedchannelid"
+          },
           "optionRight": {
             "anyOf": [
               {
@@ -4073,6 +4102,7 @@
         "required": [
           "id",
           "providerId",
+          "openedChannelId",
           "instrument",
           "underlying",
           "expiry",

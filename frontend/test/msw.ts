@@ -98,6 +98,7 @@ export const lotFixture: Schemas["LotOut"] = {
 export const positionFixture: Schemas["PositionOut"] = {
   id: "0a1b2c3d-0000-4000-8000-0000000000d1",
   providerId: "1",
+  openedChannelId: "999888777666555444",
   underlying: "SPY",
   instrument: "option",
   expiry: "2026-10-16",

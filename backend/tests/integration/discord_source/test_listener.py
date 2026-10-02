@@ -89,7 +89,7 @@ def listener(factory: Factory, config: ConfigService, feed: FeedSpy) -> DiscordL
 
 
 async def deliver(listener: DiscordListener, msg: NS) -> None:
-    await listener.handle(mapping.create_payload(msg), msg.channel.id)
+    await listener.handle(mapping.create_payload(msg))
 
 
 async def test_watched_channel_lands_in_inbox(
@@ -132,7 +132,7 @@ async def test_edit_and_delete_reference_the_original_author(
     edited = message(
         T0, "Bought GOOGL 357.5C @ 1.70", id=msg.id, edited_at=T0 + timedelta(seconds=5)
     )
-    await listener.handle(mapping.edit_payload(edited), CHANNEL)
+    await listener.handle(mapping.edit_payload(edited))
     raw_delete = NS(message_id=msg.id, channel_id=CHANNEL, cached_message=None)
     await listener.handle_delete(raw_delete)  # type: ignore[arg-type]
     types = (
@@ -146,6 +146,38 @@ async def test_delete_of_unknown_message_is_ignored(
 ) -> None:
     raw_delete = NS(message_id=snowflake(T0), channel_id=CHANNEL, cached_message=None)
     await listener.handle_delete(raw_delete)  # type: ignore[arg-type]
+    assert await db_session.scalar(select(func.count()).select_from(MessageEvent)) == 0
+
+
+async def test_thread_message_lands_in_the_parent_channel(
+    listener: DiscordListener, db_session: AsyncSession
+) -> None:
+    """A thread id is never in the allowlist: the parent channel decides, the thread is kept."""
+    thread = NS(id=OTHER_CHANNEL + 5, parent_id=CHANNEL)
+    msg = message(T0, "SPY 765P .54")
+    msg.channel = thread
+    await deliver(listener, msg)
+    event = (await db_session.scalars(select(MessageEvent))).one()
+    assert (event.channel_id, event.thread_id) == (CHANNEL, OTHER_CHANNEL + 5)
+    inbox_row = (await db_session.scalars(select(InboxItem))).one()
+    assert inbox_row.channel_id == CHANNEL
+    # a raw delete in the thread names the thread: the stored event resolves the parent
+    await listener.handle_delete(
+        NS(message_id=msg.id, channel_id=OTHER_CHANNEL + 5, cached_message=None)  # type: ignore[arg-type]
+    )
+    rows = (await db_session.scalars(select(MessageEvent).order_by(MessageEvent.event_type))).all()
+    assert [(r.event_type, r.channel_id, r.thread_id) for r in rows] == [
+        (EventType.CREATE, CHANNEL, OTHER_CHANNEL + 5),
+        (EventType.DELETE, CHANNEL, OTHER_CHANNEL + 5),
+    ]
+
+
+async def test_thread_under_an_unwatched_channel_is_ignored(
+    listener: DiscordListener, db_session: AsyncSession
+) -> None:
+    msg = message(T0, "SPY 765P .54")
+    msg.channel = NS(id=OTHER_CHANNEL + 5, parent_id=OTHER_CHANNEL)
+    await deliver(listener, msg)
     assert await db_session.scalar(select(func.count()).select_from(MessageEvent)) == 0
 
 

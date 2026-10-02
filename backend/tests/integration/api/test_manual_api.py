@@ -400,6 +400,7 @@ async def test_position_add_edit_close_is_audited(m: Api) -> None:
         "/positions",
         {
             "providerId": str(PROVIDER_A),
+            "channelId": str(CHANNEL),
             "instrument": "option",
             "underlying": "GOOGL",
             "expiry": "2026-10-02",
@@ -446,6 +447,7 @@ async def test_position_add_edit_close_is_audited(m: Api) -> None:
 async def test_position_edge_cases_are_422_404(m: Api) -> None:
     body = {
         "providerId": str(PROVIDER_A),
+        "channelId": str(CHANNEL),
         "instrument": "stock",
         "underlying": "GOOGL",
         "reason": "r",

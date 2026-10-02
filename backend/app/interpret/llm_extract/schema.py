@@ -93,10 +93,20 @@ _LITERAL_FIELDS = (
 
 
 def context_texts(ctx: ProviderContext) -> dict[str, str]:
-    """The C71 set: the only earlier messages a `context` field may cite."""
-    msgs = [*ctx.recent_author_messages, *ctx.mentioned_messages]
+    """Every earlier message in the context (what `get_message` may show)."""
+    msgs = [*ctx.recent_author_messages]
     if ctx.reply_parent is not None:
         msgs.append(ctx.reply_parent)
+    return {m.id: m.text for m in msgs}
+
+
+def citable_texts(ctx: ProviderContext) -> dict[str, str]:
+    """The only earlier messages a `context` field may copy a value from: the lane author's
+    own. A reply parent written by someone else is read-only (F068)."""
+    msgs = [*ctx.recent_author_messages]
+    parent = ctx.reply_parent
+    if parent is not None and parent.author_id == ctx.message.author_id:
+        msgs.append(parent)
     return {m.id: m.text for m in msgs}
 
 
@@ -105,7 +115,7 @@ def to_parsed_signals(
 ) -> tuple[ParsedSignals, list[str]]:
     """Convert and verify. Non-empty errors = content rejection (review card, no fallback)."""
     errors: list[str] = []
-    sources = context_texts(ctx)
+    sources = citable_texts(ctx)
 
     def field(i: int, name: str, f: LlmField) -> dict[str, Any] | None:
         value = parse_raw(name, f.raw)

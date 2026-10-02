@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from app.db import notify
-from app.inbox.envelope import Envelope, EventKey
+from app.inbox.envelope import Envelope, EventKey, Lane
 from app.inbox.models import (
     EventType,
     InboxItem,
@@ -44,6 +44,8 @@ async def store_event(db: AsyncSession, env: Envelope) -> bool:
             event_seq=env.key.event_seq,
             provider_id=env.provider_id,
             channel_id=env.channel_id,
+            thread_id=env.thread_id,
+            guild_id=env.guild_id,
             posted_at=env.posted_at,
             edited_at=env.edited_at,
             reply_to_id=env.reply_to_id,
@@ -71,6 +73,7 @@ async def accept(db: AsyncSession, env: Envelope) -> bool:
             event_type=event_type,
             event_seq=event_seq,
             provider_id=env.provider_id,
+            channel_id=env.channel_id,
             posted_at=env.posted_at,
             status=InboxStatus.RECEIVED,
             backfilled=env.backfilled,
@@ -87,13 +90,24 @@ async def accept(db: AsyncSession, env: Envelope) -> bool:
         )
     )
     await db.flush()
-    await notify(db, "inbox", str(env.provider_id))
+    await notify(db, "inbox", lane_key(env.lane))
     await notify(db, "feed", json.dumps({"type": "feed.message", "id": str(message_id)}))  # F056
     return True
 
 
-async def next_for_provider(db: AsyncSession, provider_id: int) -> Envelope | None:
-    """The provider's earliest waiting event in post-time (snowflake) order."""
+def lane_key(lane: Lane) -> str:
+    """NOTIFY payload for a lane: `<channel_id>:<provider_id>`."""
+    return f"{lane[0]}:{lane[1]}"
+
+
+def parse_lane(payload: str) -> Lane:
+    channel, provider = payload.split(":")
+    return int(channel), int(provider)
+
+
+async def next_for_lane(db: AsyncSession, lane: Lane) -> Envelope | None:
+    """The lane's earliest waiting event in post-time (snowflake) order."""
+    channel_id, provider_id = lane
     row = await db.scalar(
         select(MessageEvent)
         .join(
@@ -106,6 +120,7 @@ async def next_for_provider(db: AsyncSession, provider_id: int) -> Envelope | No
         )
         .where(
             col(InboxItem.provider_id) == provider_id,
+            col(InboxItem.channel_id) == channel_id,
             col(InboxItem.status) == InboxStatus.RECEIVED,
         )
         .order_by(
@@ -124,6 +139,8 @@ def to_envelope_row(row: MessageEvent) -> Envelope:
         key=EventKey(row.message_id, EventType(row.event_type), row.event_seq),
         provider_id=row.provider_id,
         channel_id=row.channel_id,
+        thread_id=row.thread_id,
+        guild_id=row.guild_id,
         posted_at=row.posted_at,
         received_at=row.received_at,
         reply_to_id=row.reply_to_id,
@@ -191,21 +208,23 @@ async def reset_in_flight(db: AsyncSession) -> int:
     return int(result.rowcount)  # type: ignore[attr-defined]
 
 
-async def providers_waiting(db: AsyncSession) -> list[int]:
-    rows = await db.scalars(
-        select(col(InboxItem.provider_id))
+async def lanes_waiting(db: AsyncSession) -> list[Lane]:
+    rows = await db.execute(
+        select(col(InboxItem.channel_id), col(InboxItem.provider_id))
         .where(col(InboxItem.status) == InboxStatus.RECEIVED)
         .distinct()
     )
-    return list(rows.all())
+    return [(channel, provider) for channel, provider in rows.all()]
 
 
-async def later_applied(db: AsyncSession, provider_id: int, posted_at: datetime) -> bool:
-    """FR-1b: was a later-posted event of this provider already applied?"""
+async def later_applied(db: AsyncSession, lane: Lane, posted_at: datetime) -> bool:
+    """FR-1b: was a later-posted event of this lane already applied?"""
+    channel_id, provider_id = lane
     found = await db.scalar(
         select(
             exists().where(
                 col(InboxItem.provider_id) == provider_id,
+                col(InboxItem.channel_id) == channel_id,
                 col(InboxItem.status).in_(_APPLIED),
                 col(InboxItem.posted_at) > posted_at,
             )

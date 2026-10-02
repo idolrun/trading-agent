@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from app.execution.models import Fill
+from app.inbox.envelope import Lane
 from app.inbox.models import MessageEvent
 from app.instruments import Instrument as Contract
 from app.instruments import OptionContract, broker_symbol
@@ -62,13 +63,15 @@ async def parent_links(db: AsyncSession, parent_message_id: int) -> tuple[Parent
     return tuple(ParentLink(provider_id, position_id) for provider_id, position_id in rows.all())
 
 
-async def lock_open_book(db: AsyncSession, provider_id: int) -> list[ProviderPosition]:
-    """The provider's open/trimmed positions, row-locked for the rest of the transaction
-    (T3/T7, database-schema.md §8). Call only inside the provider slot."""
+async def lock_open_book(db: AsyncSession, lane: Lane) -> list[ProviderPosition]:
+    """The lane's open/trimmed positions, row-locked for the rest of the transaction
+    (T3/T7, database-schema.md §8). Call only inside the lane slot."""
+    channel_id, provider_id = lane
     rows = await db.scalars(
         select(ProviderPosition)
         .where(
             col(ProviderPosition.provider_id) == provider_id,
+            col(ProviderPosition.opened_channel_id) == channel_id,
             col(ProviderPosition.status) != PositionStatus.CLOSED,
         )
         .order_by(col(ProviderPosition.opened_at), col(ProviderPosition.provider_position_id))
@@ -260,10 +263,11 @@ async def latest_link(db: AsyncSession, signal_id: uuid.UUID) -> MessageLink | N
 
 
 async def unlinked_follow_ups_after(
-    db: AsyncSession, provider_id: int, posted_at: datetime, types: frozenset[MsgType]
+    db: AsyncSession, lane: Lane, posted_at: datetime, types: frozenset[MsgType]
 ) -> list[tuple[Signal, MessageEvent]]:
-    """This provider's follow-ups posted after `posted_at` whose current link is none or
+    """This lane's follow-ups posted after `posted_at` whose current link is none or
     ambiguous (F037 recheck), oldest first."""
+    channel_id, provider_id = lane
     latest = (
         select(col(MessageLink.signal_id), col(MessageLink.outcome))
         .order_by(col(MessageLink.signal_id), col(MessageLink.id).desc())
@@ -283,6 +287,7 @@ async def unlinked_follow_ups_after(
         .join(latest, latest.c.signal_id == col(Signal.signal_id))
         .where(
             col(Signal.provider_id) == provider_id,
+            col(MessageEvent.channel_id) == channel_id,
             col(MessageEvent.posted_at) > posted_at,
             col(Signal.msg_type).in_(list(types)),
             latest.c.outcome.in_([LinkOutcome.NONE, LinkOutcome.AMBIGUOUS]),

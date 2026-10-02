@@ -64,8 +64,17 @@ class MessageEvent(SQLModel, table=True):
         check_in("event_type", EventType),
         CheckConstraint("event_seq >= 0", name="event_seq_non_negative"),
         CheckConstraint("event_type = 'delete' OR text IS NOT NULL", name="text_unless_delete"),
-        *positive_ids("message_id", "provider_id", "channel_id", "reply_to_id"),
+        *positive_ids(
+            "message_id", "provider_id", "channel_id", "reply_to_id", "thread_id", "guild_id"
+        ),
         Index("ix_message_events_provider_posted", "provider_id", sa_text("posted_at DESC")),
+        Index(
+            "ix_message_events_lane_posted",
+            "channel_id",
+            "provider_id",
+            sa_text("posted_at DESC"),
+        ),
+        Index("ix_message_events_thread_id", "thread_id"),
         Index("ix_message_events_channel_message", "channel_id", sa_text("message_id DESC")),
         Index("ix_message_events_reply_to_id", "reply_to_id"),
         Index("ix_message_events_posted_at", "posted_at"),
@@ -75,7 +84,9 @@ class MessageEvent(SQLModel, table=True):
     event_type: EventType = choice(primary_key=True)
     event_seq: int = Field(sa_type=BigInteger, primary_key=True)
     provider_id: int = bigint()
-    channel_id: int = bigint()
+    channel_id: int = bigint()  # context channel: a thread message carries its parent's id
+    thread_id: int | None = bigint(nullable=True)
+    guild_id: int | None = bigint(nullable=True)
     posted_at: datetime = Field(sa_type=TIMESTAMPTZ)
     edited_at: datetime | None = timestamptz(nullable=True)
     reply_to_id: int | None = bigint(nullable=True)
@@ -96,8 +107,9 @@ class InboxItem(SQLModel, table=True):
         check_in("skip_reason", SkipReason),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         Index(
-            "ix_inbox_next_for_provider",
+            "ix_inbox_next_for_lane",
             "provider_id",
+            "channel_id",
             "posted_at",
             "message_id",
             postgresql_where=sa_text("status IN ('received', 'processing')"),
@@ -106,6 +118,7 @@ class InboxItem(SQLModel, table=True):
         Index(
             "ix_inbox_applied",
             "provider_id",
+            "channel_id",
             sa_text("posted_at DESC"),
             postgresql_where=sa_text("status IN ('done', 'stale')"),
         ),
@@ -115,6 +128,7 @@ class InboxItem(SQLModel, table=True):
     event_type: EventType = choice(primary_key=True)
     event_seq: int = Field(sa_type=BigInteger, primary_key=True)
     provider_id: int = bigint()
+    channel_id: int = bigint()  # with provider_id: the lane (sequencing unit, TRD §2.4)
     posted_at: datetime = Field(sa_type=TIMESTAMPTZ)
     status: InboxStatus = choice()
     attempts: int = smallint(default=0)

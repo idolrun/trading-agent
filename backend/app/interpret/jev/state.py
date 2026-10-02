@@ -30,10 +30,6 @@ def build_jev_state(
         "recent_author_messages": [
             {"id": r.id, "at": r.at_et, "text": r.text} for r in ctx.recent_author_messages
         ],
-        "mentioned_messages": [
-            {"id": r.id, "author": r.author_id, "at": r.at_et, "text": r.text}
-            for r in ctx.mentioned_messages
-        ],
         "provider_book": [{"id": str(b.id), "summary": b.summary} for b in ctx.provider_book],
         "provider_profile": ctx.provider_profile,
         "candidates": {

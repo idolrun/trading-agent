@@ -85,7 +85,8 @@ def contract_shape() -> CheckConstraint:
 
 
 class ProviderPosition(SQLModel, table=True):
-    """Current state: a provider's position as stated in their messages; one provider only."""
+    """Current state: a provider's position as stated in their messages; one lane only
+    (`provider_id`, `opened_channel_id`, F068). A row with no channel is in no lane's book."""
 
     __tablename__ = "provider_positions"
     __table_args__ = (
@@ -100,6 +101,7 @@ class ProviderPosition(SQLModel, table=True):
         Index(
             "ix_provider_positions_open_book",
             "provider_id",
+            "opened_channel_id",
             "status",
             postgresql_where=sa_text("status <> 'closed'"),
         ),

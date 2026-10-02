@@ -15,7 +15,7 @@ from app.inbox.models import InboxItem, InboxStatus, MessageEvent, SkipReason, S
 from app.ingest.adapter import to_envelope
 from app.main import libpq_dsn
 from tests.integration.conftest import _url
-from tests.messages import PROVIDER_A, PROVIDER_B, ac18, create
+from tests.messages import CHANNEL, PROVIDER_A, PROVIDER_B, ac18, create
 
 NOW = datetime(2026, 9, 28, 14, 31, tzinfo=UTC)
 
@@ -69,25 +69,25 @@ async def test_notify_only_after_commit(factory: async_sessionmaker[AsyncSession
                 assert [n async for n in listener.notifies(timeout=0.3)] == []
         received = [n async for n in notifies]
     assert [(n.channel, n.payload) for n in received if n.channel == "inbox"] == [
-        ("inbox", str(PROVIDER_A))
+        ("inbox", f"{CHANNEL}:{PROVIDER_A}")
     ]
     feed = [json.loads(n.payload) for n in received if n.channel == "feed"]
     assert [f["type"] for f in feed] == ["feed.message"]
 
 
-async def test_next_for_provider_in_post_order(factory: async_sessionmaker[AsyncSession]) -> None:
+async def test_next_for_lane_in_post_order(factory: async_sessionmaker[AsyncSession]) -> None:
     msgs = ac18()
     for label in ("B2", "A3", "A1", "B4"):  # arrival order differs from post order
         await accept(factory, msgs[label])
     async with in_transaction(factory, None) as db:
-        first = await repo.next_for_provider(db, PROVIDER_A)
+        first = await repo.next_for_lane(db, (CHANNEL, PROVIDER_A))
         assert first is not None and first.text == "Bought GOOGL 357.5C @ 1.67"
         attempt = await repo.claim(db, first.key, NOW)
         assert attempt == 1
         # claimed row is no longer "next"
-        second = await repo.next_for_provider(db, PROVIDER_A)
+        second = await repo.next_for_lane(db, (CHANNEL, PROVIDER_A))
         assert second is not None and second.text == "Take half off @ 2.10"
-        b = await repo.next_for_provider(db, PROVIDER_B)
+        b = await repo.next_for_lane(db, (CHANNEL, PROVIDER_B))
         assert b is not None and b.text == "Bought TSLA 400C @ 2.10"
 
 
@@ -98,17 +98,17 @@ async def test_mark_claim_reset_and_later_applied(
     await accept(factory, msgs["A1"])
     await accept(factory, msgs["A3"])
     async with in_transaction(factory, None) as db:
-        a1 = await repo.next_for_provider(db, PROVIDER_A)
+        a1 = await repo.next_for_lane(db, (CHANNEL, PROVIDER_A))
         assert a1 is not None
         await repo.claim(db, a1.key, NOW)
-        a3 = await repo.next_for_provider(db, PROVIDER_A)
+        a3 = await repo.next_for_lane(db, (CHANNEL, PROVIDER_A))
         assert a3 is not None
         await repo.claim(db, a3.key, NOW)
         await repo.mark(db, a3.key, InboxStatus.DONE, skip_reason=SkipReason.MUTED_AUTHOR)
-        assert await repo.later_applied(db, PROVIDER_A, a1.posted_at)
-        assert not await repo.later_applied(db, PROVIDER_A, a3.posted_at)
+        assert await repo.later_applied(db, (CHANNEL, PROVIDER_A), a1.posted_at)
+        assert not await repo.later_applied(db, (CHANNEL, PROVIDER_A), a3.posted_at)
         assert await repo.reset_in_flight(db) == 1  # a1 was left processing
-        assert await repo.providers_waiting(db) == [PROVIDER_A]
+        assert await repo.lanes_waiting(db) == [(CHANNEL, PROVIDER_A)]
     row = await db_session.get(InboxItem, (a3.key.message_id, "create", 0))
     assert row is not None and row.finished_at is not None and row.skip_reason == "muted_author"
 

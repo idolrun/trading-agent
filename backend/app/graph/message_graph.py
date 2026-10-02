@@ -310,7 +310,7 @@ class _Nodes:
             return {"raw_reason": "literal_span_mismatch"}
         cfg = self.d.cfg()
         async with self.d.sessions() as db:
-            rows = await context_repo.open_book(db, env.provider_id)
+            rows = await context_repo.open_book(db, env.lane)
             parents = await ledger.parent_links(db, env.reply_to_id) if env.reply_to_id else ()
         book = {r.provider_position_id: state_of(r) for r in rows}
         version = {r.provider_position_id: r.updated_at for r in rows}
@@ -367,7 +367,7 @@ class _Nodes:
             logger.info("late event applied", extra={"provider_id": ctx.envelope.provider_id})
             if self.d.relink is not None:  # FR-1b: never a silent feed-only
                 relinks = await self.d.relink.recheck_after_late(
-                    ctx.envelope.provider_id, ctx.envelope.posted_at
+                    ctx.envelope.lane, ctx.envelope.posted_at
                 )
         if self.d.approvals is not None:
             by = ctx.envelope.key.message_id

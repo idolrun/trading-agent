@@ -64,7 +64,7 @@ async def test_open_trim_exit_history(factory: Factory, db_session: AsyncSession
         position_id = row.provider_position_id
     for msg_type, fraction in (("trim", "half"), ("full_exit", None)):
         async with in_transaction(factory, None) as db:
-            [locked] = await repo.lock_open_book(db, 7)
+            [locked] = await repo.lock_open_book(db, (55, 7))
             update = apply_to_position(
                 state_of(locked),
                 NormalizedSignal(msg_type=msg_type, instrument=None, exit_fraction=fraction),
@@ -88,7 +88,7 @@ async def test_open_trim_exit_history(factory: Factory, db_session: AsyncSession
     assert Decimal(trim_before["remaining_fraction"]) == 1
     assert Decimal(trim_after["remaining_fraction"]) == Decimal("0.5")
     async with factory() as db:
-        assert await repo.lock_open_book(db, 7) == []  # closed positions leave the book
+        assert await repo.lock_open_book(db, (55, 7)) == []  # closed positions leave the book
 
 
 async def test_book_is_per_provider_and_locked(factory: Factory, db_session: AsyncSession) -> None:
@@ -99,11 +99,17 @@ async def test_book_is_per_provider_and_locked(factory: Factory, db_session: Asy
             update = apply_to_position(None, ENTRY)
             assert update is not None
             await repo.record(
-                db, provider_id=provider, row=None, update=update, signal_id=sig.signal_id, at=NOW
+                db,
+                provider_id=provider,
+                row=None,
+                update=update,
+                signal_id=sig.signal_id,
+                channel_id=55,
+                at=NOW,
             )
 
     async with factory() as holder, holder.begin():
-        book = await repo.lock_open_book(holder, 7)
+        book = await repo.lock_open_book(holder, (55, 7))
         assert [r.provider_id for r in book] == [7]
         async with factory() as other, other.begin():
             with pytest.raises(DBAPIError) as exc:
@@ -112,7 +118,29 @@ async def test_book_is_per_provider_and_locked(factory: Factory, db_session: Asy
                 )
             assert isinstance(exc.value.orig, errors.LockNotAvailable)
         async with factory() as other, other.begin():
-            assert len(await repo.lock_open_book(other, 8)) == 1  # other provider unaffected
+            assert len(await repo.lock_open_book(other, (55, 8))) == 1  # other provider unaffected
+
+
+async def test_book_is_per_lane(factory: Factory, db_session: AsyncSession) -> None:
+    """F068: one provider, two channels = two books; a position without a channel is in none."""
+    sig = await add_signal(db_session, provider_id=7)
+    async with in_transaction(factory, None) as db:
+        for channel in (55, 66, None):
+            update = apply_to_position(None, ENTRY)
+            assert update is not None
+            await repo.record(
+                db,
+                provider_id=7,
+                row=None,
+                update=update,
+                signal_id=sig.signal_id,
+                channel_id=channel,
+                at=NOW,
+            )
+    async with factory() as db:
+        assert [r.opened_channel_id for r in await repo.lock_open_book(db, (55, 7))] == [55]
+        assert [r.opened_channel_id for r in await repo.lock_open_book(db, (66, 7))] == [66]
+        assert await repo.lock_open_book(db, (77, 7)) == []
 
 
 async def test_recent_underlyings(factory: Factory, db_session: AsyncSession) -> None:

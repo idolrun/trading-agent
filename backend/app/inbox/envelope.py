@@ -7,6 +7,10 @@ from pydantic import BaseModel, ConfigDict
 
 from app.inbox.models import EventType
 
+Lane = tuple[int, int]
+"""(channel_id, provider_id): the context and sequencing unit. One author's messages in two
+channels are two lanes; two authors in one channel are two lanes (TRD §2.4)."""
+
 
 class EventKey(NamedTuple):
     """Transport idempotency key (database-schema.md §6)."""
@@ -21,7 +25,9 @@ class Envelope(BaseModel):
 
     key: EventKey
     provider_id: int  # Discord author ID
-    channel_id: int
+    channel_id: int  # context channel (a thread's parent); lane = (channel_id, provider_id)
+    thread_id: int | None = None  # Discord thread the message was posted in
+    guild_id: int | None = None
     posted_at: datetime  # sequencing / validity clock origin (C90, OD-24)
     received_at: datetime
     reply_to_id: int | None = None
@@ -30,3 +36,7 @@ class Envelope(BaseModel):
     edited_at: datetime | None = None
     backfilled: bool = False
     payload: dict[str, Any]  # raw envelope as received (audit)
+
+    @property
+    def lane(self) -> Lane:
+        return (self.channel_id, self.provider_id)

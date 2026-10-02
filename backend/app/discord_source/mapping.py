@@ -20,11 +20,22 @@ def message_text(message: discord.Message) -> str:
     return "\n".join(part for part in parts if part)
 
 
+def context_channel(channel: Any) -> tuple[int, int | None]:
+    """(channel the message belongs to, thread id). A thread message belongs to its parent
+    channel's context and keeps its thread id (only `discord.Thread` has `parent_id`)."""
+    parent = getattr(channel, "parent_id", None)
+    return (parent, channel.id) if parent else (channel.id, None)
+
+
 def _body(message: discord.Message, **extra: Any) -> dict[str, Any]:
     reference = message.reference
+    channel_id, thread_id = context_channel(message.channel)
+    guild = getattr(message, "guild", None)
     return {
         "id": message.id,
-        "channel_id": message.channel.id,
+        "channel_id": channel_id,
+        "thread_id": thread_id,
+        "guild_id": guild.id if guild is not None else None,
         "author": {"id": message.author.id},
         "content": message_text(message),
         "reply_to_id": reference.message_id if reference else None,
@@ -51,13 +62,18 @@ def edit_payload(message: discord.Message) -> dict[str, Any] | None:
 
 
 def delete_payload(
-    message_id: int, channel_id: int, author_id: int, deleted_at: datetime
+    message_id: int,
+    channel_id: int,
+    author_id: int,
+    deleted_at: datetime,
+    thread_id: int | None = None,
 ) -> dict[str, Any]:
     return {
         "type": "message.delete",
         "message": {
             "id": message_id,
             "channel_id": channel_id,
+            "thread_id": thread_id,
             "author": {"id": author_id},
             "deleted_timestamp": deleted_at.isoformat(),
         },

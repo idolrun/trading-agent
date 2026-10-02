@@ -10,6 +10,7 @@ from app.api.schemas.orders import OrderOut
 class PositionOut(CamelModel):
     id: uuid.UUID
     provider_id: DiscordId
+    opened_channel_id: DiscordId | None  # with provider_id: the lane (F068)
     instrument: str
     underlying: str
     expiry: date | None

@@ -34,8 +34,9 @@ async def make_dispatcher(
     factory: Factory, stub: StubProcessor, *, listen: bool = False, **config: Any
 ) -> Dispatcher:
     service = ConfigService(factory)
+    config.setdefault("channels", [CHANNEL])
     await service.update(
-        RuntimeConfig(channels=[CHANNEL], **config),
+        RuntimeConfig(**config),
         expected_version=0,
         actor=Actor.CLI,
         reason="test",
@@ -97,6 +98,24 @@ async def test_ac18_order_per_provider_and_parallel_providers(factory: Factory) 
     assert a1.started < b2.ended and b2.started < a1.ended  # A and B overlap
     a_calls = [c for c in stub.calls if c.provider_id == PROVIDER_A]
     assert a_calls[0].ended <= a_calls[1].started  # A strictly serial
+
+
+async def test_one_author_in_two_channels_is_two_parallel_lanes(factory: Factory) -> None:
+    """F068: the lane is (channel, author). The same author's channels do not wait for each
+    other; inside one channel the author's messages stay in post order."""
+    other = CHANNEL + 1
+    a1, a2 = create(T0, "SPY 765P .54"), create(T0 + timedelta(seconds=5), "trim half")
+    b1 = create(T0 + timedelta(seconds=1), "QQQ 745P .60", channel=other)
+    await accept(factory, a2, b1, a1)
+    stub = StubProcessor(factory, delay_s=0.2)
+    dispatcher = await make_dispatcher(factory, stub, channels=[CHANNEL, other])
+    await dispatcher.start()
+    await all_finished(factory, 3)
+    await dispatcher.stop()
+    ids = {int(p["message"]["id"]): n for n, p in (("a1", a1), ("a2", a2), ("b1", b1))}
+    calls = {ids[c.key.message_id]: c for c in stub.calls}
+    assert calls["a1"].ended <= calls["a2"].started  # same lane: serial, post order
+    assert calls["b1"].started < calls["a1"].ended  # other channel: parallel
 
 
 async def test_live_notify_wakes_workers(factory: Factory, db_session: AsyncSession) -> None:
@@ -163,7 +182,7 @@ async def test_muted_and_unconfigured_are_visible_skips(
 async def test_restart_requeues_in_flight(factory: Factory) -> None:
     await accept(factory, ac18()["A1"])
     async with in_transaction(factory, None) as db:
-        env = await inbox.next_for_provider(db, PROVIDER_A)
+        env = await inbox.next_for_lane(db, (CHANNEL, PROVIDER_A))
         assert env is not None
         await inbox.claim(db, env.key, T0)  # crashed mid-processing
     stub = StubProcessor(factory)
@@ -182,7 +201,7 @@ async def test_stale_and_late_flags(factory: Factory, db_session: AsyncSession) 
     await dispatcher.start()
     await all_finished(factory, 1)
     await accept(factory, msgs["A1"])  # arrives after A3 was applied
-    dispatcher.wake(PROVIDER_A)
+    dispatcher.wake((CHANNEL, PROVIDER_A))
     await all_finished(factory, 2)
     await dispatcher.stop()
     a1 = await db_session.get(InboxItem, (int(msgs["A1"]["message"]["id"]), "create", 0))

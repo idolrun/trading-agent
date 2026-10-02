@@ -55,6 +55,7 @@ async def add_inbox(session: AsyncSession, event: MessageEvent, **overrides: Any
         event_type=event.event_type,
         event_seq=event.event_seq,
         provider_id=event.provider_id,
+        channel_id=event.channel_id,
         posted_at=event.posted_at,
         status=overrides.pop("status", InboxStatus.RECEIVED),
         **overrides,

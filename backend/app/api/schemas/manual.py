@@ -98,6 +98,7 @@ class PositionFields(CamelModel):
 
 class AddPositionRequest(PositionFields):
     provider_id: DiscordId = Field(gt=0)
+    channel_id: DiscordId = Field(gt=0)  # the lane the position belongs to (F068)
     instrument: Literal["option", "stock"]
     underlying: str
     reason: Reason

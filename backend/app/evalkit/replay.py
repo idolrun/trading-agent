@@ -24,7 +24,7 @@ from app.evalkit.metrics import Case, Sig, compute
 from app.evalkit.models import Split
 from app.graph.message_graph import GraphDeps, build_message_graph
 from app.graph.state import initial_state
-from app.inbox.envelope import Envelope
+from app.inbox.envelope import Envelope, Lane
 from app.inbox.models import EventType
 from app.interpret.context import BookEntry
 from app.interpret.signal import ParsedSignals
@@ -64,18 +64,18 @@ def pin_extract(cfg: RuntimeConfig, entry: ChainEntry) -> RuntimeConfig:
 
 
 class Ledger:
-    """The providers' books as the labels say they were. ponytail: only opens and full exits
+    """The lanes' books (F068) as the labels say they were. ponytail: only opens and full exits
     change it; trims, stops and TPs do not show in the summaries. Upgrade if the book text
     turns out to matter for accuracy."""
 
     def __init__(self) -> None:
-        self._books: defaultdict[int, dict[uuid.UUID, tuple[str | None, str]]] = defaultdict(dict)
+        self._books: defaultdict[Lane, dict[uuid.UUID, tuple[str | None, str]]] = defaultdict(dict)
 
     def book(self, env: Envelope) -> list[BookEntry]:
-        return [BookEntry(id=i, summary=s) for i, (_, s) in self._books[env.provider_id].items()]
+        return [BookEntry(id=i, summary=s) for i, (_, s) in self._books[env.lane].items()]
 
     def apply(self, env: Envelope, label: dict[str, Any]) -> None:
-        book = self._books[env.provider_id]
+        book = self._books[env.lane]
         link = label.get("link") or {}
         for sig in label["signals"]:
             fields = sig.get("fields", {})

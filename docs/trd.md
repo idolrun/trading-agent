@@ -226,12 +226,15 @@ Without either, a Postgres outage loses messages (PRD FR-1d, C91).
 - On startup, on reconnect, and every 60 s during market hours, fetch newer messages through the history API and `accept()` them. Duplicates are no-ops.
 - Every backfilled event is tagged `backfilled`.
 
-**Per-provider sequencing** (PRD FR-1a, C88; out-of-order FR-1b, C89):
-- One asyncio worker per active `provider_id`.
-- Workers take events in **snowflake (post-time) order**, not arrival order.
-- Different providers run in parallel.
-- The provider slot is held from `load_context` through `apply`/`notify`, and **released before `await_approval`**, so a pending approval never blocks the provider's next message.
-- If the service later runs as several processes, the slot becomes a **session-level** Postgres advisory lock (`pg_try_advisory_lock(hash(provider_id))`), held on a dedicated connection and released automatically if that connection drops.
+**Event identity** (F067): every event keeps `message_id`, `channel_id`, `provider_id` (author snowflake, never a display name), `guild_id`, `thread_id`, `reply_to_id`, `posted_at` and the raw payload. A message posted in a **thread** belongs to its **parent channel** (`channel_id` = parent, `thread_id` = the thread); the allowlist is checked against the parent, so thread messages are never dropped. A raw delete in a thread is resolved to its parent from the stored event. Thread history is not backfilled yet (gap detector pages channels only).
+
+**Per-lane sequencing** (PRD FR-1a, C88, C104; out-of-order FR-1b, C89):
+- The **lane** = `(channel_id, provider_id)` is the sequencing and context unit (F068). One author in two channels is two lanes; two authors in one channel are two lanes.
+- One asyncio worker per active lane. Workers take events in **snowflake (post-time) order**, not arrival order.
+- Different lanes run in parallel, so a slow model call in one lane never delays another lane, including the same author's other channel.
+- The lane slot is held from `load_context` through `apply`/`notify`, and **released before `await_approval`**, so a pending approval never blocks the lane's next message.
+- Context reads (recent messages, provider book), `lock_open_book`, linking, same-contract adds (C62), late re-checks and review-card position choices are all scoped to the lane.
+- If the service later runs as several processes, the slot becomes a **session-level** Postgres advisory lock (`pg_try_advisory_lock(hash(lane))`), held on a dedicated connection and released automatically if that connection drops.
   - Not a transaction-scoped lock: the slot spans model calls lasting seconds, and a transaction must not stay open that long.
   - Never a Redis lock (§15.2).
   - Inside `apply`, the provider's ledger rows are still locked with `SELECT … FOR UPDATE`.

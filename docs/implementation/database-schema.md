@@ -55,7 +55,8 @@ provider_position_id ── created by an entry signal (or manual correction); o
   └─ lot_id (user holding; FK provider_position_id; foreign lots have none)
        └─ card_id (UNIQUE (signal_id, action) and UNIQUE dedupe_key)
             └─ client_order_id = uuid5(card_id, action_seq)  (UNIQUE)
-channel_id ── metadata only, never a scope key (OD-5 resolved: per author)
+lane = (channel_id, provider_id) ── the context + book scope (F068, C104; replaces OD-5 / C96 "per author")
+  channel_id = the context channel: a thread message carries its parent's id, `thread_id` keeps the thread
 ```
 
 **Never-cross-provider is enforced by the database**, not only by code:
@@ -90,11 +91,13 @@ Purpose: every message event exactly once (FR-1), raw payload kept 7 years; repl
 | `event_type` | text | NN | PK part; `CHECK IN ('create','edit','delete')` |
 | `event_seq` | **bigint** | NN | PK part; `CHECK >= 0`; 0 for create/delete; edit sequence from the API (OD-2 — provisional: edit timestamp ms, which needs bigint; migration `0008`) |
 | `provider_id` | bigint | NN | author ID |
-| `channel_id` | bigint | NN | metadata |
+| `channel_id` | bigint | NN | context channel (a thread's parent); with `provider_id` the lane (F068) |
+| `thread_id` | bigint | NULL | Discord thread the message was posted in (F067) |
+| `guild_id` | bigint | NULL | Discord server (F067; audit) |
 | `posted_at` | timestamptz | NN | derived from snowflake; drives ordering and validity clocks (C90) |
 | `edited_at` | timestamptz | NULL | edit events only |
 | `reply_to_id` | bigint | NULL | FR-3 |
-| `mentioned_author_ids` | bigint[] | NN | default `'{}'` (C71 @mentions) |
+| `mentioned_author_ids` | bigint[] | NN | default `'{}'`; stored for audit, not context (F068) |
 | `text` | text | NULL | NULL for delete events |
 | `payload` | jsonb | NN | raw envelope as received |
 | `backfilled` | boolean | NN | default false |
@@ -102,13 +105,14 @@ Purpose: every message event exactly once (FR-1), raw payload kept 7 years; repl
 
 - PK `(message_id, event_type, event_seq)`.
 - CHECK `(event_type = 'delete') OR (text IS NOT NULL)`.
-- Indexes: `(provider_id, posted_at DESC)` — recent author messages (context window); `(channel_id, message_id DESC)` — gap detector's last seen per channel; `(reply_to_id)` — reply parent lookup; `(posted_at)` — feed paging.
+- Indexes: `(provider_id, posted_at DESC)`; `(channel_id, provider_id, posted_at DESC)` — the lane's recent messages (context window, F068); `(thread_id)`; `(channel_id, message_id DESC)` — gap detector's last seen per channel; `(reply_to_id)` — reply parent lookup; `(posted_at)` — feed paging.
 
 ### 3.2 `inbox` — current state (transport queue, TRD §2.4)
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `message_id`, `event_type`, `event_seq` | as above | NN | PK; FK → `message_events` |
 | `provider_id` | bigint | NN | denormalized for the sequencer index |
+| `channel_id` | bigint | NN | denormalized; with `provider_id` the lane = sequencing unit (F068, migration `0019`) |
 | `posted_at` | timestamptz | NN | denormalized |
 | `status` | text | NN | `CHECK IN ('received','processing','done','failed','stale')` |
 | `attempts` | smallint | NN | default 0, `CHECK >= 0` |
@@ -120,9 +124,9 @@ Purpose: every message event exactly once (FR-1), raw payload kept 7 years; repl
 | `finished_at` | timestamptz | NULL | |
 | `updated_at` | timestamptz | NN | |
 
-- Index `(provider_id, posted_at, message_id) WHERE status IN ('received','processing')` — `next_for_provider()`.
+- Index `(provider_id, channel_id, posted_at, message_id) WHERE status IN ('received','processing')` — `next_for_lane()`.
 - Index `(posted_at) WHERE status = 'received'` — backlog depth / oldest unprocessed age (catch-up, FR-1c).
-- Index `(provider_id, posted_at DESC) WHERE status IN ('done','stale')` — "was a later message already applied?" (FR-1b).
+- Index `(provider_id, channel_id, posted_at DESC) WHERE status IN ('done','stale')` — "was a later message of this lane already applied?" (FR-1b).
 - `status='stale'` = processed, ledger updated, no approvable card (FR-1c).
 
 ### 3.3 `stage_timings` — immutable audit (deviation X7)
@@ -212,7 +216,7 @@ UNIQUE `(message_id, event_type, event_seq, idx)`; UNIQUE `(signal_id, provider_
 |---|---|---|---|
 | `provider_position_id` | uuid | NN | PK |
 | `provider_id` | bigint | NN | owner (never crosses providers) |
-| `opened_channel_id` | bigint | NULL | metadata only |
+| `opened_channel_id` | bigint | NULL | the lane's channel (F068): books, links and C62 adds stay inside `(provider_id, opened_channel_id)`; NULL = in no lane's book (migration `0020` backfills it from the opening signal) |
 | `instrument` | text | NN | `CHECK IN ('option','stock')` |
 | `underlying` | text | NN | after symbol map (e.g. `SPXW`) |
 | `expiry` | date | NULL | |

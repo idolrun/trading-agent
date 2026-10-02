@@ -86,6 +86,8 @@ export function CorrectionDialog({
       return postPosition({
         // Snowflake: sent as a string so no digits are lost (the server parses it as an int).
         providerId: position.providerId as unknown as number,
+        // The lane (channel + provider) the new position belongs to: the template position's.
+        channelId: position.openedChannelId as unknown as number,
         instrument: form.instrument,
         underlying: form.underlying.trim().toUpperCase(),
         reason,
@@ -98,7 +100,8 @@ export function CorrectionDialog({
   })
   const fields = mode !== "close"
   const isOption = form.instrument === "option"
-  const valid = form.reason.trim() !== "" && (mode !== "add" || form.underlying.trim() !== "")
+  const valid =
+    form.reason.trim() !== "" && (mode !== "add" || (form.underlying.trim() !== "" && position.openedChannelId != null))
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -114,7 +117,7 @@ export function CorrectionDialog({
         mode === "close"
           ? "Marks the provider's position closed. Lots and orders are not changed."
           : mode === "add"
-            ? `For provider ${position.providerId}.`
+            ? `For provider ${position.providerId} in channel ${position.openedChannelId ?? "unknown"}.`
             : "Only fields you change are saved."
       }
     >

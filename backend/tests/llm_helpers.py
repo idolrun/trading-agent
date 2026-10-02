@@ -67,6 +67,5 @@ def ctx(
             ContextMessage(id=i, author_id="42", at_et="2026-09-28 10:01:00 ET", text=t)
             for i, t in recent
         ],
-        mentioned_messages=[],
         provider_book=[BookEntry(id=i, summary=s) for i, s in book],
     )

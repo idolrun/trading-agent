@@ -21,6 +21,7 @@ from app.evalkit.labels import add_label
 from app.evalkit.models import LabelSource
 from app.graph.message_graph import PROFILE_KEYS
 from app.inbox.envelope import EventKey
+from app.inbox.models import MessageEvent
 from app.interpret.models import LinkMethod, Signal
 from app.ledger import repo as ledger
 from app.ledger.models import PositionChange, PositionStatus, ProviderPosition
@@ -51,8 +52,15 @@ class Corrections:
     # --- provider positions (C73) --------------------------------------------------------
 
     async def add_position(
-        self, provider_id: int, changes: dict[str, Any], reason: str, session_id: uuid.UUID
+        self,
+        provider_id: int,
+        channel_id: int,
+        changes: dict[str, Any],
+        reason: str,
+        session_id: uuid.UUID,
     ) -> uuid.UUID:
+        """A provider position the pipeline missed, in the lane (channel, provider) it belongs
+        to: without a channel it would be in no lane's book (F068)."""
         update = _corrected(None, changes)
         position_id = uuid.uuid4()
         async with in_transaction(self._sessions, None) as db:
@@ -70,6 +78,7 @@ class Corrections:
                 db,
                 provider_id=provider_id,
                 row=None,
+                channel_id=channel_id,
                 update=update,
                 manual_correction_id=audit.id,
                 position_id=position_id,
@@ -131,14 +140,26 @@ class Corrections:
         self, signal_id: uuid.UUID, position_id: uuid.UUID, reason: str, session_id: uuid.UUID
     ) -> list[uuid.UUID]:
         """Re-link a signal (new `user_correction` link, ledger effect, follow-up cards);
-        returns the new card ids. A position of another provider is refused."""
+        returns the new card ids. A position of another provider or another channel (lane,
+        F068) is refused."""
         async with self._sessions() as db:
             sig = await db.get(Signal, signal_id)
             position = await db.get(ProviderPosition, position_id)
+            channel_id = (
+                await db.scalar(
+                    select(col(MessageEvent.channel_id))
+                    .where(col(MessageEvent.message_id) == sig.message_id)
+                    .limit(1)
+                )
+                if sig is not None
+                else None
+            )
         if sig is None or position is None:
             raise ManualNotFound("signal or position not found")
         if position.provider_id != sig.provider_id:
             raise ManualInvalid("a signal can only link to a position of its own provider")
+        if position.opened_channel_id != channel_id:
+            raise ManualInvalid("a signal can only link to a position of its own channel")
 
         async def audit(db: AsyncSession) -> None:
             latest = await ledger.latest_link(db, signal_id)
@@ -167,7 +188,7 @@ class Corrections:
 
         try:
             created, superseded = await self._relink.apply_approved(
-                sig.provider_id, position_id, signal_id, audit=audit
+                position_id, signal_id, audit=audit
             )
         except (RelinkFailed, BookChanged) as exc:
             raise ManualInvalid(str(exc)) from None

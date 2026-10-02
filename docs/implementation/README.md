@@ -196,6 +196,8 @@ cd frontend && pnpm dev                  # after F052
 | [F064](F064-deployment-runbooks.md) | Deployment, runbooks & stage gates | F062, F063 | §17, §18, AC-12 |
 | [F065](F065-shadow-lifecycle-verification.md) | Shadow position lifecycle verification (tests only) | F040–F043, F046, F062 | §7.1–7.4, FR-20, AC-2, AC-3, AC-15, AC-16 |
 | [F066](F066-paper-lifecycle-hardening.md) | Alpaca-paper lifecycle hardening: Jev→Laya defaults, account + working orders in risk, mode/endpoint safety, quote freshness, revalidation + supersession, rejection state, preflight card | F036, F040–F043, F046, F051 | §7.1–7.2, FR-12, FR-18, FR-20, FR-22, §11, §17 |
+| [F067](F067-discord-event-identity-threads.md) | Discord event identity: guild + thread ids, thread messages kept under their parent channel | F011, F050 listener | FR-1, C104 |
+| [F068](F068-lanes-channel-isolation.md) | Lanes: (channel, provider) scopes dispatch, context, book, links, C62 adds and review choices | F012, F017, F020, F021, F067 | FR-1a, FR-3, AC-18, C104 |
 
 ---
 

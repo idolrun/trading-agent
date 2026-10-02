@@ -151,10 +151,12 @@ async def flatten(
 async def add_position(
     body: AddPositionRequest, request: Request, sessions: SessionFactoryDep, ctx: SessionDep
 ) -> PositionDetail:
-    changes = body.model_dump(by_alias=False, exclude={"provider_id", "reason"}, exclude_none=True)
+    changes = body.model_dump(
+        by_alias=False, exclude={"provider_id", "channel_id", "reason"}, exclude_none=True
+    )
     async with _errors():
         position_id = await _corrections(request).add_position(
-            body.provider_id, changes, body.reason, ctx.session_id
+            body.provider_id, body.channel_id, changes, body.reason, ctx.session_id
         )
     return await _position(sessions, position_id)
 

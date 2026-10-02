@@ -269,7 +269,7 @@ describe("position actions", () => {
     await waitFor(() => expect(bodies).toEqual([{ status: "closed", reason: "provider said closed" }]))
   })
 
-  it("adds a position with the provider id kept as an exact string", async () => {
+  it("adds a position in the template's lane with the ids kept as exact strings", async () => {
     server.use(
       http.get("*/api/v1/positions/:id", () => HttpResponse.json({ ...positionDetailFixture, providerId: SNOWFLAKE })),
       http.post("*/api/v1/positions", recorded(() => HttpResponse.json(positionDetailFixture))),
@@ -285,6 +285,7 @@ describe("position actions", () => {
     await waitFor(() => expect(bodies).toHaveLength(1))
     expect(bodies[0]).toEqual({
       providerId: SNOWFLAKE,
+      channelId: positionDetailFixture.openedChannelId,
       instrument: "option",
       underlying: "QQQ",
       expiry: "2026-10-16",

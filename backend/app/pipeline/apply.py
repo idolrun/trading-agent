@@ -105,9 +105,9 @@ class ApplyOutcome:
 async def apply_event(db: AsyncSession, inp: ApplyInput) -> ApplyOutcome:
     """Call inside one transaction (the caller commits)."""
     env = inp.ctx.envelope
-    locked = await ledger.lock_open_book(db, env.provider_id)
+    locked = await ledger.lock_open_book(db, env.lane)
     if {p.provider_position_id: p.updated_at for p in locked} != inp.book_version:
-        raise BookChanged(f"provider {env.provider_id} book changed during processing")
+        raise BookChanged(f"lane {env.lane} book changed during processing")
     rows: dict[uuid.UUID, ProviderPosition] = {p.provider_position_id: p for p in locked}
     result = ApplyOutcome()
 

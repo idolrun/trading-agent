@@ -30,6 +30,7 @@ from app.cards.validity import ENTRY_ACTIONS, supersedes
 from app.db import in_transaction
 from app.decide.types import ProposedAction
 from app.dispatcher.types import ProcessingContext
+from app.inbox.envelope import Lane
 from app.inbox.models import MessageEvent
 from app.inbox.repo import to_envelope_row
 from app.interpret import context_repo
@@ -68,16 +69,12 @@ class RelinkService:
         self._clock = clock
         self.recheck: Recheck | None = None  # the message graph in recheck mode (F035)
 
-    async def recheck_after_late(
-        self, provider_id: int, late_posted_at: datetime
-    ) -> list[uuid.UUID]:
+    async def recheck_after_late(self, lane: Lane, late_posted_at: datetime) -> list[uuid.UUID]:
         """New re-link review card ids. Unchanged results create nothing."""
         if self.recheck is None:
             return []
         async with self._sessions() as db:
-            rows = await ledger.unlinked_follow_ups_after(
-                db, provider_id, late_posted_at, FOLLOW_UPS
-            )
+            rows = await ledger.unlinked_follow_ups_after(db, lane, late_posted_at, FOLLOW_UPS)
         by_event: dict[tuple[int, str, int], tuple[MessageEvent, list[Signal]]] = {}
         for sig, event in rows:
             by_event.setdefault((event.message_id, event.event_type, event.event_seq), (event, []))[
@@ -102,20 +99,20 @@ class RelinkService:
 
     async def apply_approved(
         self,
-        provider_id: int,
         position_id: uuid.UUID,
         signal_id: uuid.UUID,
         *,
         audit: Audit | None = None,
     ) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
-        """The user linked the signal to the position (approved a re-link card, or a manual
-        correction, F047: `audit` then runs in the same transaction): (new card ids,
-        superseded card ids)."""
+        """The user linked the signal to the position (approved a re-link or link review card,
+        or a manual correction, F047: `audit` then runs in the same transaction): (new card
+        ids, superseded card ids). Only a position of the signal's own lane qualifies."""
         async with self._sessions() as db:
             sig = await db.get(Signal, signal_id)
             assert sig is not None  # noqa: S101 — the proposal came from it
             event = await _event(db, sig)
         ctx = self._ctx(event)
+        provider_id = sig.provider_id
         parsed = ParsedSignals(
             signals=[stored_signal(sig)],
             interpreter="llm",
@@ -131,19 +128,22 @@ class RelinkService:
             for p in o.cards
         ]
         async with in_transaction(self._sessions, None) as db:
-            return await self._write(db, provider_id, position_id, signal_id, o, proposals, audit)
+            return await self._write(
+                db, ctx.envelope.lane, position_id, signal_id, o, proposals, audit
+            )
 
     async def _write(
         self,
         db: AsyncSession,
-        provider_id: int,
+        lane: Lane,
         position_id: uuid.UUID,
         signal_id: uuid.UUID,
         o: SignalOutcome,
         proposals: list[ProposedAction],
         audit: Audit | None,
     ) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
-        rows = {p.provider_position_id: p for p in await ledger.lock_open_book(db, provider_id)}
+        provider_id = lane[1]
+        rows = {p.provider_position_id: p for p in await ledger.lock_open_book(db, lane)}
         if position_id not in rows:
             raise BookChanged("position closed before the re-link was applied")
         latest = await ledger.latest_link(db, signal_id)
@@ -247,7 +247,7 @@ class RelinkService:
     ) -> list[SignalOutcome]:
         env = ctx.envelope
         async with self._sessions() as db:
-            rows = await context_repo.open_book(db, env.provider_id)
+            rows = await context_repo.open_book(db, env.lane)
             if parents is None:
                 parents = await ledger.parent_links(db, env.reply_to_id) if env.reply_to_id else ()
         book = {r.provider_position_id: state_of(r) for r in rows}

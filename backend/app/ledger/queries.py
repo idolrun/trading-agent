@@ -28,6 +28,7 @@ def position_out(p: ProviderPosition) -> PositionOut:
     return PositionOut(
         id=p.provider_position_id,
         provider_id=p.provider_id,
+        opened_channel_id=p.opened_channel_id,
         instrument=p.instrument,
         underlying=p.underlying,
         expiry=p.expiry,

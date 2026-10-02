@@ -76,3 +76,18 @@ def test_delete_maps_with_stored_author() -> None:
     payload = mapping.delete_payload(snowflake(AT), CHANNEL, PROVIDER_A, NOW)
     env = to_envelope(payload, NOW)
     assert (env.key.event_type, env.provider_id, env.text) == (EventType.DELETE, PROVIDER_A, None)
+
+
+def test_thread_message_belongs_to_the_parent_channel() -> None:
+    thread = NS(id=CHANNEL + 77, parent_id=CHANNEL)
+    payload = mapping.create_payload(message(channel=thread, guild=NS(id=42)))
+    assert payload is not None
+    env = to_envelope(payload, NOW)
+    assert (env.channel_id, env.thread_id, env.guild_id) == (CHANNEL, CHANNEL + 77, 42)
+
+
+def test_plain_channel_has_no_thread() -> None:
+    payload = mapping.create_payload(message())
+    assert payload is not None
+    env = to_envelope(payload, NOW)
+    assert (env.channel_id, env.thread_id, env.guild_id) == (CHANNEL, None, None)

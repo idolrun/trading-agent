@@ -1,5 +1,5 @@
-"""The three reads behind C71 context: messages by post time (latest text), the provider's
-open book. Never touches lots or anything user-portfolio (FR-8)."""
+"""The reads behind C71 context, scoped to the lane (channel, provider): messages by post time
+(latest text), the lane's open book. Never touches lots or anything user-portfolio (FR-8)."""
 
 from datetime import datetime
 
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlmodel import col
 
+from app.inbox.envelope import Lane
 from app.inbox.models import EventType, MessageEvent
 from app.ledger.models import PositionStatus, ProviderPosition
 
@@ -56,17 +57,20 @@ async def message_as_of(
 
 
 async def recent_by_author(
-    db: AsyncSession, author_id: int, before: datetime, exclude_message_id: int, limit: int
+    db: AsyncSession, lane: Lane, before: datetime, exclude_message_id: int, limit: int
 ) -> list[tuple[MessageEvent, str]]:
-    """The author's newest `limit` messages posted before `before`, oldest first."""
+    """The lane author's newest `limit` messages in the lane's channel (threads included)
+    posted before `before`, oldest first. Other channels are other lanes (F068)."""
     if limit <= 0:
         return []
+    channel_id, author_id = lane
     creates = list(
         (
             await db.scalars(
                 select(MessageEvent)
                 .where(
                     col(MessageEvent.provider_id) == author_id,
+                    col(MessageEvent.channel_id) == channel_id,
                     col(MessageEvent.event_type) == EventType.CREATE,
                     col(MessageEvent.posted_at) < before,
                     col(MessageEvent.message_id) != exclude_message_id,
@@ -81,11 +85,15 @@ async def recent_by_author(
     return [(c, edits.get(c.message_id, c.text or "")) for c in reversed(creates)]
 
 
-async def open_book(db: AsyncSession, provider_id: int) -> list[ProviderPosition]:
+async def open_book(db: AsyncSession, lane: Lane) -> list[ProviderPosition]:
+    """The lane's open/trimmed positions: opened in this channel by this provider. A position
+    with no recorded channel belongs to no lane."""
+    channel_id, provider_id = lane
     rows = await db.scalars(
         select(ProviderPosition)
         .where(
             col(ProviderPosition.provider_id) == provider_id,
+            col(ProviderPosition.opened_channel_id) == channel_id,
             col(ProviderPosition.status) != PositionStatus.CLOSED,
         )
         .order_by(col(ProviderPosition.opened_at), col(ProviderPosition.provider_position_id))

@@ -413,12 +413,15 @@ class ApprovalService:
             # ponytail: the chosen position is recorded on the card; the provider link row and
             # ledger effect of a user relink are F037/F047 (relink approval path)
             position = await db.get(ProviderPosition, edits.chosen_position_id)
+            offered = proposal.candidate_position_ids
             if (
                 position is None
                 or position.provider_id != card.provider_id
                 or position.status == PositionStatus.CLOSED
+                or (offered and position.provider_position_id not in offered)
+                or position.opened_channel_id != await _signal_channel(db, card.signal_id)
             ):
-                raise DecisionInvalid("chosenPositionId is not an open position of this provider")
+                raise DecisionInvalid("chosenPositionId is not an open position of this lane")
             lot = await ledger.open_lot_for_position(db, position.provider_position_id)
             card.provider_position_id = position.provider_position_id
             card.lot_id = lot.lot_id if lot else None
@@ -702,7 +705,7 @@ class ApprovalService:
         try:
             assert card.provider_id is not None and card.provider_position_id is not None  # noqa: S101
             created, superseded = await self.relink.apply_approved(
-                card.provider_id, card.provider_position_id, signal_id
+                card.provider_position_id, signal_id
             )
         except (RelinkFailed, BookChanged) as exc:
             await self._fail(card.card_id, f"relink: {exc}")
@@ -817,3 +820,16 @@ def _edited(proposal: ProposedAction, edits: Edits) -> ProposedAction:
 
 def _event(card_id: uuid.UUID) -> str:
     return json.dumps({"type": "card.updated", "id": str(card_id)})
+
+
+async def _signal_channel(db: AsyncSession, signal_id: uuid.UUID | None) -> int | None:
+    """The lane channel of the card's message (F068); None for a card without a signal."""
+    if signal_id is None:
+        return None
+    channel: int | None = await db.scalar(
+        select(col(MessageEvent.channel_id))
+        .join(Signal, col(Signal.message_id) == col(MessageEvent.message_id))
+        .where(col(Signal.signal_id) == signal_id)
+        .limit(1)
+    )
+    return channel

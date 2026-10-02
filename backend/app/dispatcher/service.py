@@ -1,8 +1,10 @@
-"""Per-provider sequencing (FR-1a, TRD §2.4): one worker per provider, post-time order,
-providers in parallel, poison never blocks a provider.
+"""Per-lane sequencing (FR-1a, TRD §2.4): one worker per lane = (channel, provider), post-time
+order, lanes in parallel, poison never blocks a lane. One author in two channels is two lanes:
+their contexts and books are separate (F068), so they need no common order.
 
-ponytail: single process (asyncio lock per provider). Multi-process upgrade: session-level
-pg_try_advisory_lock per provider on a dedicated connection (database-schema.md §8).
+ponytail: single process (asyncio lock per lane; `app.system.singleton` refuses a second
+instance). Multi-process upgrade: session-level pg_try_advisory_lock per lane on a dedicated
+connection (database-schema.md §8).
 """
 
 import asyncio
@@ -21,7 +23,7 @@ from app.db import in_transaction, listen_forever
 from app.dispatcher.classify import age_seconds, error_summary, is_stale, skip_reason
 from app.dispatcher.types import PoisonHandler, ProcessingContext, Processor
 from app.inbox import repo as inbox
-from app.inbox.envelope import EventKey
+from app.inbox.envelope import EventKey, Lane
 from app.inbox.models import InboxStatus, SkipReason
 from app.logging import bind
 from app.markettime import Clock
@@ -56,9 +58,9 @@ class Dispatcher:
         self._clock = clock
         self._listen_dsn = listen_dsn
         self._idle_exit_s = idle_exit_s
-        self._workers: dict[int, asyncio.Task[None]] = {}
-        self._wakeups: defaultdict[int, asyncio.Event] = defaultdict(asyncio.Event)
-        self._slots: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._workers: dict[Lane, asyncio.Task[None]] = {}
+        self._wakeups: defaultdict[Lane, asyncio.Event] = defaultdict(asyncio.Event)
+        self._slots: defaultdict[Lane, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._listener: asyncio.Task[None] | None = None
         # TRD §9 after a failover: workers hold until `on_recover` (block entries, reconcile)
         # has run on the reconnected database.
@@ -94,29 +96,29 @@ class Dispatcher:
         self._workers.clear()
 
     async def discover(self) -> None:
-        """Wake a worker for every provider with waiting events."""
+        """Wake a worker for every lane with waiting events."""
         async with in_transaction(self._sessions, None) as db:
-            providers = await inbox.providers_waiting(db)
-        for provider_id in providers:
-            self.wake(provider_id)
+            lanes = await inbox.lanes_waiting(db)
+        for lane in lanes:
+            self.wake(lane)
 
-    def wake(self, provider_id: int) -> None:
-        self._wakeups[provider_id].set()
-        task = self._workers.get(provider_id)
+    def wake(self, lane: Lane) -> None:
+        self._wakeups[lane].set()
+        task = self._workers.get(lane)
         if task is None or task.done():
-            self._workers[provider_id] = asyncio.create_task(
-                self._worker(provider_id), name=f"provider-{provider_id}"
+            self._workers[lane] = asyncio.create_task(
+                self._worker(lane), name=f"lane-{lane[0]}-{lane[1]}"
             )
 
-    def slot(self, provider_id: int) -> asyncio.Lock:
-        """The provider slot: held for a whole `process()` call (AC-18)."""
-        return self._slots[provider_id]
+    def slot(self, lane: Lane) -> asyncio.Lock:
+        """The lane slot: held for a whole `process()` call (AC-18)."""
+        return self._slots[lane]
 
     def busy(self) -> bool:
         return any(not task.done() for task in self._workers.values())
 
     async def _on_notify(self, _channel: str, payload: str) -> None:
-        self.wake(int(payload))
+        self.wake(inbox.parse_lane(payload))
 
     async def _on_connect(self) -> None:
         """First connect: pick up waiting events. A reconnect means the database went away
@@ -146,8 +148,8 @@ class Dispatcher:
             while True:
                 try:
                     async with AsyncExitStack() as held:
-                        for provider_id in sorted(self._slots):  # in-flight process() ends first
-                            await held.enter_async_context(self._slots[provider_id])
+                        for lane in sorted(self._slots):  # in-flight process() ends first
+                            await held.enter_async_context(self._slots[lane])
                         if self._on_recover is not None:
                             await self._on_recover()
                     await self.discover()
@@ -162,13 +164,13 @@ class Dispatcher:
         finally:
             self._ready.set()
 
-    async def _worker(self, provider_id: int) -> None:
-        wakeup = self._wakeups[provider_id]
+    async def _worker(self, lane: Lane) -> None:
+        wakeup = self._wakeups[lane]
         while True:
             await self._ready.wait()
             wakeup.clear()  # before the check, so a NOTIFY during the check is not lost
             try:
-                if await self._process_next(provider_id):
+                if await self._process_next(lane):
                     continue
             except CONNECTION_ERRORS:  # the claim failed: the event is still `received`
                 logger.warning("database unreachable; worker waits", exc_info=True)
@@ -177,19 +179,19 @@ class Dispatcher:
             try:
                 await asyncio.wait_for(wakeup.wait(), self._idle_exit_s)
             except TimeoutError:
-                self._workers.pop(provider_id, None)  # no await between here and return
+                self._workers.pop(lane, None)  # no await between here and return
                 return
 
-    async def _process_next(self, provider_id: int) -> bool:
-        """Claim and handle one event. False when the provider has nothing waiting."""
+    async def _process_next(self, lane: Lane) -> bool:
+        """Claim and handle one event. False when the lane has nothing waiting."""
         async with in_transaction(self._sessions, None) as db:
-            env = await inbox.next_for_provider(db, provider_id)
+            env = await inbox.next_for_lane(db, lane)
             if env is None:
                 return False
             attempt = await inbox.claim(db, env.key, self._clock.now())
-            late = await inbox.later_applied(db, provider_id, env.posted_at)
+            late = await inbox.later_applied(db, lane, env.posted_at)
         config = self._config.get() or RuntimeConfig()
-        with bind(provider_id=provider_id, message_id=env.key.message_id):
+        with bind(provider_id=lane[1], channel_id=lane[0], message_id=env.key.message_id):
             if (reason := skip_reason(env, config)) is not None:
                 await self._mark(env.key, InboxStatus.DONE, skip_reason=reason)
                 return True
@@ -210,10 +212,10 @@ class Dispatcher:
         return True
 
     async def _process_held(self, ctx: ProcessingContext) -> None:
-        """`process()` under the provider slot, never while failover recovery runs. Recovery
+        """`process()` under the lane slot, never while failover recovery runs. Recovery
         takes every slot, so a slot acquired before it started is waited for; one acquired
         after sees `_ready` cleared and lets go (waiting inside the slot would deadlock)."""
-        slot = self.slot(ctx.envelope.provider_id)
+        slot = self.slot(ctx.envelope.lane)
         while True:
             await self._ready.wait()
             async with slot:

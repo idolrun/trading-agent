@@ -34,6 +34,8 @@ class DiscordHistory:
             ]
         except discord.HTTPException as exc:
             raise MessageHistoryUnavailable(str(exc)) from exc
+        # ponytail: threads under the channel are not paged (active threads would need
+        # `channel.threads` + each thread's history); a missed thread message is not backfilled.
         # ponytail: bot messages are dropped after paging, so a full page of only bot posts ends
         # the backfill early; fetch by page cursor here if a channel is mostly bots.
         payloads = (mapping.create_payload(m) for m in messages)

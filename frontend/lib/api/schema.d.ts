@@ -823,6 +823,8 @@ export interface components {
     schemas: {
         /** AddPositionRequest */
         AddPositionRequest: {
+            /** Channelid */
+            channelId: number;
             /** Entryprice */
             entryPrice?: number | string | null;
             /** Expiry */
@@ -2111,6 +2113,8 @@ export interface components {
              * Format: date-time
              */
             openedAt: string;
+            /** Openedchannelid */
+            openedChannelId: string | null;
             /** Optionright */
             optionRight: string | null;
             /** Providerentryprice */
@@ -2150,6 +2154,8 @@ export interface components {
              * Format: date-time
              */
             openedAt: string;
+            /** Openedchannelid */
+            openedChannelId: string | null;
             /** Optionright */
             optionRight: string | null;
             /** Providerentryprice */
