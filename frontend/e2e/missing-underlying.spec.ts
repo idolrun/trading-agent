@@ -32,7 +32,7 @@ test('missing underlying "1000c": review card, approve disabled until confirmati
   expect(review.proposal).toMatchObject({ missingFields: ["underlying_confirmation"], suggestedUnderlying: "MU" })
   expect(review.proposal.reviewReasons).toContain("underlying_missing")
 
-  await expect(card.getByRole("listitem").filter({ hasText: "Review" }).first()).toBeVisible()
+  await expect(card.getByRole("region", { name: "Risk" })).toContainText("Review needed confirm the underlying (MU)")
   await expect(approve).toBeDisabled()
   const complete = card.getByRole("button", { name: "Complete review" })
   await expect(complete).toBeDisabled() // nothing is preselected
