@@ -1,18 +1,21 @@
-"""The message graph (TRD §2.1, F035): one run per message event, under the provider slot.
+"""The message graph (TRD §2.1, F035): one run per message event, under the lane slot (F068).
 
-    load_context -> find_candidates -> fixture_interpret (dev/tests) -> decide_apply
-                                    -> jev_interpret -> route:
-                                         feed_only | assemble -> decide_apply
-                                         slow_path (any reason) -> laya_interpret
-                                         -> llm_extract (optional) -> decide_apply
+    load_context (lane-scoped C71 context)
+    -> resolve_context (F069: code-only reply chain / thread / stated contract -> candidates)
+    -> find_candidates
+    -> fixture_interpret (dev/tests) -> decide_apply
+    -> jev_interpret -> route: feed_only | assemble -> decide_apply
+                               slow_path (any reason) -> laya_interpret
     laya_interpret (only when Jev did not settle it): feed_only | assemble -> decide_apply,
-                   else -> llm_extract
+                   else -> llm_extract (optional) -> decide_apply
     llm_extract (not configured / exhausted / rejected) | decide_apply (span mismatch) -> raw_review
     decide_apply | raw_review -> notify -> END
     recheck mode (F037): after interpretation -> END (no apply, no notify)
     replay mode (F048): as recheck, and additionally no stage_timings, no system flags, no user
     lots, the provider book from `GraphDeps.book` (evalkit's label ledger) and `now` = post time
 
+Models only choose among the resolver's candidates; `decide_apply` links with the resolver's
+verdict and cross-checks any model pick against the message's stated contract (F069).
 Nodes are thin adapters over the existing services. Side effects: only `decide_apply` /
 `raw_review` (one DB transaction each) and `notify` (post-commit). Models are side-effect free
 apart from their `model_calls` audit rows. The graph ends at notify, which starts the per-card
@@ -57,6 +60,7 @@ from app.interpret.spans import verify_literal_spans
 from app.ledger import repo as ledger
 from app.ledger.positions import state_of
 from app.ledger.relink import RelinkService
+from app.ledger.resolver import Resolution
 from app.llm.usage import CallRef
 from app.markettime import Clock, is_regular_hours, next_regular_open
 from app.pipeline.apply import ApplyInput, apply_event, apply_raw_review, record_stage
@@ -101,6 +105,7 @@ def build_message_graph(
     g = StateGraph(MessageState)
     for name, fn in (
         ("load_context", n.load_context),
+        ("resolve_context", n.resolve_context),
         ("find_candidates", n.find_candidates),
         ("fixture_interpret", n.fixture_interpret),
         ("jev_interpret", n.jev_interpret),
@@ -112,7 +117,8 @@ def build_message_graph(
     ):
         g.add_node(name, fn)
     g.add_edge(START, "load_context")
-    g.add_conditional_edges("load_context", lambda s: "notify" if s["skip"] else "find_candidates")
+    g.add_conditional_edges("load_context", lambda s: "notify" if s["skip"] else "resolve_context")
+    g.add_edge("resolve_context", "find_candidates")
     g.add_conditional_edges(
         "find_candidates",
         lambda _s: "fixture_interpret" if deps.fixture is not None else "jev_interpret",
@@ -179,6 +185,27 @@ class _Nodes:
         return {
             "context": context.model_dump(mode="json"),
             "lot_ids": [str(lot.lot_id) for lot in lots],
+        }
+
+    async def resolve_context(self, state: MessageState) -> dict[str, Any]:
+        """F069: which lane positions the message can be about, from code-only evidence (reply
+        chain, thread, stated contract). Narrows what a model may link to."""
+        env = _processing(state).envelope
+        context = _context(state)
+        if state["replay"]:  # the label ledger has summaries only: no evidence, all candidates
+            resolution = Resolution.unresolved({b.id: b for b in context.provider_book})
+        else:
+            async with self.d.sessions() as db:
+                rows = await context_repo.open_book(db, env.lane)
+                book = {r.provider_position_id: state_of(r) for r in rows}
+                resolution = await ledger.load_resolution(db, env, book)
+        allowed = set(resolution.candidates)
+        narrowed = context.model_copy(
+            update={"link_candidates": [b for b in context.provider_book if b.id in allowed]}
+        )
+        return {
+            "resolution": resolution.model_dump(mode="json"),
+            "context": narrowed.model_dump(mode="json"),
         }
 
     async def find_candidates(self, state: MessageState) -> dict[str, Any]:
@@ -311,8 +338,10 @@ class _Nodes:
         cfg = self.d.cfg()
         async with self.d.sessions() as db:
             rows = await context_repo.open_book(db, env.lane)
-            parents = await ledger.parent_links(db, env.reply_to_id) if env.reply_to_id else ()
         book = {r.provider_position_id: state_of(r) for r in rows}
+        resolution = (
+            Resolution.model_validate(state["resolution"]) if state.get("resolution") else None
+        )
         version = {r.provider_position_id: r.updated_at for r in rows}
         planner = (
             self.d.corrections
@@ -320,7 +349,7 @@ class _Nodes:
             else self.d.planner
         )  # F038: edits and `correction` signals correct the original's position
         now = self.d.clock.now()
-        outcomes = await planner.plan(ctx, parsed, cfg, book, parents, now)
+        outcomes = await planner.plan(ctx, parsed, cfg, book, resolution, now)
         await self._stage(state, ctx, Stage.VALIDATED)
         async with in_transaction(self.d.sessions, None) as db:
             result = await apply_event(

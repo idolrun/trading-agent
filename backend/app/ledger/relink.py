@@ -37,8 +37,9 @@ from app.interpret import context_repo
 from app.interpret.models import LinkMethod, LinkOutcome, MessageLink, Signal
 from app.interpret.signal import ParsedSignals
 from app.ledger import repo as ledger
-from app.ledger.correlation import FOLLOW_UPS, ParentLink
+from app.ledger.correlation import FOLLOW_UPS
 from app.ledger.positions import state_of
+from app.ledger.resolver import Resolution
 from app.markettime import Clock
 from app.pipeline.apply import BookChanged, SignalOutcome, insert_card, stored_signal
 from app.pipeline.plan import Planner
@@ -86,7 +87,7 @@ class RelinkService:
             parsed = await self.recheck(ctx)
             if parsed is None:
                 continue
-            outcomes = {o.idx: o for o in await self._plan(ctx, parsed, parents=None)}
+            outcomes = {o.idx: o for o in await self._plan(ctx, parsed, resolution=None)}
             for sig in signals:
                 o = outcomes.get(sig.idx)
                 if o is None or o.link is None or o.link.outcome != LinkOutcome.LINKED:
@@ -112,13 +113,12 @@ class RelinkService:
             assert sig is not None  # noqa: S101 — the proposal came from it
             event = await _event(db, sig)
         ctx = self._ctx(event)
-        provider_id = sig.provider_id
         parsed = ParsedSignals(
             signals=[stored_signal(sig)],
             interpreter="llm",
         )
-        # the user's choice acts like a reply to the position's message: one parent -> linked
-        [o] = await self._plan(ctx, parsed, parents=(ParentLink(provider_id, position_id),))
+        # the user's choice is the resolution: one lane position, decided by a person
+        [o] = await self._plan(ctx, parsed, resolution=Resolution.chosen(position_id))
         if o.link is None or o.link.outcome != LinkOutcome.LINKED or o.position_id != position_id:
             raise RelinkFailed("the position is no longer open")
         # C22 for the resulting cards starts now: the user just made them possible
@@ -243,16 +243,17 @@ class RelinkService:
         ctx: ProcessingContext,
         parsed: ParsedSignals,
         *,
-        parents: tuple[ParentLink, ...] | None,
+        resolution: Resolution | None,
     ) -> list[SignalOutcome]:
+        """`resolution` None: resolve from the message's evidence as the live pipeline does."""
         env = ctx.envelope
         async with self._sessions() as db:
             rows = await context_repo.open_book(db, env.lane)
-            if parents is None:
-                parents = await ledger.parent_links(db, env.reply_to_id) if env.reply_to_id else ()
-        book = {r.provider_position_id: state_of(r) for r in rows}
+            book = {r.provider_position_id: state_of(r) for r in rows}
+            if resolution is None:
+                resolution = await ledger.load_resolution(db, env, book)
         cfg = self._config.get() or RuntimeConfig()
-        return await self._planner.plan(ctx, parsed, cfg, book, parents, self._clock.now())
+        return await self._planner.plan(ctx, parsed, cfg, book, resolution, self._clock.now())
 
     def _ctx(self, event: MessageEvent) -> ProcessingContext:
         now = self._clock.now()

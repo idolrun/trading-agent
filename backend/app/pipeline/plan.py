@@ -20,7 +20,7 @@ from app.dispatcher.types import ProcessingContext
 from app.interpret.models import LinkMethod, LinkOutcome, MsgType
 from app.interpret.signal import ParsedSignal, ParsedSignals
 from app.ledger import repo as ledger
-from app.ledger.correlation import LinkDecision, LinkInputs, ParentLink, resolve_link
+from app.ledger.correlation import LinkDecision, LinkInputs, resolve_link
 from app.ledger.positions import (
     OPENING,
     InvalidTransition,
@@ -29,6 +29,7 @@ from app.ledger.positions import (
     apply_to_position,
     contract_of,
 )
+from app.ledger.resolver import Resolution
 from app.logging import bind
 from app.marketdata.freshness import is_stale
 from app.marketdata.port import MarketData
@@ -72,9 +73,11 @@ class Planner:
         parsed: ParsedSignals,
         config: RuntimeConfig,
         book: Book,
-        parents: tuple[ParentLink, ...],
+        resolution: Resolution | None,
         now: datetime,
     ) -> list[SignalOutcome]:
+        """`book`: the lane's live positions; `resolution`: the context resolver's verdict for
+        this message (F069); None = no evidence, every book position a candidate."""
         env = ctx.envelope
         method = {"jev": LinkMethod.JEV, "laya": LinkMethod.LAYA}.get(
             parsed.interpreter, LinkMethod.LLM
@@ -95,7 +98,7 @@ class Planner:
                     link = resolve_link(
                         norm,
                         sig.link_hint,
-                        LinkInputs(env.provider_id, dict(book), parents),
+                        LinkInputs(env.provider_id, dict(book), resolution),
                         t_link=config.t_link,
                         hint_method=method,
                     )

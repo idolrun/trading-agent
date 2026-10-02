@@ -10,6 +10,7 @@ class MessageState(TypedDict, total=False):
     replay: bool  # F048: recheck plus no writes at all (evalkit); context book from GraphDeps.book
     skip: bool  # a delete event (F038): straight to notify
     context: dict[str, Any]  # ProviderContext (C71)
+    resolution: dict[str, Any] | None  # Resolution (F069): the code's verdict on the target
     candidates: dict[str, Any]  # Candidates (F016)
     lot_ids: list[str]  # the user's open lot ids: scope-guard input only, never sent to a model
     route: str  # feed_only | assemble | slow_path | fixture
@@ -34,6 +35,7 @@ def initial_state(
         replay=replay,
         skip=False,
         context={},
+        resolution=None,
         candidates={},
         lot_ids=[],
         route="",

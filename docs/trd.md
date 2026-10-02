@@ -61,7 +61,7 @@
    - Postgres runs on its own highly available host, not beside the app (§9).
 7. **Transport, correlation and state are separate layers.**
    - **Transport** is the inbox and sequencer (§2.4).
-   - **Correlation** is reply-to → provider book → Jev `links_to` → review (§4, §8.1).
+   - **Correlation** is reply chain → thread → stated contract (code) → model `links_to` cross-checked by code → review, all inside the lane (§4, §8.1, F069).
    - **Authoritative state** is Postgres transactions plus broker reconciliation.
    - No queue or cache resolves signal context.
 
@@ -353,7 +353,7 @@ The full catalog is in Appendix A. In summary:
 | `msg_type = chatter`, and `commentary`/`watch` types, with confidence ≥ T_chat | Feed only. |
 | Any required field whose Choice is `none`/`not_stated`, or confidence < T_field | Slow path (LLM). |
 | `signal_count = multiple` | Slow path. |
-| `links_to = ambiguous`, or confidence < T_link | Review card (C31). No model upgrades this. |
+| `links_to = ambiguous`, confidence < T_link, a pick outside the resolver's candidates or contradicting the message's contract | Review card (C31, F069). No model upgrades this. |
 | Everything confident and complete | `assemble_signal`: fields are **literal** (a span chosen by Jev) or **resolved** (dates by code). |
 | Slow path fails or exceeds its timebox | Raw review card + "parser degraded" alert (FR-9). |
 
@@ -619,14 +619,18 @@ provider_id (Discord author ID) ── key for sequencing, context scope and led
 provider_position_id ── created by an entry signal; owned by exactly one provider_id
   └─ lot_id (user holding; FK provider_position_id; foreign lots have none)
        └─ card_id (UNIQUE signal_id + action) → client_order_id = uuid5(card_id, action_seq)
-channel_id ── metadata; not a scope key (see §14: position scope)
+channel_id ── with provider_id the lane: the context and book scope (C104, F068)
 ```
 
 - A link never crosses providers. A reply to another author's message makes that message read-only context. The replying author gets their own provider position.
-- **Correlation order:**
-  1. `reply_to_id` whose parent is linked to a position of the same provider (deterministic);
-  2. the author's provider book plus Jev `links_to` (confidence ≥ T_link);
-  3. otherwise a review card listing the candidate positions.
+- **Correlation order** (F069, `ledger/resolver.py` then `ledger/correlation.py`; the book is the lane's):
+  1. **Reply chain** (deterministic): the nearest reply ancestor, up to 3 hops, whose signals of this provider link to exactly one live lane position (`method = reply`);
+  2. **Thread** (deterministic): the only live lane position this provider opened or acted on in the same thread (`thread`);
+  3. **Stated contract** (deterministic): the message's own ticker / strike-shaped token / call-put narrows the lane's book to one position (`contract`). A word that matches no position is not evidence; "calls" alone only narrows;
+  4. **Model pick**: Jev / Laya / LLM `links_to` is offered **only the resolver's candidates**. Code accepts it only if it is ≥ T_link, one of those candidates, **and** consistent with every contract field the message states (underlying, expiry, strike, right, instrument). The LLM gives no link confidence, so its pick is never accepted;
+  5. otherwise a review card listing the candidates (lane only).
+  - A deterministic pick beats any model pick. A message that names another of the lane's contracts than its reply/thread pick is a review. One open position is never evidence by itself (PRD §10). A user's choice (review card, re-link, manual link) links even over a misread field; the conflict is recorded.
+  - Every link row stores `evidence` (resolver rule, candidates, a rejected hint and why).
 - `signal_id` and `provider_position_id` are **outputs of interpretation**, not transport keys. They cannot be used for partitioning or routing before interpretation.
 
 **LangGraph-managed:** checkpoint tables (`AsyncPostgresSaver`) and store tables (`PostgresStore`). These are not audit data.

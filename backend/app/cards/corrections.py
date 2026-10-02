@@ -30,10 +30,11 @@ from app.inbox.models import EventType, MessageEvent
 from app.interpret.models import LinkMethod, LinkOutcome, MsgType, Signal
 from app.interpret.signal import ParsedSignal, ParsedSignals
 from app.ledger import repo as ledger
-from app.ledger.correlation import LinkDecision, ParentLink
+from app.ledger.correlation import LinkDecision
 from app.ledger.lots import OPTION_MULTIPLIER
 from app.ledger.models import Instrument, ProviderPosition
 from app.ledger.positions import OPENING, PositionState, PositionUpdate, apply_correction
+from app.ledger.resolver import Resolution
 from app.marketdata.port import MarketData
 from app.pipeline.apply import Correction, SignalOutcome, raise_alert, stored_signal
 from app.pipeline.plan import Book, Planner
@@ -95,12 +96,12 @@ class CorrectionService:
         parsed: ParsedSignals,
         config: RuntimeConfig,
         book: Book,
-        parents: tuple[ParentLink, ...],
+        resolution: Resolution | None,
         now: datetime,
     ) -> list[SignalOutcome]:
         env = ctx.envelope
         # plan() mutates its book: keep ours as it is in the DB for the correction re-plans
-        outcomes = await self._planner.plan(ctx, parsed, config, dict(book), parents, now)
+        outcomes = await self._planner.plan(ctx, parsed, config, dict(book), resolution, now)
         if env.key.event_type == EventType.EDIT:
             async with self._sessions() as db:
                 target = await _message_target(db, env.provider_id, env.key.message_id, env)
@@ -196,7 +197,7 @@ class CorrectionService:
         position = book.get(t.position_id)
         without = {k: v for k, v in book.items() if k != t.position_id}
         [fresh] = await self._planner.plan(
-            ctx, ParsedSignals(signals=[corrected], interpreter="llm"), config, without, (), now
+            ctx, ParsedSignals(signals=[corrected], interpreter="llm"), config, without, None, now
         )
         update = None
         if position is not None and fresh.update is not None:

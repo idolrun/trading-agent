@@ -142,7 +142,7 @@ def build_questions(
         "links_to": Choice(
             instructions=f"Which position in `provider_book` does {MESSAGE} act on?",
             criteria={
-                **{str(b.id): b.summary for b in ctx.provider_book},
+                **{str(b.id): b.summary for b in ctx.link_candidates},
                 "new_position": "A new position, not in the book.",
                 "ambiguous": "More than one position could fit.",
             },

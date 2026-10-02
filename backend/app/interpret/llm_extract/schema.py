@@ -179,10 +179,11 @@ def to_parsed_signals(
 
 
 def _link(links_to: str | None, ctx: ProviderContext) -> LinkHint:
-    """A position id the book does not have is not a link: ambiguous (review card, C31)."""
+    """A position id outside the resolver's candidates is not a link: ambiguous (review card,
+    C31, F069)."""
     if links_to is None:
         return LinkHint()
     if links_to in ("new_position", "ambiguous"):
         return LinkHint(target=links_to)
-    book = {str(b.id): b.id for b in ctx.provider_book}
+    book = {str(b.id): b.id for b in ctx.link_candidates}
     return LinkHint(target=book.get(links_to, "ambiguous"))

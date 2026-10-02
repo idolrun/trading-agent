@@ -173,6 +173,7 @@ async def _apply_signal(
                 method=o.link.method,
                 confidence=o.link.confidence,
                 candidate_position_ids=list(o.link.candidate_position_ids),
+                evidence=o.link.evidence,
             )
         )
         await db.flush()

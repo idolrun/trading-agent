@@ -10,8 +10,9 @@ P&L (FR-8): `extra="forbid"` models with no field for them, and the only book is
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.inbox.envelope import Envelope
@@ -56,6 +57,16 @@ class ProviderContext(_Strict):
     reply_parent: ContextMessage | None  # any author; read-only context (never linked across)
     recent_author_messages: list[ContextMessage]  # same lane, posted before, oldest first
     provider_book: list[BookEntry]  # this lane's open/trimmed positions only
+    # the positions the message may act on, narrowed by the context resolver (F069); the only
+    # `links_to` options a model is offered. Not given: the whole book (nothing narrowed yet).
+    link_candidates: list[BookEntry] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _candidates_default_to_book(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "link_candidates" not in data:
+            return {**data, "link_candidates": data.get("provider_book", [])}
+        return data
     provider_profile: dict[str, list[str]] = {}  # lexicon/aliases from the store (F035)
 
 

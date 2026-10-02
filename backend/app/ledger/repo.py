@@ -1,6 +1,7 @@
 """Provider-position and lot queries. No ledger decisions here."""
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -9,12 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
 from app.execution.models import Fill
-from app.inbox.envelope import Lane
-from app.inbox.models import MessageEvent
+from app.inbox.envelope import Envelope, Lane
+from app.inbox.models import EventType, MessageEvent
 from app.instruments import Instrument as Contract
 from app.instruments import OptionContract, broker_symbol
+from app.interpret.candidates import find_candidates
 from app.interpret.models import LinkOutcome, MessageLink, MsgType, Signal
-from app.ledger.correlation import ParentLink
 from app.ledger.lots import LotUpdate
 from app.ledger.models import (
     Instrument,
@@ -27,7 +28,8 @@ from app.ledger.models import (
     ProviderPosition,
     ProviderPositionEvent,
 )
-from app.ledger.positions import PositionUpdate
+from app.ledger.positions import PositionState, PositionUpdate
+from app.ledger.resolver import REPLY_DEPTH, Evidence, ParentLink, Resolution, resolve_context
 
 
 async def recent_underlyings(db: AsyncSession, provider_id: int, since: datetime) -> list[str]:
@@ -374,3 +376,69 @@ async def superseded_after_approval(
         .limit(1)
     )
     return "corrected" if edited is not None else None
+
+
+async def reply_to_of(db: AsyncSession, message_id: int) -> int | None:
+    """The message a message replied to (its create event), None if none or unknown."""
+    parent: int | None = await db.scalar(
+        select(col(MessageEvent.reply_to_id)).where(
+            col(MessageEvent.message_id) == message_id,
+            col(MessageEvent.event_type) == EventType.CREATE,
+        )
+    )
+    return parent
+
+
+async def thread_positions(
+    db: AsyncSession, thread_id: int, provider_id: int, before: datetime
+) -> frozenset[uuid.UUID]:
+    """Positions this provider's earlier messages in the thread opened or acted on (current
+    link per signal)."""
+    latest = (
+        select(MessageLink)
+        .join(Signal, col(Signal.signal_id) == col(MessageLink.signal_id))
+        .join(
+            MessageEvent,
+            and_(
+                col(MessageEvent.message_id) == col(Signal.message_id),
+                col(MessageEvent.event_type) == col(Signal.event_type),
+                col(MessageEvent.event_seq) == col(Signal.event_seq),
+            ),
+        )
+        .where(
+            col(MessageEvent.thread_id) == thread_id,
+            col(Signal.provider_id) == provider_id,
+            col(MessageEvent.posted_at) < before,
+        )
+        .order_by(col(MessageLink.signal_id), col(MessageLink.id).desc())
+        .distinct(col(MessageLink.signal_id))
+        .subquery()
+    )
+    rows = await db.scalars(
+        select(latest.c.provider_position_id).where(latest.c.provider_position_id.is_not(None))
+    )
+    return frozenset(rows.all())
+
+
+async def load_resolution(
+    db: AsyncSession, env: Envelope, book: Mapping[uuid.UUID, PositionState]
+) -> Resolution:
+    """The DB side: reply ancestors (bounded) and this provider's earlier thread links."""
+    hops: list[tuple[ParentLink, ...]] = []
+    message_id = env.reply_to_id
+    for _ in range(REPLY_DEPTH):
+        if message_id is None:
+            break
+        hops.append(await parent_links(db, message_id))
+        message_id = await reply_to_of(db, message_id)
+    thread: frozenset[uuid.UUID] = frozenset()
+    if env.thread_id is not None:
+        thread = await thread_positions(db, env.thread_id, env.provider_id, env.posted_at)
+    text = env.text or ""
+    return resolve_context(
+        provider_id=env.provider_id,
+        book=book,
+        reply_hops=hops,
+        thread_positions=thread,
+        evidence=Evidence.of(text, find_candidates(text)),
+    )

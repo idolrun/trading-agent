@@ -82,6 +82,8 @@ class LinkMethod(StrEnum):
     LAYA = "laya"
     USER_CORRECTION = "user_correction"
     CODE = "code"  # entry opened a new position
+    THREAD = "thread"  # F069: the only lane position this provider acted on in the thread
+    CONTRACT = "contract"  # F069: the message's ticker / strike / right names one position
 
 
 class Signal(SQLModel, table=True):
@@ -149,4 +151,5 @@ class MessageLink(SQLModel, table=True):
     confidence: Decimal | None = Field(default=None, max_digits=5, decimal_places=4)
     candidate_position_ids: list[uuid.UUID] = array(Uuid)
     supersedes_link_id: int | None = bigint(nullable=True, foreign_key="message_links.id")
+    evidence: dict[str, Any] | None = jsonb(nullable=True)  # F069: why this link (resolver, hint)
     created_at: datetime = now_default()

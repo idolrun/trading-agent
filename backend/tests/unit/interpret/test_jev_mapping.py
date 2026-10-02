@@ -204,3 +204,14 @@ def test_questions_cover_every_number_candidate_with_no_match_options() -> None:
         assert isinstance(choice, Choice) and no_match in choice.criteria
     state = build_jev_state(context, candidates)
     assert [x["text"] for x in state["candidates"]["numbers"]] == ["770c", ".95", "769"]
+
+
+def test_links_to_offers_only_the_resolvers_candidates() -> None:
+    """F069: a position the resolver ruled out is never a Jev option."""
+    keep, drop = uuid.uuid4(), uuid.uuid4()
+    context = ctx("trim half", book=[(keep, "SPY 765P"), (drop, "QQQ 745P")])
+    assert [b.id for b in context.link_candidates] == [keep, drop]  # default: the whole book
+    narrowed = context.model_copy(update={"link_candidates": context.provider_book[:1]})
+    q = build_questions(narrowed, find_candidates("trim half"), [])["links_to"]
+    assert isinstance(q, Choice)
+    assert set(q.criteria) == {str(keep), "new_position", "ambiguous"}

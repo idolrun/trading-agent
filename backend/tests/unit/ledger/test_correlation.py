@@ -1,4 +1,5 @@
-"""F021: correlation decision table + TRD §12 sequencing rows (AC-18 linking clause)."""
+"""F021/F069: correlation decision table, the deterministic cross-check of model hints, and
+TRD §12 sequencing rows (AC-18 linking clause)."""
 
 import uuid
 from datetime import date
@@ -7,8 +8,9 @@ from typing import Any
 
 from app.interpret.models import LinkMethod, LinkOutcome
 from app.interpret.signal import LinkHint
-from app.ledger.correlation import LinkDecision, LinkInputs, ParentLink, resolve_link
+from app.ledger.correlation import LinkDecision, LinkInputs, resolve_link
 from app.ledger.positions import PositionState
+from app.ledger.resolver import Resolution
 from app.validate.normalize import NormalizedSignal
 
 A, B = 7, 8
@@ -31,7 +33,7 @@ def resolve(
     msg_type: str,
     book: dict[uuid.UUID, PositionState],
     hint: LinkHint = NO_HINT,
-    parents: tuple[ParentLink, ...] = (),
+    resolution: Resolution | None = None,
     **fields: Any,
 ) -> LinkDecision | None:
     signal = NormalizedSignal(
@@ -40,7 +42,7 @@ def resolve(
     return resolve_link(
         signal,
         hint,
-        LinkInputs(provider_id=A, book=book, parent_links=parents),
+        LinkInputs(provider_id=A, book=book, resolution=resolution),
         t_link=Decimal("0.8"),
         hint_method=LinkMethod.JEV,
     )
@@ -73,26 +75,82 @@ def test_empty_book_is_none() -> None:
     assert d == LinkDecision(LinkOutcome.NONE, LinkMethod.JEV, Decimal("0.4"))
 
 
+def reply(position_id: uuid.UUID) -> Resolution:
+    return Resolution(
+        outcome="unique",
+        position_id=position_id,
+        candidates=(position_id,),
+        method=LinkMethod.REPLY,
+    )
+
+
 def test_reply_to_own_entry_beats_hint() -> None:
     d = resolve(
         "trim",
         {P_GOOGL: GOOGL, P_META: META},
         LinkHint(target=P_META, confidence=Decimal("0.99")),
-        parents=(ParentLink(A, P_GOOGL),),
+        resolution=reply(P_GOOGL),
     )
     assert d == LinkDecision(LinkOutcome.LINKED, LinkMethod.REPLY, Decimal(1), P_GOOGL)
 
 
-def test_reply_to_other_provider_is_ignored() -> None:
-    # B's GOOGL entry is the parent; A's signal resolves against A's own book only.
-    d = resolve("trim", {P_GOOGL: GOOGL}, parents=(ParentLink(B, P_B),))
+def test_reply_pick_contradicted_by_the_message_is_ambiguous() -> None:
+    d = resolve(
+        "trim", {P_GOOGL: GOOGL, P_META: META}, resolution=reply(P_GOOGL), underlying="META"
+    )
     assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
-    assert P_B not in d.candidate_position_ids
+    assert d.evidence is not None and "underlying META" in d.evidence["conflict"]
 
 
-def test_reply_to_closed_position_falls_through() -> None:
-    d = resolve("trim", {P_META: META}, parents=(ParentLink(A, P_GOOGL),))
+def test_hint_contradicting_the_stated_ticker_is_refused() -> None:
+    """F069: the message says META, the model picks GOOGL at 0.99: review, never a link."""
+    d = resolve(
+        "trim",
+        {P_GOOGL: GOOGL, P_META: META},
+        LinkHint(target=P_GOOGL, confidence=Decimal("0.99")),
+        underlying="META",
+    )
     assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
+    assert d.evidence is not None and d.evidence["hint_rejected"].startswith("underlying META")
+
+
+def test_hint_outside_the_resolver_candidates_is_refused() -> None:
+    narrowed = Resolution(outcome="ambiguous", candidates=(P_META,))
+    d = resolve(
+        "trim",
+        {P_GOOGL: GOOGL, P_META: META},
+        LinkHint(target=P_GOOGL, confidence=Decimal("0.99")),
+        resolution=narrowed,
+    )
+    assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
+    assert d.candidate_position_ids == (P_META,)
+
+
+def test_hint_with_wrong_strike_or_right_is_refused() -> None:
+    hint = LinkHint(target=P_GOOGL, confidence=Decimal("0.99"))
+    assert resolve("trim", {P_GOOGL: GOOGL}, hint, strike=Decimal(360)).outcome == "ambiguous"  # type: ignore[union-attr]
+    assert resolve("trim", {P_GOOGL: GOOGL}, hint, right="put").outcome == "ambiguous"  # type: ignore[union-attr]
+    stock = resolve("stock_exit", {P_GOOGL: GOOGL}, hint, instrument=None)
+    assert stock is not None and stock.outcome == LinkOutcome.AMBIGUOUS
+
+
+def test_consistent_hint_is_linked() -> None:
+    d = resolve(
+        "trim",
+        {P_GOOGL: GOOGL, P_META: META},
+        LinkHint(target=P_GOOGL, confidence=Decimal("0.9")),
+        underlying="GOOGL",
+    )
+    assert d == LinkDecision(LinkOutcome.LINKED, LinkMethod.JEV, Decimal("0.9"), P_GOOGL)
+
+
+def test_user_choice_overrules_a_misread_field() -> None:
+    d = resolve("trim", {P_GOOGL: GOOGL}, resolution=Resolution.chosen(P_GOOGL), underlying="GOOG")
+    assert d is not None and (d.outcome, d.method) == (
+        LinkOutcome.LINKED,
+        LinkMethod.USER_CORRECTION,
+    )
+    assert d.evidence is not None and "conflict" in d.evidence
 
 
 def test_entry_on_open_contract_is_add() -> None:
@@ -146,7 +204,7 @@ def test_b_same_reply_gets_own_position() -> None:
     d = resolve_link(
         signal,
         LinkHint(),
-        LinkInputs(provider_id=B, book={}, parent_links=(ParentLink(A, P_GOOGL),)),
+        LinkInputs(provider_id=B, book={}),
         t_link=Decimal("0.8"),
         hint_method=LinkMethod.LLM,
     )

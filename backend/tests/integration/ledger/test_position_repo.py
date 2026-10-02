@@ -14,9 +14,9 @@ from sqlalchemy.pool import NullPool
 from app.db import create_session_factory, in_transaction
 from app.interpret.models import LinkMethod, LinkOutcome, MessageLink
 from app.ledger import repo
-from app.ledger.correlation import ParentLink
 from app.ledger.models import ProviderPositionEvent
 from app.ledger.positions import apply_to_position, state_of
+from app.ledger.resolver import ParentLink
 from app.validate.normalize import NormalizedSignal, Price
 from tests.integration.conftest import _url
 from tests.integration.schema.helpers import add_signal
