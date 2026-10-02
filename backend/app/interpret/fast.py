@@ -24,9 +24,13 @@ from app.interpret.signal import (
 from app.interpret.spans import parse_raw
 from app.ledger.resolver import Resolution
 
-_PRICE = r"\d*\.\d+|\d+(?:\.\d+)?"
-_DECIMAL_PRICE = r"\d*\.\d+"  # an exit price must look like a premium, never a contract count
+_PRICE = r"\$?(?:\d*\.\d+|\d+(?:\.\d+)?)"
+_DECIMAL_PRICE = r"\$?\d*\.\d+"  # an exit price must look like a premium, never a contract count
+# Pings around the instruction ("... @everyone", "<@123> ..."): not part of what it says.
+_PINGS = re.compile(r"^(?:\s*(?:@\w+|<@[!&]?\d+>))+\s*|\s*(?:(?:@\w+|<@[!&]?\d+>)\s*)+$")
 _TICKER = r"\$?[a-z]{1,5}"
+# In a follow-up a ticker must look like one ("SPY", "$spy"): "out more" is prose, not MORE.
+_FOLLOW_UP_TICKER = r"(?-i:\$[A-Za-z]{1,5}|[A-Z]{1,5})"  # case-sensitive inside IGNORECASE
 _EXP = EXPIRY.pattern
 
 ENTRY = re.compile(
@@ -43,14 +47,15 @@ ENTRY = re.compile(
 _REST = r"all|rest|the\s+rest|runners|remaining|remainder"
 EXIT = re.compile(  # "sold" alone could be part of the position: only with "all" / "rest" ...
     rf"^(?:(?:all\s+out|out|exit(?:ed)?|closed?)(?:\s+(?:{_REST}))?|sold\s+(?:{_REST}))"
-    rf"(?:\s+(?P<ticker>{_TICKER}))?"
+    rf"(?:\s+(?P<ticker>{_FOLLOW_UP_TICKER}))?"
     rf"(?:\s+(?:here|now))?(?:\s+@?\s*(?:{_DECIMAL_PRICE}))?$",
     re.IGNORECASE,
 )
 TRIM = re.compile(
-    r"^(?:trim(?:med|ming)?|took|taking|sold|sell(?:ing)?)(?:\s+off)?"
+    rf"^(?:@?\s*(?:{_DECIMAL_PRICE})\s+)?"  # "1.63 trim": the price first
+    r"(?:trim(?:med|ming)?|took|taking|sold|sell(?:ing)?)(?:\s+off)?"
     r"(?:\s+(?P<fraction>half|a\s+third|third|a\s+quarter|quarter|1/2|1/3|1/4|\d{1,3}%))?"
-    rf"(?:\s+(?P<ticker>{_TICKER}))?"
+    rf"(?:\s+(?P<ticker>{_FOLLOW_UP_TICKER}))?"
     rf"(?:\s+(?:here|now))?(?:\s+@?\s*(?:{_DECIMAL_PRICE}))?$",
     re.IGNORECASE,
 )
@@ -64,7 +69,7 @@ _TRIM_VERB_ONLY = re.compile(r"^(?:took|taking|sold|sell)", re.IGNORECASE)  # ne
 
 def fast_parse(text: str, resolution: Resolution | None, tiers: list[str]) -> ParsedSignals | None:
     """None: not obvious enough; Jev (and its fallbacks) decide."""
-    stripped = text.strip()
+    stripped = _PINGS.sub("", text.strip())
     if not stripped or "\n" in stripped:
         return None
     offset = text.index(stripped)
@@ -107,9 +112,12 @@ def _entry(text: str, offset: int, _r: Resolution | None, tiers: list[str]) -> P
         for t in re.finditer(_PRICE, m.group("tps")):
             raw = t.group()
             start = offset + base + t.start()
+            value = parse_raw("tp_levels", raw)  # "$2.90" -> 2.90
+            if not isinstance(value, Decimal):
+                return None
             tps.append(
                 F(
-                    value=Decimal(raw),
+                    value=value,
                     source=LiteralSpan(raw=raw, start=start, end=start + len(raw)),
                 )
             )

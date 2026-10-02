@@ -23,6 +23,12 @@ Conditions ("if SPY holds 770 then calls"), watch, "out most", "out 2" (count or
 - `tests/integration/pipeline/test_apply.py`: with every model off, an obvious entry is still a normal card.
 - Tests that exercise Jev/Laya now use a non-obvious text ("… here") so they still do.
 
+## Measured on the provider export (519 real messages in `trading_replay`, offline, 2026-10-02)
+- **9 entries** are settled with no model, for example `$SPY 765P @ 1.42 @everyone` and `MSTR 10/2 150 PUTS 2.45 SL 1.90 TP 2.90 / 3.3 / 3.8 @chimera118`. For comparison, the last Jev replay assembled 17 entries.
+- **11 follow-ups** (8 trims, 3 full exits) qualify *if* the resolver finds one position. Without a reply, thread or stated ticker they go to Jev (PRD §10).
+- `fast_parse` latency: p50 0.6 µs, p95 1.4 µs.
+- Leading and trailing pings (`@everyone`, `@user`, `<@id>`) are ignored. `$` prices are accepted, and so is a price-first trim (`1.63 trim`). A follow-up ticker must look like one (`HAGW`, `$spy`), so `out more 1.48` is prose and goes to Jev.
+
 ## Limits
 - An expiry-less entry ("SPY 765P .54") is parsed but validation still makes it a review (`contract_incomplete`): no default expiry is ever assumed.
 - No stock-entry rule (stock entries need sizing by % of equity, C76, still open).

@@ -129,3 +129,41 @@ def test_fast_path_provenance_is_code_or_the_text() -> None:
     assert entry is not None
     instrument = entry.signals[0].field_sources["instrument"]
     assert isinstance(instrument, LiteralSpan) and instrument.raw == "765P"
+
+
+def test_real_message_shapes() -> None:
+    """Shapes from the provider export: trailing pings, $ prices, spaced TP lists."""
+    assert parse("$SPY 765P @ 1.42 @everyone") == {
+        "type": "entry",
+        "underlying": "spy",
+        "strike": Decimal(765),
+        "right": "put",
+        "entry_price": Decimal("1.42"),
+    }
+    mstr = parse("MSTR 10/2 150 PUTS 2.45 SL 1.90 TP 2.90 / 3.3 / 3.8  @chimera118")
+    assert mstr is not None and mstr["tps"] == [Decimal("2.90"), Decimal("3.3"), Decimal("3.8")]
+    assert parse("INTC 2DTE 120 CALLS .95 @everyone") is not None
+    assert parse("trim $2.90 @everyone", UNIQUE) == {
+        "type": "trim",
+        "fraction": "not_stated",
+        "target": P,
+    }
+    assert parse("1.63 trim @everyone", UNIQUE) is not None
+    assert parse("all out HAGW <@123456>", UNIQUE) == {
+        "type": "full_exit",
+        "underlying": "hagw",
+        "fraction": "all",
+        "target": P,
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "out more 1.48 @everyone",  # "more" is prose, not a ticker
+        "these just shot up 30% got the trim @everyone",
+        "Unlimited trims on XLU, now 20% gains @everyone",
+    ],
+)
+def test_real_prose_is_not_fast(text: str) -> None:
+    assert parse(text, UNIQUE) is None
