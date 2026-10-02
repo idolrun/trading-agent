@@ -135,7 +135,16 @@ def map_answers(
     signal_count = choice("signal_count").choice
     base = JevResult(msg_type, conf, signal_count, parsed=None, hints=compact(answers))
     if msg_type in FEED_TYPES:  # no fields needed; routing decides on t_chat
-        signal = ParsedSignal(msg_type=msg_type, field_sources=sources)
+        fields_: dict[str, Any] = {}
+        ticker = choice("ticker")
+        if msg_type == MsgType.WATCH and ticker.choice != "not_stated":  # F072: a watch setup
+            tc = next(x for x in candidates.tickers if x.id == ticker.choice)
+            if _d(ticker.confidence) >= t_field and (value := parse_raw("underlying", tc.text)):
+                watched = LiteralSpan(raw=tc.text, start=tc.start, end=tc.end, candidate_id=tc.id)
+                fields_["underlying"] = {"value": value, "source": watched}
+        signal = ParsedSignal.model_validate(
+            {"msg_type": msg_type, "fields": fields_, "field_sources": sources}
+        )
         parsed = ParsedSignals(signals=[signal], interpreter=interpreter)
         return replace(base, parsed=parsed)
 
@@ -226,7 +235,9 @@ def map_answers(
     # A worded condition changes the trade, so any real chance of one goes to the LLM; a
     # possible correction only when Jev leans yes (its 0.2-0.3 is background noise).
     p = noul("has_prose_condition").noul
-    if _d(max(p, 1 - p)) < t_field or p >= 0.5:
+    if msg_type == MsgType.CONDITIONAL:  # F072: the condition IS the message: a setup, no card
+        pass
+    elif _d(max(p, 1 - p)) < t_field or p >= 0.5:
         reasons.append(f"has_prose_condition: needs the slow path ({p:.2f})")
     if noul("is_correction").noul >= 0.5:
         reasons.append("is_correction: needs the slow path")

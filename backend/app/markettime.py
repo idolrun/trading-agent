@@ -6,7 +6,7 @@ injectable `Clock`. Nothing here reads the server's local timezone.
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from functools import cache
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -209,3 +209,8 @@ def _nearest_future(today: date, month: int, day: int) -> date | None:
     if candidate is not None and candidate >= today:
         return candidate
     return _date_or_none(today.year + 1, month, day)
+
+
+def et_day_start(ts: datetime) -> datetime:
+    """Midnight ET of `ts`'s ET trading date (setups and re-entries live for one day, F072)."""
+    return datetime.combine(to_et(ts).date(), time(0), tzinfo=ET)

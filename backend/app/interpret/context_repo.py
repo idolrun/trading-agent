@@ -3,14 +3,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, exists, select
+from sqlalchemy import ColumnElement, and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlmodel import col
 
 from app.inbox.envelope import Lane
 from app.inbox.models import EventType, MessageEvent
-from app.ledger.models import PositionStatus, ProviderPosition
+from app.ledger.models import ProviderPosition
+from app.ledger.positions import LIVE, SETUPS
+from app.markettime import et_day_start
 
 _deleted = aliased(MessageEvent)
 
@@ -85,17 +87,28 @@ async def recent_by_author(
     return [(c, edits.get(c.message_id, c.text or "")) for c in reversed(creates)]
 
 
-async def open_book(db: AsyncSession, lane: Lane) -> list[ProviderPosition]:
-    """The lane's open/trimmed positions: opened in this channel by this provider. A position
-    with no recorded channel belongs to no lane."""
+def lane_book_filter(lane: Lane, as_of: datetime) -> ColumnElement[bool]:
+    """The lane's book: live (open/trimmed) positions, plus the watch/conditional setups
+    opened on `as_of`'s ET day (F072: a setup lasts one day). Opened in this channel by this
+    provider; a position with no recorded channel belongs to no lane."""
     channel_id, provider_id = lane
+    return and_(
+        col(ProviderPosition.provider_id) == provider_id,
+        col(ProviderPosition.opened_channel_id) == channel_id,
+        or_(
+            col(ProviderPosition.status).in_(list(LIVE)),
+            and_(
+                col(ProviderPosition.status).in_(list(SETUPS)),
+                col(ProviderPosition.opened_at) >= et_day_start(as_of),
+            ),
+        ),
+    )
+
+
+async def open_book(db: AsyncSession, lane: Lane, as_of: datetime) -> list[ProviderPosition]:
     rows = await db.scalars(
         select(ProviderPosition)
-        .where(
-            col(ProviderPosition.provider_id) == provider_id,
-            col(ProviderPosition.opened_channel_id) == channel_id,
-            col(ProviderPosition.status) != PositionStatus.CLOSED,
-        )
+        .where(lane_book_filter(lane, as_of))
         .order_by(col(ProviderPosition.opened_at), col(ProviderPosition.provider_position_id))
     )
     return list(rows.all())

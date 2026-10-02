@@ -17,7 +17,7 @@ from typing import Any
 
 from app.interpret.models import LinkMethod, LinkOutcome, MsgType
 from app.interpret.signal import LinkHint
-from app.ledger.positions import OPENING, PositionState
+from app.ledger.positions import OPENING, SETUP_TYPES, PositionState
 from app.ledger.resolver import Resolution
 from app.validate.normalize import NormalizedSignal
 
@@ -44,6 +44,7 @@ class LinkInputs:
     provider_id: int
     book: Mapping[uuid.UUID, PositionState]  # the lane's open/trimmed positions, in order
     resolution: Resolution | None = None  # None: no evidence (= every book position a candidate)
+    setups: Mapping[uuid.UUID, PositionState] = field(default_factory=dict)  # today's, F072
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,21 @@ def resolve_link(
                 return LinkDecision(
                     LinkOutcome.LINKED, LinkMethod.CODE, _ONE, position_id, evidence={"rule": "c62"}
                 )
+        # F072: the entry a watch / conditional setup was waiting for (exactly one fits)
+        fits = [p for p, s in ctx.setups.items() if _fits_setup(s, signal)]
+        if len(fits) == 1:
+            return LinkDecision(
+                LinkOutcome.LINKED, LinkMethod.CODE, _ONE, fits[0], evidence={"rule": "setup"}
+            )
+        return LinkDecision(LinkOutcome.NEW_POSITION, LinkMethod.CODE, _ONE)
+    if signal.msg_type in SETUP_TYPES:
+        if signal.underlying is None:
+            return None  # nothing to watch: feed only
+        same = [p for p, s in ctx.setups.items() if s.underlying == signal.underlying]
+        if len(same) == 1:  # a restatement ("still watching SPY", "SPY over 770 for calls")
+            return LinkDecision(
+                LinkOutcome.LINKED, LinkMethod.CODE, _ONE, same[0], evidence={"rule": "setup"}
+            )
         return LinkDecision(LinkOutcome.NEW_POSITION, LinkMethod.CODE, _ONE)
     if signal.msg_type not in FOLLOW_UPS:
         return None
@@ -123,8 +139,13 @@ def _ambiguous(
 def inconsistency(position: PositionState, signal: NormalizedSignal) -> str | None:
     """A contract field the message states that the position contradicts (F069 cross-check);
     unstated fields do not contradict."""
-    instrument = "stock" if signal.msg_type == MsgType.STOCK_EXIT else signal.instrument
-    if instrument in ("option", "stock") and instrument != position.instrument:
+    instrument = (
+        "stock"
+        if signal.msg_type in (MsgType.STOCK_EXIT, MsgType.STOCK_ENTRY)
+        else (signal.instrument)
+    )
+    known = position.instrument is not None  # a setup may not have said
+    if instrument in ("option", "stock") and known and instrument != position.instrument:
         return f"instrument {instrument} vs position {position.instrument}"
     stated = (
         ("underlying", signal.underlying, position.underlying),
@@ -133,9 +154,14 @@ def inconsistency(position: PositionState, signal: NormalizedSignal) -> str | No
         ("right", signal.right, position.option_right),
     )
     for name, said, held in stated:
-        if said is not None and said != held:
+        if said is not None and held is not None and said != held:
             return f"{name} {said} vs position {held}"
     return None
+
+
+def _fits_setup(setup: PositionState, signal: NormalizedSignal) -> bool:
+    """An entry on the setup's underlying that contradicts nothing the setup named."""
+    return signal.underlying == setup.underlying and inconsistency(setup, signal) is None
 
 
 def _same_contract(position: PositionState, signal: NormalizedSignal) -> bool:

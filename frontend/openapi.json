@@ -3812,6 +3812,17 @@
       },
       "PositionDetail": {
         "properties": {
+          "conditionText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditiontext"
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/HistoryOut"
@@ -3837,8 +3848,15 @@
             "type": "string"
           },
           "instrument": {
-            "title": "Instrument",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
           },
           "isCorrected": {
             "title": "Iscorrected",
@@ -3899,6 +3917,18 @@
           "providerId": {
             "title": "Providerid",
             "type": "string"
+          },
+          "reentryOfPositionId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reentryofpositionid"
           },
           "remainingFraction": {
             "title": "Remainingfraction",
@@ -3979,6 +4009,17 @@
       },
       "PositionOut": {
         "properties": {
+          "conditionText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditiontext"
+          },
           "expiry": {
             "anyOf": [
               {
@@ -3997,8 +4038,15 @@
             "type": "string"
           },
           "instrument": {
-            "title": "Instrument",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
           },
           "isCorrected": {
             "title": "Iscorrected",
@@ -4045,6 +4093,18 @@
           "providerId": {
             "title": "Providerid",
             "type": "string"
+          },
+          "reentryOfPositionId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reentryofpositionid"
           },
           "remainingFraction": {
             "title": "Remainingfraction",
@@ -4122,6 +4182,8 @@
       },
       "PositionStatus": {
         "enum": [
+          "watch",
+          "conditional",
           "open",
           "trimmed",
           "closed"

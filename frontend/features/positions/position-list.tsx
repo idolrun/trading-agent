@@ -13,7 +13,11 @@ import { POSITION_STATUSES, type PositionStatus, type ProviderPosition } from "@
 import { formatContract } from "@/lib/format"
 
 
-export const positionLabel = (p: ProviderPosition) => formatContract({ ...p, right: p.optionRight })
+/** A watch / conditional setup may name only its underlying (F072). */
+export const positionLabel = (p: ProviderPosition) =>
+  p.instrument == null
+    ? [p.underlying, p.strike, p.optionRight].filter(Boolean).join(" ")
+    : formatContract({ ...p, instrument: p.instrument, right: p.optionRight })
 
 /** Provider ids are snowflakes: string keys only, first-seen order. */
 function groupByProvider(items: ProviderPosition[]) {

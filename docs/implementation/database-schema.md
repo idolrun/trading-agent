@@ -217,7 +217,7 @@ UNIQUE `(message_id, event_type, event_seq, idx)`; UNIQUE `(signal_id, provider_
 | `provider_position_id` | uuid | NN | PK |
 | `provider_id` | bigint | NN | owner (never crosses providers) |
 | `opened_channel_id` | bigint | NULL | the lane's channel (F068): books, links and C62 adds stay inside `(provider_id, opened_channel_id)`; NULL = in no lane's book (migration `0020` backfills it from the opening signal) |
-| `instrument` | text | NN | `CHECK IN ('option','stock')` |
+| `instrument` | text | NULL | `CHECK IN ('option','stock')`; NULL only for a watch/conditional setup (F072) |
 | `underlying` | text | NN | after symbol map (e.g. `SPXW`) |
 | `expiry` | date | NULL | |
 | `strike` | numeric(12,4) | NULL | |

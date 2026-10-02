@@ -11,7 +11,7 @@ class PositionOut(CamelModel):
     id: uuid.UUID
     provider_id: DiscordId
     opened_channel_id: DiscordId | None  # with provider_id: the lane (F068)
-    instrument: str
+    instrument: str | None  # None: a watch / conditional setup that did not say (F072)
     underlying: str
     expiry: date | None
     strike: Num | None
@@ -24,6 +24,8 @@ class PositionOut(CamelModel):
     stop_basis: str | None
     tp_levels: list[Num]
     opened_at: datetime
+    condition_text: str | None = None  # F072: a conditional setup's words (shown, not enforced)
+    reentry_of_position_id: uuid.UUID | None = None  # F072
 
 
 class HistoryOut(CamelModel):

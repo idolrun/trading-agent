@@ -13,6 +13,7 @@ from typing import Any
 
 from app.interpret.candidates import EXPIRY, STOP_WORDS, fraction_value
 from app.interpret.signal import (
+    ContextSource,
     F,
     LinkHint,
     LiteralSpan,
@@ -64,6 +65,11 @@ STOP_BE = re.compile(
     r"|^(?:be|breakeven)\s+stops?$",
     re.IGNORECASE,
 )
+REENTRY_MSG = re.compile(  # F072: the whole message is "back in [here] [@ price]"
+    r"^(?:back\s+in|re-?entry|re-?enter(?:ing|ed)?|in\s+again|reload(?:ed|ing)?)"
+    rf"(?:\s+(?:here|now))?(?:\s+@?\s*(?P<price>{_PRICE}))?$",
+    re.IGNORECASE,
+)
 _TRIM_VERB_ONLY = re.compile(r"^(?:took|taking|sold|sell)", re.IGNORECASE)  # need a fraction
 
 
@@ -73,7 +79,7 @@ def fast_parse(text: str, resolution: Resolution | None, tiers: list[str]) -> Pa
     if not stripped or "\n" in stripped:
         return None
     offset = text.index(stripped)
-    for rule in (_entry, _trim_or_exit, _stop_breakeven):
+    for rule in (_entry, _reentry, _trim_or_exit, _stop_breakeven):
         signal = rule(stripped, offset, resolution, tiers)
         if signal is not None:
             return ParsedSignals(signals=[signal], interpreter="fast")
@@ -137,6 +143,48 @@ def _entry(text: str, offset: int, _r: Resolution | None, tiers: list[str]) -> P
         fields=fields,
         link_hint=LinkHint(target="new_position", confidence=Decimal(1)),
         field_sources={"msg_type": _rule("option_entry"), "instrument": _span(m, "strike", offset)},
+    )
+
+
+def _reentry(
+    text: str, offset: int, r: Resolution | None, _tiers: list[str]
+) -> ParsedSignal | None:
+    """F072: "back in" re-enters the lane's one position closed today (or today's one setup).
+    The contract comes from that position, cited as context (its opening message), so the card
+    is marked inferred; the price, if any, is the text's own. Several candidates: Jev/review."""
+    m = REENTRY_MSG.match(text)
+    if m is None or r is None or len(r.reentry) != 1:
+        return None
+    prior = r.reentry[0]
+    if not prior.complete:
+        return None  # a setup that never named its contract: nothing to re-enter by code
+    cited: ContextSource | ResolvedSource = (
+        ContextSource(source_message_id=prior.opened_message_id)
+        if prior.opened_message_id is not None
+        else ResolvedSource(rule="reentry", inputs={"position_id": str(prior.position_id)})
+    )
+    fields: dict[str, Any] = {"underlying": F(value=prior.underlying, source=cited)}
+    if prior.instrument == "option":
+        assert prior.expiry and prior.strike and prior.right  # noqa: S101 — complete
+        token = f"{prior.expiry.month}/{prior.expiry.day}/{prior.expiry.year}"
+        fields |= {
+            "expiry_token": F(value=token, source=cited),
+            "strike": F(value=prior.strike, source=cited),
+            "right": F(value=prior.right, source=cited),
+        }
+    if (price := _lit(m, "price", offset, "entry_price")) is not None:
+        fields["entry_price"] = price
+    sources: dict[str, Any] = {"msg_type": _rule("reentry")}
+    if prior.status == "closed":  # a setup is opened in place; a closed position is re-entered
+        sources["reentry_of"] = ResolvedSource(
+            rule="reentry", inputs={"position_id": str(prior.position_id)}
+        )
+    return ParsedSignal(
+        msg_type="stock_entry" if prior.instrument == "stock" else "entry",
+        instrument=prior.instrument,
+        fields=SignalFields(**fields),
+        link_hint=LinkHint(target="new_position", confidence=Decimal(1)),
+        field_sources=sources,
     )
 
 

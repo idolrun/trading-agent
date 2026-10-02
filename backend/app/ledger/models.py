@@ -41,6 +41,8 @@ class StopBasis(StrEnum):
 
 
 class PositionStatus(StrEnum):
+    WATCH = "watch"  # F072: a setup the provider is watching; never a card, never a lot
+    CONDITIONAL = "conditional"  # F072: an entry that waits on a condition in words (C30)
     OPEN = "open"
     TRIMMED = "trimmed"
     CLOSED = "closed"
@@ -57,6 +59,8 @@ class PositionChange(StrEnum):
     TP_SET = "tp_set"
     CORRECT = "correct"
     CLOSE = "close"
+    WATCH = "watch"  # F072: a watch setup opened or restated
+    CONDITION_SET = "condition_set"  # F072: a conditional setup opened or restated
 
 
 class LotStatus(StrEnum):
@@ -73,15 +77,18 @@ class LotChange(StrEnum):
     ADOPT_FOREIGN = "adopt_foreign"
 
 
-def contract_shape() -> CheckConstraint:
-    """Options carry expiry/strike/right; stocks carry none of them."""
-    return CheckConstraint(
+def contract_shape(setups: bool = False) -> CheckConstraint:
+    """Options carry expiry/strike/right; stocks carry none of them. With `setups`, a
+    watch/conditional provider position may name only part of a contract (F072)."""
+    complete = (
         "(instrument = 'option' AND expiry IS NOT NULL AND strike IS NOT NULL"
         " AND option_right IS NOT NULL)"
         " OR (instrument = 'stock' AND expiry IS NULL AND strike IS NULL"
-        " AND option_right IS NULL)",
-        name="contract_shape",
+        " AND option_right IS NULL)"
     )
+    if setups:
+        complete = f"status IN ('watch', 'conditional') OR {complete}"
+    return CheckConstraint(complete, name="contract_shape")
 
 
 class ProviderPosition(SQLModel, table=True):
@@ -95,7 +102,11 @@ class ProviderPosition(SQLModel, table=True):
         check_in("option_right", OptionRight),
         check_in("stop_basis", StopBasis),
         check_in("status", PositionStatus),
-        contract_shape(),
+        contract_shape(setups=True),
+        CheckConstraint(
+            "instrument IS NOT NULL OR status IN ('watch', 'conditional')",
+            name="instrument_unless_setup",
+        ),
         CheckConstraint("remaining_fraction BETWEEN 0 AND 1", name="remaining_fraction_range"),
         *positive_ids("provider_id", "opened_channel_id"),
         Index(
@@ -116,7 +127,7 @@ class ProviderPosition(SQLModel, table=True):
     provider_position_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     provider_id: int = bigint()
     opened_channel_id: int | None = bigint(nullable=True)
-    instrument: Instrument = choice()
+    instrument: Instrument | None = choice(default=None, nullable=True)  # None: a setup only
     underlying: str
     expiry: date | None = None
     strike: Decimal | None = price()
@@ -130,6 +141,10 @@ class ProviderPosition(SQLModel, table=True):
     tp_levels: list[Decimal] = array(Numeric(12, 4))
     status: PositionStatus = choice()
     is_corrected: bool = flag()
+    condition_text: str | None = None  # F072: the provider's words for a conditional; shown only
+    reentry_of_position_id: uuid.UUID | None = Field(  # F072: "back in" after this position
+        default=None, foreign_key="provider_positions.provider_position_id"
+    )
     opened_by_signal_id: uuid.UUID | None = Field(default=None, foreign_key="signals.signal_id")
     opened_at: datetime = now_default()
     closed_at: datetime | None = timestamptz(nullable=True)

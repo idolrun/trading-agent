@@ -83,6 +83,7 @@ class SignalOutcome:
     lot_id: uuid.UUID | None
     cards: list[ProposedAction]
     correction: Correction | None = None
+    reentry_of: uuid.UUID | None = None  # F072: the new position re-enters this one
 
 
 @dataclass(frozen=True)
@@ -105,7 +106,7 @@ class ApplyOutcome:
 async def apply_event(db: AsyncSession, inp: ApplyInput) -> ApplyOutcome:
     """Call inside one transaction (the caller commits)."""
     env = inp.ctx.envelope
-    locked = await ledger.lock_open_book(db, env.lane)
+    locked = await ledger.lock_open_book(db, env.lane, env.posted_at)
     if {p.provider_position_id: p.updated_at for p in locked} != inp.book_version:
         raise BookChanged(f"lane {env.lane} book changed during processing")
     rows: dict[uuid.UUID, ProviderPosition] = {p.provider_position_id: p for p in locked}
@@ -159,6 +160,7 @@ async def _apply_signal(
             signal_id=o.signal_id,
             channel_id=env.channel_id,
             position_id=o.position_id,
+            reentry_of=o.reentry_of,
         )
     exists = o.position_id is not None and o.position_id in rows
     if o.link is not None and (

@@ -91,7 +91,7 @@ async def load_context(
     if book is None:
         book = [
             BookEntry(id=p.provider_position_id, summary=summarize(p))
-            for p in await context_repo.open_book(db, env.lane)
+            for p in await context_repo.open_book(db, env.lane, env.posted_at)
         ]
     return ProviderContext(
         now_et=_et(now),
@@ -113,6 +113,14 @@ async def load_context(
 
 def summarize(p: ProviderPosition) -> str:
     """Deterministic, byte-stable one-line summary (prompt caching, TRD §4.8 rule 7)."""
+    if p.status in (PositionStatus.WATCH, PositionStatus.CONDITIONAL):  # F072: not a holding
+        named = [p.underlying]
+        if p.strike is not None:
+            named.append(_plain(p.strike))
+        if p.option_right is not None:
+            named.append(f"{p.option_right}s")
+        line = f"{p.status} {' '.join(named)} since {_et(p.opened_at)}"
+        return f"{line}: {p.condition_text}" if p.condition_text else line
     if p.instrument == Instrument.OPTION:
         right = "C" if p.option_right == "call" else "P"
         contract = f"{p.underlying} {_plain(p.strike)}{right} exp {p.expiry}"

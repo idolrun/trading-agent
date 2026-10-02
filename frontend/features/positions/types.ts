@@ -4,4 +4,5 @@ export type ProviderPosition = Schemas["PositionOut"]
 export type PositionDetail = Schemas["PositionDetail"]
 export type PositionListFilters = ListFilters<"list_positions_api_v1_positions_get">
 export type PositionStatus = Schemas["PositionStatus"]
-export const POSITION_STATUSES: PositionStatus[] = ["open", "trimmed", "closed"]
+// watch / conditional: setups the provider named but has not entered (F072), never a holding
+export const POSITION_STATUSES: PositionStatus[] = ["watch", "conditional", "open", "trimmed", "closed"]

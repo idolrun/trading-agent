@@ -42,6 +42,8 @@ def position_out(p: ProviderPosition) -> PositionOut:
         stop_basis=p.stop_basis,
         tp_levels=list(p.tp_levels),
         opened_at=p.opened_at,
+        condition_text=p.condition_text,
+        reentry_of_position_id=p.reentry_of_position_id,
     )
 
 

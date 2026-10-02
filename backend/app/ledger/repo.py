@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -15,6 +15,7 @@ from app.inbox.models import EventType, MessageEvent
 from app.instruments import Instrument as Contract
 from app.instruments import OptionContract, broker_symbol
 from app.interpret.candidates import find_candidates
+from app.interpret.context_repo import lane_book_filter
 from app.interpret.models import LinkOutcome, MessageLink, MsgType, Signal
 from app.ledger.lots import LotUpdate
 from app.ledger.models import (
@@ -28,8 +29,17 @@ from app.ledger.models import (
     ProviderPosition,
     ProviderPositionEvent,
 )
-from app.ledger.positions import PositionState, PositionUpdate
-from app.ledger.resolver import REPLY_DEPTH, Evidence, ParentLink, Resolution, resolve_context
+from app.ledger.positions import LIVE, SETUPS, PositionState, PositionUpdate
+from app.ledger.resolver import (
+    REENTRY,
+    REPLY_DEPTH,
+    Evidence,
+    ParentLink,
+    Prior,
+    Resolution,
+    resolve_context,
+)
+from app.markettime import et_day_start
 
 
 async def recent_underlyings(db: AsyncSession, provider_id: int, since: datetime) -> list[str]:
@@ -65,17 +75,12 @@ async def parent_links(db: AsyncSession, parent_message_id: int) -> tuple[Parent
     return tuple(ParentLink(provider_id, position_id) for provider_id, position_id in rows.all())
 
 
-async def lock_open_book(db: AsyncSession, lane: Lane) -> list[ProviderPosition]:
-    """The lane's open/trimmed positions, row-locked for the rest of the transaction
-    (T3/T7, database-schema.md §8). Call only inside the lane slot."""
-    channel_id, provider_id = lane
+async def lock_open_book(db: AsyncSession, lane: Lane, as_of: datetime) -> list[ProviderPosition]:
+    """The lane's book (`context_repo.lane_book_filter`), row-locked for the rest of the
+    transaction (T3/T7, database-schema.md §8). Call only inside the lane slot."""
     rows = await db.scalars(
         select(ProviderPosition)
-        .where(
-            col(ProviderPosition.provider_id) == provider_id,
-            col(ProviderPosition.opened_channel_id) == channel_id,
-            col(ProviderPosition.status) != PositionStatus.CLOSED,
-        )
+        .where(lane_book_filter(lane, as_of))
         .order_by(col(ProviderPosition.opened_at), col(ProviderPosition.provider_position_id))
         .with_for_update()
     )
@@ -93,6 +98,7 @@ async def record(
     channel_id: int | None = None,
     position_id: uuid.UUID | None = None,
     at: datetime | None = None,
+    reentry_of: uuid.UUID | None = None,
 ) -> ProviderPosition:
     """Write one ledger change: insert/update the position and its history event together.
     Exactly one of `signal_id` / `manual_correction_id` (DB CHECK)."""
@@ -105,6 +111,7 @@ async def record(
             provider_id=provider_id,
             opened_channel_id=channel_id,
             opened_by_signal_id=signal_id,
+            reentry_of_position_id=reentry_of,
             opened_at=now,
             updated_at=now,
             **values,
@@ -435,10 +442,55 @@ async def load_resolution(
     if env.thread_id is not None:
         thread = await thread_positions(db, env.thread_id, env.provider_id, env.posted_at)
     text = env.text or ""
-    return resolve_context(
+    resolution = resolve_context(
         provider_id=env.provider_id,
-        book=book,
+        book={p: s for p, s in book.items() if s.status in LIVE},  # follow-ups act on live only
         reply_hops=hops,
         thread_positions=thread,
         evidence=Evidence.of(text, find_candidates(text)),
     )
+    if not REENTRY.search(text):
+        return resolution
+    priors = tuple(
+        Prior(
+            position_id=p.provider_position_id,
+            status=p.status,
+            instrument=p.instrument,
+            underlying=p.underlying,
+            expiry=p.expiry,
+            strike=p.strike,
+            right=p.option_right,
+            opened_message_id=message_id,
+        )
+        for p, message_id in await reentry_pool(db, env.lane, env.posted_at)
+    )
+    return resolution.model_copy(update={"reentry": priors})
+
+
+async def reentry_pool(
+    db: AsyncSession, lane: Lane, as_of: datetime
+) -> list[tuple[ProviderPosition, int | None]]:
+    """F072: what "back in" can mean in this lane: positions closed on `as_of`'s ET day and
+    today's setups, newest first, each with the message that opened it."""
+    channel_id, provider_id = lane
+    since = et_day_start(as_of)
+    rows = await db.execute(
+        select(ProviderPosition, col(Signal.message_id))
+        .outerjoin(Signal, col(Signal.signal_id) == col(ProviderPosition.opened_by_signal_id))
+        .where(
+            col(ProviderPosition.provider_id) == provider_id,
+            col(ProviderPosition.opened_channel_id) == channel_id,
+            or_(
+                and_(
+                    col(ProviderPosition.status) == PositionStatus.CLOSED,
+                    col(ProviderPosition.closed_at) >= since,
+                ),
+                and_(
+                    col(ProviderPosition.status).in_(list(SETUPS)),
+                    col(ProviderPosition.opened_at) >= since,
+                ),
+            ),
+        )
+        .order_by(col(ProviderPosition.opened_at).desc())
+    )
+    return [(p, m) for p, m in rows.tuples().all()]

@@ -204,7 +204,7 @@ class _Nodes:
             resolution = Resolution.unresolved({b.id: b for b in context.provider_book})
         else:
             async with self.d.sessions() as db:
-                rows = await context_repo.open_book(db, env.lane)
+                rows = await context_repo.open_book(db, env.lane, env.posted_at)
                 book = {r.provider_position_id: state_of(r) for r in rows}
                 resolution = await ledger.load_resolution(db, env, book)
         allowed = set(resolution.candidates)
@@ -365,7 +365,7 @@ class _Nodes:
             return {"raw_reason": "literal_span_mismatch"}
         cfg = self.d.cfg()
         async with self.d.sessions() as db:
-            rows = await context_repo.open_book(db, env.lane)
+            rows = await context_repo.open_book(db, env.lane, env.posted_at)
         book = {r.provider_position_id: state_of(r) for r in rows}
         resolution = (
             Resolution.model_validate(state["resolution"]) if state.get("resolution") else None

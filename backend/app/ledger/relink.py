@@ -30,7 +30,7 @@ from app.cards.validity import ENTRY_ACTIONS, supersedes
 from app.db import in_transaction
 from app.decide.types import ProposedAction
 from app.dispatcher.types import ProcessingContext
-from app.inbox.envelope import Lane
+from app.inbox.envelope import Envelope, Lane
 from app.inbox.models import MessageEvent
 from app.inbox.repo import to_envelope_row
 from app.interpret import context_repo
@@ -128,22 +128,21 @@ class RelinkService:
             for p in o.cards
         ]
         async with in_transaction(self._sessions, None) as db:
-            return await self._write(
-                db, ctx.envelope.lane, position_id, signal_id, o, proposals, audit
-            )
+            return await self._write(db, ctx.envelope, position_id, signal_id, o, proposals, audit)
 
     async def _write(
         self,
         db: AsyncSession,
-        lane: Lane,
+        env: Envelope,
         position_id: uuid.UUID,
         signal_id: uuid.UUID,
         o: SignalOutcome,
         proposals: list[ProposedAction],
         audit: Audit | None,
     ) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
-        provider_id = lane[1]
-        rows = {p.provider_position_id: p for p in await ledger.lock_open_book(db, lane)}
+        provider_id = env.provider_id
+        locked = await ledger.lock_open_book(db, env.lane, env.posted_at)
+        rows = {p.provider_position_id: p for p in locked}
         if position_id not in rows:
             raise BookChanged("position closed before the re-link was applied")
         latest = await ledger.latest_link(db, signal_id)
@@ -248,7 +247,7 @@ class RelinkService:
         """`resolution` None: resolve from the message's evidence as the live pipeline does."""
         env = ctx.envelope
         async with self._sessions() as db:
-            rows = await context_repo.open_book(db, env.lane)
+            rows = await context_repo.open_book(db, env.lane, env.posted_at)
             book = {r.provider_position_id: state_of(r) for r in rows}
             if resolution is None:
                 resolution = await ledger.load_resolution(db, env, book)

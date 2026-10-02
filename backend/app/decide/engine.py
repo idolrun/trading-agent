@@ -12,7 +12,7 @@ from app.decide import risk, rules
 from app.decide.types import BreakevenOptions, DecisionInputs, ProposedAction, StopProposal
 from app.interpret.models import LinkOutcome, MsgType
 from app.interpret.signal import F, SignalFields
-from app.ledger.positions import OPENING
+from app.ledger.positions import OPENING, SETUPS
 from app.validate.normalize import NormalizedSignal, Price, premium_prices
 
 # Feed only (OD-18: conditional, tp_hit_notice); corrections are handled by F038.
@@ -62,8 +62,9 @@ def _propose(i: DecisionInputs) -> list[ProposedAction]:
         return []
     norm = v.normalized
     linked = i.link is not None and i.link.outcome == LinkOutcome.LINKED
-    if t in OPENING:
-        action = CardAction.ADD if linked else CardAction.ENTRY
+    if t in OPENING:  # an entry on a watch / conditional setup opens it: an entry (F072)
+        on_setup = i.position is not None and i.position.status in SETUPS
+        action = CardAction.ADD if linked and not on_setup else CardAction.ENTRY
     elif t == MsgType.TRIM and norm is not None and norm.exit_fraction == "all":
         action = CardAction.EXIT
     else:

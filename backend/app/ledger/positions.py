@@ -21,6 +21,9 @@ FRACTIONS = {"half": Decimal("0.5"), "third": Decimal(1) / 3, "quarter": Decimal
 _FOUR_PLACES = Decimal("0.0001")  # remaining_fraction numeric(5,4)
 OPENING = {MsgType.ENTRY, MsgType.STOCK_ENTRY}
 NO_LEDGER_CHANGE = {MsgType.SOFT_EXIT, MsgType.TP_HIT_NOTICE}  # C52; OD-18 proposal
+SETUP_TYPES = {MsgType.WATCH, MsgType.CONDITIONAL}  # F072: they open or restate a setup
+LIVE = frozenset({PositionStatus.OPEN, PositionStatus.TRIMMED})  # follow-ups act on these
+SETUPS = frozenset({PositionStatus.WATCH, PositionStatus.CONDITIONAL})  # an entry may open these
 
 
 class InvalidTransition(ValueError):
@@ -32,7 +35,7 @@ class PositionState(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    instrument: Literal["option", "stock"]
+    instrument: Literal["option", "stock"] | None  # None: a setup that did not say (F072)
     underlying: str
     expiry: date | None = None
     strike: Decimal | None = None
@@ -44,6 +47,7 @@ class PositionState(BaseModel):
     tp_levels: tuple[Decimal, ...] = ()
     status: PositionStatus = PositionStatus.OPEN
     is_corrected: bool = False
+    condition_text: str | None = None  # F072: a conditional's words, shown, never enforced
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,7 @@ def state_of(row: ProviderPosition) -> PositionState:
         tp_levels=tuple(row.tp_levels),
         status=row.status,
         is_corrected=row.is_corrected,
+        condition_text=row.condition_text,
     )
 
 
@@ -78,11 +83,18 @@ def apply_to_position(
     t = signal.msg_type
     if t in NO_LEDGER_CHANGE:
         return None
+    if t in SETUP_TYPES:
+        return _setup(position, signal)
     if t in OPENING or t == MsgType.ADD:
         if position is None:
             if t == MsgType.ADD:
                 raise InvalidTransition("add without a linked provider position")
             return PositionUpdate(PositionChange.OPEN, None, _opened(signal))
+        if position.status in SETUPS:  # F072: the watched / conditional setup is entered
+            if t == MsgType.ADD:
+                raise InvalidTransition("add on a setup that was never entered")
+            opened = _opened(signal).model_copy(update={"condition_text": position.condition_text})
+            return PositionUpdate(PositionChange.OPEN, position, opened)
         _require_live(position, t)
         if not _same_contract(position, signal):
             raise InvalidTransition("entry names a different contract than the linked position")
@@ -150,6 +162,33 @@ def apply_correction(position: PositionState | None, changes: dict[str, Any]) ->
     return PositionUpdate(PositionChange.CORRECT, position, after)
 
 
+def _setup(position: PositionState | None, signal: NormalizedSignal) -> PositionUpdate | None:
+    """Watch / conditional (F072): open a setup, or restate one (a later conditional on a
+    watched underlying upgrades it). Never a card; no setup without an underlying."""
+    if signal.underlying is None:
+        return None
+    if position is not None and position.status not in SETUPS:
+        raise InvalidTransition(f"{signal.msg_type} on a {position.status} provider position")
+    conditional = signal.msg_type == MsgType.CONDITIONAL or (
+        position is not None and position.status == PositionStatus.CONDITIONAL
+    )
+    instrument = signal.instrument if signal.instrument in ("option", "stock") else None
+    stated = {
+        "instrument": instrument,
+        "expiry": signal.expiry,
+        "strike": signal.strike,
+        "option_right": signal.right,
+        "condition_text": signal.prose_condition,
+    }
+    base = position or PositionState(instrument=None, underlying=signal.underlying)
+    after = base.model_copy(
+        update={k: v for k, v in stated.items() if v is not None}
+        | {"status": PositionStatus.CONDITIONAL if conditional else PositionStatus.WATCH}
+    )
+    change = PositionChange.CONDITION_SET if conditional else PositionChange.WATCH
+    return PositionUpdate(change, position, after)
+
+
 def _opened(signal: NormalizedSignal) -> PositionState:
     instrument = "stock" if signal.msg_type == MsgType.STOCK_ENTRY else signal.instrument
     if instrument not in ("option", "stock") or signal.underlying is None:
@@ -184,6 +223,8 @@ def _same_contract(position: PositionState, signal: NormalizedSignal) -> bool:
 def _require_live(position: PositionState, t: MsgType) -> None:
     if position.status == PositionStatus.CLOSED:
         raise InvalidTransition(f"{t} on a closed provider position")
+    if position.status in SETUPS:
+        raise InvalidTransition(f"{t} on a {position.status} setup that was never entered")
 
 
 def contract_of(position: PositionState) -> Instrument:

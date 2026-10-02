@@ -201,6 +201,7 @@ cd frontend && pnpm dev                  # after F052
 | [F069](F069-signal-context-resolver.md) | Signal context resolver (reply chain, thread, stated contract) + deterministic cross-check of model links | F021, F033, F068 | FR-3, C31, PRD §10 |
 | [F070](F070-deterministic-fast-path.md) | Deterministic fast path: obvious whole messages settled by code, no model | F015, F016, F035, F069 | FR-7, C38 |
 | [F071](F071-provenance-holes.md) | Provenance for every field: `model` source, `field_sources` for plain fields, no model answer labelled as code | F015, F033, F070 | PRD §6, C31, FR-7 |
+| [F072](F072-signal-state-setups-reentry.md) | Signal state: watch / conditional setups and re-entries on provider positions | F020, F021, F069, F070 | FR-5, FR-16, C30, C32, C72 |
 
 ---
 

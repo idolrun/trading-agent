@@ -6,6 +6,7 @@ order over an in-memory copy of the provider's book. All I/O is here; `apply_eve
 import logging
 import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 
@@ -18,11 +19,14 @@ from app.decide.risk_snapshot import build_risk_snapshot
 from app.decide.types import DecisionInputs, FlagsView, LotView, ProposedAction, RiskSnapshot
 from app.dispatcher.types import ProcessingContext
 from app.interpret.models import LinkMethod, LinkOutcome, MsgType
-from app.interpret.signal import ParsedSignal, ParsedSignals
+from app.interpret.signal import ParsedSignal, ParsedSignals, ResolvedSource
 from app.ledger import repo as ledger
 from app.ledger.correlation import LinkDecision, LinkInputs, resolve_link
+from app.ledger.models import PositionStatus
 from app.ledger.positions import (
+    LIVE,
     OPENING,
+    SETUPS,
     InvalidTransition,
     PositionState,
     PositionUpdate,
@@ -76,8 +80,9 @@ class Planner:
         resolution: Resolution | None,
         now: datetime,
     ) -> list[SignalOutcome]:
-        """`book`: the lane's live positions; `resolution`: the context resolver's verdict for
-        this message (F069); None = no evidence, every book position a candidate."""
+        """`book`: the lane's book (live positions and today's setups, F072); `resolution`:
+        the context resolver's verdict for this message (F069); None = no evidence, every live
+        position a candidate."""
         env = ctx.envelope
         method = {
             "jev": LinkMethod.JEV,
@@ -97,10 +102,12 @@ class Planner:
                 norm = v.normalized
                 link = None
                 if norm is not None:
+                    live = {p: s for p, s in book.items() if s.status in LIVE}
+                    setups = {p: s for p, s in book.items() if s.status in SETUPS}
                     link = resolve_link(
                         norm,
                         sig.link_hint,
-                        LinkInputs(env.provider_id, dict(book), resolution),
+                        LinkInputs(env.provider_id, live, resolution, setups),
                         t_link=config.t_link,
                         hint_method=method,
                     )
@@ -110,7 +117,12 @@ class Planner:
                     position = book[position_id] if position_id else None
                 elif link is not None and link.outcome == LinkOutcome.NEW_POSITION:
                     position_id = position_id_for(signal_id)
-                if position is not None and position.instrument == "option" and norm is not None:
+                if (
+                    position is not None
+                    and position.status in LIVE  # a setup has no contract to scale against
+                    and position.instrument == "option"
+                    and norm is not None
+                ):
                     v = await self._scale_follow_up(v, norm, position, config, now)
                     norm = v.normalized
 
@@ -121,6 +133,15 @@ class Planner:
                         update = apply_to_position(position, norm)
                     except InvalidTransition as exc:
                         ledger_error = str(exc)
+                if update is not None and update.after.status == PositionStatus.CONDITIONAL:
+                    if update.after.condition_text is None:  # a conditional's own words (C30)
+                        words = {"condition_text": env.text}
+                        update = replace(update, after=update.after.model_copy(update=words))
+                reentry_of = (
+                    _reentry_of(sig)
+                    if link is not None and link.outcome == LinkOutcome.NEW_POSITION
+                    else None
+                )
 
                 lot = await self._lot(position_id) if position is not None else None
                 proposals = decide(
@@ -162,6 +183,7 @@ class Planner:
                         update=update,
                         lot_id=lot.lot_id if lot else None,
                         cards=proposals,
+                        reentry_of=reentry_of,
                     )
                 )
         return outcomes
@@ -308,3 +330,11 @@ class Planner:
         except Exception:
             logger.exception("risk snapshot failed")
             return None  # entries disabled "risk unknown"
+
+
+def _reentry_of(sig: ParsedSignal) -> uuid.UUID | None:
+    """F072: the position a "back in" re-enters (recorded by the fast path's re-entry rule)."""
+    source = sig.field_sources.get("reentry_of")
+    if isinstance(source, ResolvedSource) and "position_id" in source.inputs:
+        return uuid.UUID(source.inputs["position_id"])
+    return None

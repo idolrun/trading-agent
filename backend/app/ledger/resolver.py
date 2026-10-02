@@ -18,6 +18,7 @@ import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
@@ -28,6 +29,10 @@ from app.interpret.models import LinkMethod
 from app.ledger.positions import PositionState
 
 REPLY_DEPTH = 3
+# F072: words that re-open something the provider had ("back in", "re-entry", "reloaded")
+REENTRY = re.compile(
+    r"\b(?:back\s+in|re-?ent(?:ry|er|ered|ering)|in\s+again|reload(?:ed|ing)?)\b", re.IGNORECASE
+)
 _RIGHT_WORD = re.compile(r"\b(calls?|puts?)\b", re.IGNORECASE)
 _STRIKE = re.compile(r"^(\d+(?:\.\d+)?)([cp])?$", re.IGNORECASE)
 
@@ -42,6 +47,27 @@ class ParentLink:
     position_id: uuid.UUID
 
 
+class Prior(BaseModel):
+    """F072: a lane position closed today, or today's setup: what "back in" can re-enter."""
+
+    model_config = ConfigDict(frozen=True)
+
+    position_id: uuid.UUID
+    status: str
+    instrument: Literal["option", "stock"] | None
+    underlying: str
+    expiry: date | None = None
+    strike: Decimal | None = None
+    right: Literal["call", "put"] | None = None
+    opened_message_id: int | None = None  # the message that opened it (the card cites it)
+
+    @property
+    def complete(self) -> bool:
+        if self.instrument == "stock":
+            return True
+        return self.instrument == "option" and None not in (self.expiry, self.strike, self.right)
+
+
 class Resolution(BaseModel):
     """JSON-safe (graph state); `candidates` are always lane positions, in book order."""
 
@@ -52,6 +78,7 @@ class Resolution(BaseModel):
     candidates: tuple[uuid.UUID, ...] = ()
     method: LinkMethod | None = None  # reply | thread | contract | user_correction
     evidence: dict[str, Any] = {}
+    reentry: tuple[Prior, ...] = ()  # F072: filled only when the text says "back in" & co.
 
     @classmethod
     def chosen(cls, position_id: uuid.UUID) -> "Resolution":

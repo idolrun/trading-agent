@@ -2091,6 +2091,8 @@ export interface components {
         };
         /** PositionDetail */
         PositionDetail: {
+            /** Conditiontext */
+            conditionText?: string | null;
             /** Events */
             events: components["schemas"]["HistoryOut"][];
             /** Expiry */
@@ -2101,7 +2103,7 @@ export interface components {
              */
             id: string;
             /** Instrument */
-            instrument: string;
+            instrument: string | null;
             /** Iscorrected */
             isCorrected: boolean;
             /** Links */
@@ -2121,6 +2123,8 @@ export interface components {
             providerEntryPrice: string | null;
             /** Providerid */
             providerId: string;
+            /** Reentryofpositionid */
+            reentryOfPositionId?: string | null;
             /** Remainingfraction */
             remainingFraction: string;
             /** Status */
@@ -2138,6 +2142,8 @@ export interface components {
         };
         /** PositionOut */
         PositionOut: {
+            /** Conditiontext */
+            conditionText?: string | null;
             /** Expiry */
             expiry: string | null;
             /**
@@ -2146,7 +2152,7 @@ export interface components {
              */
             id: string;
             /** Instrument */
-            instrument: string;
+            instrument: string | null;
             /** Iscorrected */
             isCorrected: boolean;
             /**
@@ -2162,6 +2168,8 @@ export interface components {
             providerEntryPrice: string | null;
             /** Providerid */
             providerId: string;
+            /** Reentryofpositionid */
+            reentryOfPositionId?: string | null;
             /** Remainingfraction */
             remainingFraction: string;
             /** Status */
@@ -2181,7 +2189,7 @@ export interface components {
          * PositionStatus
          * @enum {string}
          */
-        PositionStatus: "open" | "trimmed" | "closed";
+        PositionStatus: "watch" | "conditional" | "open" | "trimmed" | "closed";
         /** PostgresStats */
         PostgresStats: {
             /** Connections */
