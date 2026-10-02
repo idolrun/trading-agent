@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import PostgresDsn, SecretStr, model_validator
+from pydantic import AliasChoices, Field, PostgresDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ALPACA_HOSTS = frozenset({"paper-api.alpaca.markets", "api.alpaca.markets"})
@@ -13,7 +13,7 @@ ROOT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ROOT_ENV_FILE, extra="ignore")
+    model_config = SettingsConfigDict(env_file=ROOT_ENV_FILE, extra="ignore", populate_by_name=True)
 
     environment: Literal["development", "test", "production"] = "development"
     log_level: str = "INFO"
@@ -35,7 +35,11 @@ class Settings(BaseSettings):
     # Broker / market data adapters (F010, F051). Alpaca: paper = paper trading, live = real money.
     broker_adapter: Literal["fake", "alpaca"] = "fake"
     marketdata_adapter: Literal["fake", "alpaca"] = "fake"
-    alpaca_endpoint: str = "https://paper-api.alpaca.markets"  # api.alpaca.markets = real money
+    # APCA_API_BASE_URL is Alpaca's own variable name; api.alpaca.markets = real money
+    alpaca_endpoint: str = Field(
+        "https://paper-api.alpaca.markets",
+        validation_alias=AliasChoices("APCA_API_BASE_URL", "ALPACA_ENDPOINT"),
+    )
     alpaca_api_key: str | None = None  # one key pair per process: never paper and live together
     alpaca_secret_key: SecretStr | None = None
     alpaca_stock_feed: Literal["iex", "sip"] = "iex"  # iex is free; sip needs a paid plan
@@ -72,9 +76,9 @@ class Settings(BaseSettings):
             raise ValueError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
         host = urlparse(self.alpaca_endpoint).netloc
         if host not in ALPACA_HOSTS:
-            raise ValueError(f"ALPACA_ENDPOINT must be one of {sorted(ALPACA_HOSTS)}")
+            raise ValueError(f"APCA_API_BASE_URL must be one of {sorted(ALPACA_HOSTS)}")
         if host == "api.alpaca.markets" and self.environment != "production":
-            raise ValueError("the live ALPACA_ENDPOINT needs ENVIRONMENT=production")
+            raise ValueError("the live APCA_API_BASE_URL needs ENVIRONMENT=production")
         return self
 
     @property

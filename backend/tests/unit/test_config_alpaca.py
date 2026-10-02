@@ -34,7 +34,13 @@ def test_live_alpaca_only_in_a_production_environment() -> None:
     settings(broker_adapter="alpaca", alpaca_endpoint=LIVE, environment="production", **KEYS)
 
 
+def test_the_endpoint_is_read_from_alpacas_own_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APCA_API_BASE_URL", "https://api.alpaca.markets")
+    with pytest.raises(ValidationError, match="production"):
+        settings(broker_adapter="alpaca", **KEYS)
+
+
 def test_the_endpoint_must_be_an_alpaca_host() -> None:
     settings(broker_adapter="alpaca", alpaca_endpoint="https://paper-api.alpaca.markets/v2", **KEYS)
-    with pytest.raises(ValidationError, match="ALPACA_ENDPOINT"):
+    with pytest.raises(ValidationError, match="APCA_API_BASE_URL"):
         settings(broker_adapter="alpaca", alpaca_endpoint="https://evil.example.com", **KEYS)
