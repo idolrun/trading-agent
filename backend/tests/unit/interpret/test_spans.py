@@ -157,3 +157,22 @@ def test_raw_not_in_text_always_fails(text: str, raw: str) -> None:
     if raw in text:
         return
     assert errors(text, expiry_token=lit(raw, raw))
+
+
+def test_a_plain_fields_literal_span_is_verified_too() -> None:
+    """F071: a `field_sources` literal must be exactly where it says, like any field's."""
+    good = ParsedSignals(
+        signals=[
+            ParsedSignal(
+                msg_type="trim",
+                fields=SignalFields(exit_fraction="half"),
+                field_sources={"exit_fraction": LiteralSpan(raw="half", start=5, end=9)},
+            )
+        ],
+        interpreter="jev",
+    )
+    assert verify_literal_spans(good, "trim half") == []
+    bad = good.model_copy(deep=True)
+    bad.signals[0].field_sources["exit_fraction"] = LiteralSpan(raw="half", start=0, end=4)
+    [error] = verify_literal_spans(bad, "trim half")
+    assert error.field == "exit_fraction"

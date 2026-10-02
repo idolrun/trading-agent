@@ -47,6 +47,27 @@ FRACTION = re.compile(
     re.IGNORECASE,
 )
 
+# What a fraction word says (F071: an exit_fraction is literal when one of these is in the text).
+FRACTION_VALUES = {
+    "half": "half",
+    "1/2": "half",
+    "50%": "half",
+    "third": "third",
+    "1/3": "third",
+    "33%": "third",
+    "quarter": "quarter",
+    "1/4": "quarter",
+    "25%": "quarter",
+    "all": "all",
+    "rest": "all",
+    "100%": "all",
+}
+
+
+def fraction_value(word: str) -> str | None:
+    return FRACTION_VALUES.get(" ".join(word.lower().split()).removeprefix("a "))
+
+
 # Common English / trading words that are not tickers. Over-finding is fine (models choose);
 # this only keeps the candidate list short.
 STOP_WORDS = frozenset(

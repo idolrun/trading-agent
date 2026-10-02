@@ -17,6 +17,7 @@ from app.interpret.signal import (
     ExitFraction,
     LinkHint,
     LiteralSpan,
+    ModelSource,
     ParsedSignal,
     ParsedSignals,
 )
@@ -165,6 +166,7 @@ def to_parsed_signals(
                         correction_target_message_id=None if target is None else int(target),
                     ),
                     link_hint=_link(s.links_to, ctx),
+                    field_sources=_judged(s),
                 )
             )
         )
@@ -176,6 +178,25 @@ def to_parsed_signals(
             for e in verify_literal_spans(parsed, text)
         ]
     return parsed, errors
+
+
+def _judged(s: Any) -> dict[str, ModelSource]:
+    """F071: the plain fields the LLM set are its judgment (no span, no confidence)."""
+    plain = {
+        "msg_type": s.msg_type,
+        "instrument": s.instrument,
+        "exit_fraction": s.exit_fraction,
+        "stop_basis": s.stop_basis,
+        "candle_close": s.candle_close or None,
+        "breakeven_stop": s.breakeven_stop or None,
+        "stop_removed": s.stop_removed or None,
+        "is_add": s.is_add or None,
+    }
+    return {
+        name: ModelSource(interpreter="llm", question=name)
+        for name, value in plain.items()
+        if value is not None
+    }
 
 
 def _link(links_to: str | None, ctx: ProviderContext) -> LinkHint:

@@ -92,3 +92,15 @@ def test_scope_guard_matches_portfolio_keys_and_lot_ids_only() -> None:
     assert scope_violation('{\\"Balance\\": 1200}', frozenset())  # escaped inside a string
     assert scope_violation(f"close {lot} now", frozenset({lot}))
     assert scope_violation("lotto size, balance the book, pnl was great", frozenset()) is None
+
+
+def test_plain_fields_the_llm_sets_are_labelled_its_judgment() -> None:
+    """F071: no span and no confidence behind msg_type / exit fraction: `model`, not code."""
+    from app.interpret.signal import ModelSource
+
+    out = parse([{"msg_type": "trim", "exit_fraction": "half", "links_to": "ambiguous"}])
+    parsed, errors = to_parsed_signals(out, ctx("trimming some"))
+    assert errors == []
+    src = parsed.signals[0].field_sources
+    assert set(src) == {"msg_type", "exit_fraction"}
+    assert all(isinstance(s, ModelSource) and s.interpreter == "llm" for s in src.values())

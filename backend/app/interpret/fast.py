@@ -11,7 +11,7 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from app.interpret.candidates import EXPIRY, STOP_WORDS
+from app.interpret.candidates import EXPIRY, STOP_WORDS, fraction_value
 from app.interpret.signal import (
     F,
     LinkHint,
@@ -59,19 +59,6 @@ STOP_BE = re.compile(
     r"|^(?:be|breakeven)\s+stops?$",
     re.IGNORECASE,
 )
-_FRACTIONS = {
-    "half": "half",
-    "1/2": "half",
-    "third": "third",
-    "a third": "third",
-    "1/3": "third",
-    "quarter": "quarter",
-    "a quarter": "quarter",
-    "1/4": "quarter",
-    "50%": "half",
-    "25%": "quarter",
-    "33%": "third",
-}
 _TRIM_VERB_ONLY = re.compile(r"^(?:took|taking|sold|sell)", re.IGNORECASE)  # need a fraction
 
 
@@ -141,6 +128,7 @@ def _entry(text: str, offset: int, _r: Resolution | None, tiers: list[str]) -> P
         instrument="option",
         fields=fields,
         link_hint=LinkHint(target="new_position", confidence=Decimal(1)),
+        field_sources={"msg_type": _rule("option_entry"), "instrument": _span(m, "strike", offset)},
     )
 
 
@@ -163,6 +151,7 @@ def _trim_or_exit(
                 underlying=_lit(m, "ticker", offset, "underlying"), exit_fraction="all"
             ),
             link_hint=hint,
+            field_sources={"msg_type": _rule("exit"), "exit_fraction": _rule("exit")},
         )
     m = TRIM.match(text)
     if m is None or _ticker_is_a_word(m):
@@ -171,9 +160,7 @@ def _trim_or_exit(
     if raw_fraction is None and _TRIM_VERB_ONLY.match(text):
         return None  # "sold" alone: all or part? Jev decides
     fraction = (
-        "not_stated"
-        if raw_fraction is None
-        else _FRACTIONS.get(" ".join(raw_fraction.lower().split()), "other_stated")
+        "not_stated" if raw_fraction is None else fraction_value(raw_fraction) or "other_stated"
     )
     return ParsedSignal(
         msg_type="trim",
@@ -181,6 +168,10 @@ def _trim_or_exit(
             underlying=_lit(m, "ticker", offset, "underlying"), exit_fraction=fraction
         ),
         link_hint=hint,
+        field_sources={
+            "msg_type": _rule("trim"),
+            "exit_fraction": _span(m, "fraction", offset) if raw_fraction else _rule("trim"),
+        },
     )
 
 
@@ -194,6 +185,10 @@ def _stop_breakeven(
         msg_type="stop_move",
         fields=SignalFields(breakeven_stop=True),
         link_hint=hint,
+        field_sources={
+            "msg_type": _rule("stop_breakeven"),
+            "breakeven_stop": _rule("stop_breakeven"),
+        },
     )
 
 
@@ -202,4 +197,6 @@ def _ticker_is_a_word(m: re.Match[str]) -> bool:
     return ticker is not None and ticker.lstrip("$").lower() in STOP_WORDS
 
 
-RULE_SOURCE = ResolvedSource(rule="fast_path")  # provenance of a fast-path msg_type (F071)
+def _rule(name: str) -> ResolvedSource:
+    """Provenance of what a fast-path rule decided (F071): code, not a model, not a span."""
+    return ResolvedSource(rule=f"fast:{name}")

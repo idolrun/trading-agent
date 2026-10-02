@@ -10,10 +10,16 @@ from typing import Any, Literal
 
 from typesafe_sdk import ChoiceAnswer, NoulAnswer, ScoreAnswer
 
-from app.interpret.candidates import Candidate, Candidates
+from app.interpret.candidates import Candidate, Candidates, fraction_value
 from app.interpret.context import ProviderContext
 from app.interpret.models import MsgType
-from app.interpret.signal import LiteralSpan, ParsedSignal, ParsedSignals, ResolvedSource
+from app.interpret.signal import (
+    LiteralSpan,
+    ModelSource,
+    ParsedSignal,
+    ParsedSignals,
+    ResolvedSource,
+)
 from app.interpret.spans import parse_raw, verify_literal_spans
 from app.runtime_config.schema import RuntimeConfig
 
@@ -107,8 +113,12 @@ def map_answers(
             return False
         return True
 
+    def model(question: str, p: float) -> ModelSource:
+        return ModelSource(interpreter=interpreter, question=question, confidence=_d(p))
+
     mt = choice("msg_type")
     msg_type, conf = MsgType(mt.choice), _d(mt.confidence)
+    sources: dict[str, Any] = {"msg_type": model("msg_type", mt.confidence)}
     # C52: "trim or soft exit?" at a middling exit intent is a soft exit, never a sell order.
     exit_intent = answers.get("exit_intent")
     if msg_type in (MsgType.TRIM, MsgType.SOFT_EXIT) and conf < t_type:
@@ -119,10 +129,14 @@ def map_answers(
             and round(exit_intent.score) == 2
         ):
             msg_type, conf = MsgType.SOFT_EXIT, both
+            sources["msg_type"] = ResolvedSource(  # code's C52 rule over Jev's probabilities
+                rule="c52_soft_exit", inputs={"trim_or_soft_exit": str(both)}
+            )
     signal_count = choice("signal_count").choice
     base = JevResult(msg_type, conf, signal_count, parsed=None, hints=compact(answers))
     if msg_type in FEED_TYPES:  # no fields needed; routing decides on t_chat
-        parsed = ParsedSignals(signals=[ParsedSignal(msg_type=msg_type)], interpreter=interpreter)
+        signal = ParsedSignal(msg_type=msg_type, field_sources=sources)
+        parsed = ParsedSignals(signals=[signal], interpreter=interpreter)
         return replace(base, parsed=parsed)
 
     fields: dict[str, Any] = {}
@@ -180,10 +194,10 @@ def map_answers(
     tier = choice("size_tier")
     if tier.choice != "not_stated" and confident("size_tier", tier):
         m = re.search(rf"\b{re.escape(tier.choice)}\b", text, re.IGNORECASE)
-        source: LiteralSpan | ResolvedSource = (
+        source: LiteralSpan | ModelSource = (
             LiteralSpan(raw=m.group(0), start=m.start(), end=m.end())
             if m
-            else ResolvedSource(rule="jev_size_tier", inputs={"answer": tier.choice})
+            else model("size_tier", tier.confidence)  # read from the provider's lexicon
         )
         fields["size_tier"] = {"value": tier.choice.casefold(), "source": source}
         confidence["size_tier"] = _d(tier.confidence)
@@ -201,10 +215,12 @@ def map_answers(
         a = choice(name)
         if confident(name, a) and a.choice not in ("not_applicable", "unclear"):
             fields[name] = a.choice
+            sources[name] = _fraction_span(candidates, a.choice) or model(name, a.confidence)
     for name in FLAGS:
         p = noul(name).noul
         if _d(max(p, 1 - p)) >= t_field:
             fields[name] = p >= 0.5
+            sources[name] = model(name, max(p, 1 - p))
         elif name in STOP_FLAGS and has_stop:
             reasons.append(f"{name}: yes/no uncertain ({p:.2f})")
     # A worded condition changes the trade, so any real chance of one goes to the LLM; a
@@ -238,6 +254,7 @@ def map_answers(
             "fields": fields,
             "link_hint": {"target": target, "confidence": _d(link.confidence)},
             "field_confidence": confidence,
+            "field_sources": sources,
         }
     )
     parsed = ParsedSignals(signals=[signal], interpreter=interpreter)
@@ -245,6 +262,14 @@ def map_answers(
         reasons += [f"{e.field}: {e.reason}" for e in errors]
         return replace(base, slow_reasons=tuple(reasons))
     return replace(base, parsed=parsed)
+
+
+def _fraction_span(candidates: Candidates, value: str) -> LiteralSpan | None:
+    """An exit fraction the text itself says ("half", "1/2", "50%"): literal, not a judgment."""
+    for c in candidates.fraction_words:
+        if fraction_value(c.text) == value:
+            return LiteralSpan(raw=c.text, start=c.start, end=c.end, candidate_id=c.id)
+    return None
 
 
 def _right_span(text: str, strike: LiteralSpan | None, right: str) -> LiteralSpan | None:

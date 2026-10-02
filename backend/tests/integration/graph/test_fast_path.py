@@ -19,7 +19,7 @@ from app.inbox.models import StageTiming
 from app.interpret.jev.client import JevInterpreter
 from app.interpret.models import LinkMethod, MessageLink, Signal
 from app.ledger.models import ProviderPosition
-from app.pipeline.apply import signal_id_for
+from app.pipeline.apply import signal_id_for, stored_signal
 from app.runtime_config.schema import JevConfig, RuntimeConfig
 from tests.integration.conftest import _url
 from tests.integration.interpret.test_jev_client import ScriptedJev, response
@@ -70,6 +70,14 @@ async def test_entry_and_replied_trim_never_call_jev(h: Harness, db_session: Asy
     assert client.calls == 0
     sigs = {s.message_id: s for s in (await db_session.scalars(select(Signal))).all()}
     assert {s.interpreter for s in sigs.values()} == {"fast"}
+    # F071: provenance is stored and reads back into the contract
+    trim_row = sigs[trim.key.message_id]
+    assert trim_row.field_sources["msg_type"] == {
+        "kind": "resolved",
+        "rule": "fast:trim",
+        "inputs": {},
+    }
+    assert stored_signal(trim_row).field_sources["exit_fraction"].kind == "literal"
     position = await db_session.get(ProviderPosition, opened_position(entry))
     assert position is not None
     assert (position.underlying, position.strike, position.remaining_fraction) == (

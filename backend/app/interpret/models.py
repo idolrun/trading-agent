@@ -24,6 +24,7 @@ from app.db import (
     choice,
     identity_pk,
     jsonb,
+    jsonb_object,
     now_default,
     positive_ids,
     smallint,
@@ -112,6 +113,7 @@ class Signal(SQLModel, table=True):
     msg_type: MsgType = choice()
     instrument: SignalInstrument | None = choice(default=None, nullable=True)
     fields: dict[str, Any] = jsonb()
+    field_sources: dict[str, Any] = jsonb_object()  # F071: provenance of the plain fields
     interpreter: Interpreter = choice()
     model_call_id: int | None = bigint(nullable=True, foreign_key="model_calls.id")
     stale: bool

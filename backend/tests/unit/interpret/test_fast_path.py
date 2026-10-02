@@ -114,3 +114,18 @@ def test_follow_up_rules() -> None:
 @pytest.mark.parametrize("text", ["sold", "out most", "out 2", "nice trim here", "back in"])
 def test_unclear_follow_ups_go_to_jev(text: str) -> None:
     assert parse(text, UNIQUE) is None
+
+
+def test_fast_path_provenance_is_code_or_the_text() -> None:
+    """F071: a fast-path type is a code rule; a stated fraction is a literal span."""
+    from app.interpret.signal import LiteralSpan, ResolvedSource
+
+    parsed = fast_parse("trim half", UNIQUE, TIERS)
+    assert parsed is not None
+    src = parsed.signals[0].field_sources
+    assert isinstance(src["msg_type"], ResolvedSource) and src["msg_type"].rule == "fast:trim"
+    assert isinstance(src["exit_fraction"], LiteralSpan) and src["exit_fraction"].raw == "half"
+    entry = fast_parse("SPY 765P .54", None, TIERS)
+    assert entry is not None
+    instrument = entry.signals[0].field_sources["instrument"]
+    assert isinstance(instrument, LiteralSpan) and instrument.raw == "765P"

@@ -370,7 +370,7 @@ Rules:
 | Any required field whose Choice is `none`/`not_stated`, or confidence < T_field | Slow path (LLM). |
 | `signal_count = multiple` | Slow path. |
 | `links_to = ambiguous`, confidence < T_link, a pick outside the resolver's candidates or contradicting the message's contract | Review card (C31, F069). No model upgrades this. |
-| Everything confident and complete | `assemble_signal`: fields are **literal** (a span chosen by Jev) or **resolved** (dates by code). |
+| Everything confident and complete | `assemble_signal`: fields are **literal** (a span chosen by Jev) or **resolved** (dates by code). Plain fields (type, instrument, exit fraction, stop basis, flags) carry `field_sources`: `literal` when the text says it ("half"), `resolved` for a code rule (fast path, C52), `model` for a model's judgment (F071). |
 | Slow path fails or exceeds its timebox | Raw review card + "parser degraded" alert (FR-9). |
 
 The thresholds (`T_chat`, `T_field`, `T_link`) are config values, tuned on the replay dev set to keep actionable recall ≥ 98% (PRD §17). Start conservative: T_chat = 0.9, T_field = 0.8, T_link = 0.8.

@@ -38,7 +38,24 @@ def verify_literal_spans(parsed: ParsedSignals, text: str) -> list[SpanError]:
         for name, field in _literal_fields(signal.fields):
             if (reason := _check(name, field, text)) is not None:
                 errors.append(SpanError(i, name, reason))
+        for name, source in signal.field_sources.items():  # F071: plain fields' literal spans
+            if isinstance(source, LiteralSpan) and (reason := _span_only(source, text)):
+                errors.append(SpanError(i, name, reason))
     return errors
+
+
+def _span_only(span: LiteralSpan, text: str) -> str | None:
+    """The span is exactly where it says (the value check belongs to the field's own rule)."""
+    if not span.raw:
+        return "empty literal"
+    if span.start is None or span.end is None:
+        start = text.find(span.raw)
+        if start < 0:
+            return f"literal {span.raw!r} does not occur in the message"
+        span.start, span.end = start, start + len(span.raw)
+    elif text[span.start : span.end] != span.raw:
+        return f"span {span.start}:{span.end} does not match literal {span.raw!r}"
+    return None
 
 
 def _literal_fields(fields: SignalFields) -> list[tuple[str, F[Any]]]:

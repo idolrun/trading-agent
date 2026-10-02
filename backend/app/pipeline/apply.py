@@ -365,6 +365,10 @@ async def _insert_signal(db: AsyncSession, inp: ApplyInput, o: SignalOutcome) ->
             msg_type=o.parsed.msg_type,
             instrument=o.parsed.instrument,
             fields=o.parsed.fields.model_dump(mode="json", exclude_none=True),  # re-parseable
+            field_sources={
+                k: v.model_dump(mode="json", exclude_none=True)
+                for k, v in o.parsed.field_sources.items()
+            },
             interpreter=inp.interpreter,
             model_call_id=inp.model_call_id,
             stale=ctx.stale,
@@ -383,6 +387,7 @@ def stored_signal(sig: Signal) -> ParsedSignal:
         msg_type=sig.msg_type,
         instrument=sig.instrument,
         fields=SignalFields.model_validate(sig.fields),
+        field_sources=sig.field_sources,  # validated into Provenance
     )
 
 

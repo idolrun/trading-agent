@@ -11,7 +11,7 @@ from app.interpret.jev.questions import NUMBER_ROLES, build_questions
 from app.interpret.jev.state import build_jev_state
 from app.interpret.models import MsgType
 from app.interpret.route import route
-from app.interpret.signal import LiteralSpan
+from app.interpret.signal import LiteralSpan, ModelSource, ResolvedSource
 from tests.jev_helpers import CFG, EXAMPLE, c, example_answers, n, score
 from tests.llm_helpers import ctx
 
@@ -215,3 +215,62 @@ def test_links_to_offers_only_the_resolvers_candidates() -> None:
     q = build_questions(narrowed, find_candidates("trim half"), [])["links_to"]
     assert isinstance(q, Choice)
     assert set(q.criteria) == {str(keep), "new_position", "ambiguous"}
+
+
+EXIT_ANSWERS = {
+    "msg_type": c("trim", 0.93),
+    "ticker": c("not_stated"),
+    "right": c("not_stated"),
+    "size_tier": c("not_stated"),
+    "exit_fraction": c("half", 0.95),
+}
+
+
+def test_plain_fields_say_a_model_judged_them() -> None:
+    """F071: msg_type, instrument, stop basis and flags are Jev's judgment, labelled so."""
+    _, decision = run()
+    assert decision.parsed is not None
+    [signal] = decision.parsed.signals
+    src = signal.field_sources
+    assert isinstance(src["msg_type"], ModelSource)
+    assert (src["msg_type"].interpreter, src["msg_type"].question) == ("jev", "msg_type")
+    assert src["msg_type"].confidence == Decimal("0.95")
+    for name in ("instrument", "stop_basis", "candle_close", "is_add"):
+        assert isinstance(src[name], ModelSource), name
+
+
+def test_an_exit_fraction_the_text_says_is_literal() -> None:
+    _, decision = run("sold half", **EXIT_ANSWERS)
+    assert decision.parsed is not None
+    source = decision.parsed.signals[0].field_sources["exit_fraction"]
+    assert isinstance(source, LiteralSpan) and source.raw == "half"
+    assert "sold half"[source.start : source.end] == "half"
+
+
+def test_an_exit_fraction_the_text_does_not_say_is_a_judgment() -> None:
+    _, decision = run("took some here", **EXIT_ANSWERS)
+    assert decision.parsed is not None
+    assert isinstance(decision.parsed.signals[0].field_sources["exit_fraction"], ModelSource)
+
+
+def test_a_size_tier_not_in_the_text_is_a_model_judgment_not_code() -> None:
+    """Before F071 it was labelled `resolved` (computed by code), which it is not."""
+    _, decision = run("spy 770c .95, sl 769 spy")
+    assert decision.parsed is not None
+    tier = decision.parsed.signals[0].fields.size_tier
+    assert tier is not None and isinstance(tier.source, ModelSource)
+
+
+def test_the_c52_soft_exit_rule_is_code() -> None:
+    text = "might take some here"
+    answers = example_answers(
+        msg_type=c("trim", 0.5, soft_exit=0.45),
+        exit_intent=score(2.1),
+        ticker=c("not_stated"),
+        right=c("not_stated"),
+        size_tier=c("not_stated"),
+    )
+    mapped = map_answers(answers, ctx(text), find_candidates(text), CFG)
+    assert mapped.msg_type is MsgType.SOFT_EXIT and mapped.parsed is not None
+    source = mapped.parsed.signals[0].field_sources["msg_type"]
+    assert isinstance(source, ResolvedSource) and source.rule == "c52_soft_exit"
