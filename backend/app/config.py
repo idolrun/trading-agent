@@ -3,10 +3,12 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
-from pydantic import PostgresDsn, SecretStr
+from pydantic import PostgresDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+ALPACA_HOSTS = frozenset({"paper-api.alpaca.markets", "api.alpaca.markets"})
 ROOT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
@@ -30,9 +32,15 @@ class Settings(BaseSettings):
     ingest_max_skew_s: int = 300
     # Background services (tests switch them off to drive them by hand).
     background_enabled: bool = True
-    # Broker / market data adapters (F010). Only fakes until F051 (OD-3, OD-4).
-    broker_adapter: Literal["fake"] = "fake"
-    marketdata_adapter: Literal["fake"] = "fake"
+    # Broker / market data adapters (F010, F051). Alpaca: paper = paper trading, live = real money.
+    broker_adapter: Literal["fake", "alpaca"] = "fake"
+    marketdata_adapter: Literal["fake", "alpaca"] = "fake"
+    alpaca_endpoint: str = "https://paper-api.alpaca.markets"  # api.alpaca.markets = real money
+    alpaca_api_key: str | None = None  # one key pair per process: never paper and live together
+    alpaca_secret_key: SecretStr | None = None
+    alpaca_stock_feed: Literal["iex", "sip"] = "iex"  # iex is free; sip needs a paid plan
+    alpaca_options_feed: Literal["indicative", "opra"] = "indicative"  # opra needs a paid plan
+    alpaca_poll_interval_s: float = 5.0  # underlying-price polling (the order stream is pushed)
     # Web Push (F029). Unset -> push disabled (SSE still works).
     vapid_private_key: SecretStr | None = None
     vapid_public_key: str | None = None
@@ -55,6 +63,19 @@ class Settings(BaseSettings):
     # Integration tests only (tests/integration/conftest.py).
     test_database_url: PostgresDsn | None = None
     test_database_owner_url: PostgresDsn | None = None
+
+    @model_validator(mode="after")
+    def _alpaca_settings(self) -> "Settings":
+        if "alpaca" not in (self.broker_adapter, self.marketdata_adapter):
+            return self
+        if not self.alpaca_api_key or self.alpaca_secret_key is None:
+            raise ValueError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
+        host = urlparse(self.alpaca_endpoint).netloc
+        if host not in ALPACA_HOSTS:
+            raise ValueError(f"ALPACA_ENDPOINT must be one of {sorted(ALPACA_HOSTS)}")
+        if host == "api.alpaca.markets" and self.environment != "production":
+            raise ValueError("the live ALPACA_ENDPOINT needs ENVIRONMENT=production")
+        return self
 
     @property
     def ungated_models_allowed(self) -> bool:

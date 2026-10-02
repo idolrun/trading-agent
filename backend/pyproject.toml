@@ -9,6 +9,7 @@ dependencies = [
     "discord-py-self>=2.1.0",
     "exchange-calendars>=4.13.2",
     "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
     "langchain>=1.4.2",
     "langchain-anthropic>=1.7.4",
     "langchain-deepseek>=1.1.1",
@@ -22,11 +23,11 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.54",
     "sqlmodel>=0.0.47",
     "typesafe-sdk>=0.7.2",
+    "websockets>=16.1.1",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "hypothesis>=6.168.3",
     "mypy>=2.3.1",
     "pytest>=9.1.1",

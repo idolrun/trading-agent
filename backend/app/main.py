@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import make_url, text
 
 from app.alerts.service import AlertService
+from app.alpaca_api import AlpacaApi
 from app.api.errors import ERROR_RESPONSES, ApiError, api_error_handler, validation_error_handler
 from app.api.origin_check import origin_check
 from app.api.routes import alerts as alerts_routes
@@ -34,6 +35,7 @@ from app.api.routes import users as users_routes
 from app.auth.audit import AuditService
 from app.auth.rate_limit import SlidingWindowLimiter
 from app.auth.service import AuthService
+from app.broker.alpaca import AlpacaBroker
 from app.broker.fake import FakeBroker
 from app.broker.port import BrokerClient, BrokerEvents
 from app.broker.simulated import SimulatedBroker
@@ -68,6 +70,7 @@ from app.llm.registry import alert_missing_keys
 from app.logging import configure_logging
 from app.manual.corrections import Corrections
 from app.manual.service import ManualService
+from app.marketdata.alpaca import AlpacaMarketData
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
 from app.markettime import ControlledClock, SystemClock
@@ -133,11 +136,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.audit = AuditService(session_factory)
     app.state.auth = AuthService(session_factory, settings, app.state.clock, app.state.audit)
-    # Only fakes until F051 (settings.broker_adapter / marketdata_adapter == "fake").
     fake_broker = FakeBroker(app.state.clock)
     broker: BrokerClient = fake_broker
     broker_events: BrokerEvents = fake_broker
     marketdata: MarketData = FakeMarketData(app.state.clock)
+    alpaca: AlpacaApi | None = None
+    if "alpaca" in (settings.broker_adapter, settings.marketdata_adapter):
+        assert settings.alpaca_api_key and settings.alpaca_secret_key  # noqa: S101 — Settings validates
+        alpaca = AlpacaApi(
+            settings.alpaca_api_key,
+            settings.alpaca_secret_key.get_secret_value(),
+            settings.alpaca_endpoint,
+        )
+    if alpaca is not None and settings.broker_adapter == "alpaca":
+        alpaca_broker = AlpacaBroker(alpaca, app.state.clock)
+        broker, broker_events = alpaca_broker, alpaca_broker
+    if alpaca is not None and settings.marketdata_adapter == "alpaca":
+        marketdata = AlpacaMarketData(
+            alpaca,
+            app.state.clock,
+            stock_feed=settings.alpaca_stock_feed,
+            options_feed=settings.alpaca_options_feed,
+            poll_interval_s=settings.alpaca_poll_interval_s,
+        )
     app.state.broker = broker
     app.state.broker_events = broker_events
     app.state.marketdata = marketdata
@@ -428,6 +449,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if graph_deps is not None and graph_deps.laya is not None:
             graph_deps.laya.close()
         await graph_pool.close()
+        if alpaca is not None:
+            await alpaca.aclose()
         await engine.dispose()
 
 

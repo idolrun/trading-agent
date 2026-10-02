@@ -3100,6 +3100,7 @@ dependencies = [
     { name = "discord-py-self" },
     { name = "exchange-calendars" },
     { name = "fastapi", extra = ["standard"] },
+    { name = "httpx" },
     { name = "langchain" },
     { name = "langchain-anthropic" },
     { name = "langchain-deepseek" },
@@ -3113,11 +3114,11 @@ dependencies = [
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
     { name = "typesafe-sdk" },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "hypothesis" },
     { name = "mypy" },
     { name = "pytest" },
@@ -3131,6 +3132,7 @@ requires-dist = [
     { name = "discord-py-self", specifier = ">=2.1.0" },
     { name = "exchange-calendars", specifier = ">=4.13.2" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.141.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain", specifier = ">=1.4.2" },
     { name = "langchain-anthropic", specifier = ">=1.7.4" },
     { name = "langchain-deepseek", specifier = ">=1.1.1" },
@@ -3144,11 +3146,11 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.54" },
     { name = "sqlmodel", specifier = ">=0.0.47" },
     { name = "typesafe-sdk", specifier = ">=0.7.2" },
+    { name = "websockets", specifier = ">=16.1.1" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "hypothesis", specifier = ">=6.168.3" },
     { name = "mypy", specifier = ">=2.3.1" },
     { name = "pytest", specifier = ">=9.1.1" },

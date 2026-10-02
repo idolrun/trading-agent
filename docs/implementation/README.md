@@ -180,7 +180,7 @@ cd frontend && pnpm dev                  # after F052
 | [F048](F048-evalkit.md) | Evaluation kit | F035, F031 | §17, C64, C67 |
 | [F049](F049-observability.md) | Observability & health metrics | F035, F040 | PRD §16, TRD §11 |
 | [F050](F050-message-api-adapter.md) | Real Message API adapter (**blocked**) | F011, F014 | §15, OD-1/2 |
-| [F051](F051-broker-marketdata-adapters.md) | Real broker & market-data adapters (**blocked**) | F010, F040 | §15, OD-3/4/16 |
+| [F051](F051-broker-marketdata-adapters.md) | Alpaca broker & market-data adapters (built; paper contract suite pending) | F010, F040 | §15, OD-3/4/16 |
 | [F052](F052-frontend-foundation.md) | Frontend foundation & contract | Backend gate | FR-25 |
 | [F053](F053-frontend-auth.md) | Password login, user management & step-up UI | F052 | PRD §13 |
 | [F054](F054-frontend-live-updates-push.md) | Live updates & push (PWA) | F053 | FR-26, C21 |
@@ -530,6 +530,7 @@ Strict numeric order F001 → F064. Allowed parallelism (only if two agents work
 | OD-32 | (2026-09-29) Underlying stops trigger on the last trade: calls / long stock at `last ≤ level`, puts at `last ≥ level` | F044 |
 | OD-27 | (2026-09-29) Kill switch scope: entry/add cards and entries are disabled; exit and stop cards are still created | F024, F047 |
 | OD-31 | (2026-09-29) Flatten scope: exits tracked lots only; foreign lots are untouched (C47 read-only; a foreign lot can still be sold by an explicit manual exit) | F047 |
+| OD-34 | (2026-10-02) **Broker and market data = Alpaca**; the paper stage runs on the Alpaca paper account (`BROKER_ADAPTER=alpaca`, `ALPACA_ENDPOINT=https://paper-api.alpaca.markets`). Fills arrive on the `trade_updates` WebSocket (`execution_id` = fill id); `client_order_id` is Alpaca's own unique field. **Alpaca lists US equity/ETF options only: no SPX/SPXW**, so those signals become review cards (accepted by the user). Free data: stocks IEX, options indicative (delayed) | F051 |
 
 ### 10.1a Context-only decision-log entries
 C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple channels), C6 (= C14, approval for every order action — F036), C7 (no prediction), C10 (options; revised by C55 stocks), C3 (trusted providers), C9 (grouping per provider/company — realised as per-provider sequencing, C88), C27 (loss rule dropped), C68/C70 (non-goals: prediction, spreads, short selling, extended hours, multi-user, images) produce no feature. Any feature that would touch a non-goal must stop and ask.
@@ -550,13 +551,13 @@ C1 (single user, own money — no `user_id` columns), C2 (Discord, multiple chan
 |---|---|---|---|
 | OD-1 | Message API delivery: redelivery ≥ 10 min or history API; webhook vs websocket | F050 (real adapter); F011 payload mapping is provisional | Webhook + history API port with fake |
 | OD-2 | Message API fields: edit/delete events, heartbeat, snowflakes, stable author IDs, edit sequence | F050, F038 (edit path), F013 (heartbeat) | Provisional envelope in F011 |
-| OD-3 | Broker + account type (PDT) | F051, go-live | Fake broker; `pdt_day_trade_limit` absent from config until decided |
-| OD-4 | Market-data source incl. real-time SPX index | F051 | Fake market data |
+| OD-3 | Broker + account type (PDT) | F051, go-live | Alpaca (OD-34); account type / PDT still open; `pdt_day_trade_limit` absent from config until decided |
+| OD-4 | Market-data source incl. real-time SPX index | F051 | Alpaca (OD-34); no SPX index data or SPXW options (accepted gap); real-time option quotes need the paid OPRA plan |
 | OD-6 | Note guard accept? (TRD recommends) | F034 guard step | Guard implemented behind `note_guard_enabled` config (default **true** per TRD recommendation) — **confirm** |
 | OD-7 | LLM vendors and chain order; DeepSeek first-party vs US-hosted | F031 config, go-live | Registry supports all; chain empty until configured |
 | OD-8 | Jev go/no-go (≤ 300 ms p95) | go-live path | Both paths built |
 | OD-9 | Managed Postgres provider, RPO≈0 mechanism | F064 | — |
-| OD-10 | Fill intake: broker stream vs polling | F040 | One `BrokerEvents` port; fake pushes events; real adapter chooses |
+| OD-10 | Fill intake: broker stream vs polling | F040 | One `BrokerEvents` port; Alpaca adapter streams `trade_updates` (OD-34), fake pushes |
 | OD-12 | Behaviour when market data unavailable | F019, F041 | Validation failure → review card + `market_data` alert; entries not approvable (never guess) — **confirm** |
 | OD-13 | History of current-state rows | F005 | `*_events` tables (proposed, included) — **confirm** |
 | OD-14 | Who fires supersession | F025/F026 | Cards module inside `apply` tx; resumes approval graph after commit — **confirm** |
