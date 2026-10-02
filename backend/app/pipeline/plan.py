@@ -79,9 +79,11 @@ class Planner:
         """`book`: the lane's live positions; `resolution`: the context resolver's verdict for
         this message (F069); None = no evidence, every book position a candidate."""
         env = ctx.envelope
-        method = {"jev": LinkMethod.JEV, "laya": LinkMethod.LAYA}.get(
-            parsed.interpreter, LinkMethod.LLM
-        )
+        method = {
+            "jev": LinkMethod.JEV,
+            "laya": LinkMethod.LAYA,
+            "fast": LinkMethod.CODE,
+        }.get(parsed.interpreter, LinkMethod.LLM)
         flags = await self._flags_view()
         risk = None
         if any(s.msg_type in SIZED_TYPES for s in parsed.signals):

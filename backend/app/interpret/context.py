@@ -67,6 +67,7 @@ class ProviderContext(_Strict):
         if isinstance(data, dict) and "link_candidates" not in data:
             return {**data, "link_candidates": data.get("provider_book", [])}
         return data
+
     provider_profile: dict[str, list[str]] = {}  # lexicon/aliases from the store (F035)
 
 

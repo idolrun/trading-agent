@@ -81,7 +81,9 @@ async def test_replay_is_deterministic_and_writes_nothing(
 async def test_a_failed_slow_path_is_a_miss_and_never_flags_the_system(
     h: Harness, corpus: Corpus, db_session: AsyncSession
 ) -> None:
-    await seed(corpus, TEST_DAY)
+    # " here" keeps the entry off the F070 fast path: only a model could read it
+    await corpus.add(GOOGL_TEXT + " here", [googl()], [GOOGL_LABEL], when=at(TEST_DAY, 0))
+    await corpus.add("gm all", [CHATTER], [CHATTER_LABEL], when=at(TEST_DAY, 30), author=PROVIDER_B)
     deps = replace(replay_deps(h), fixture=None)  # no Jev, and an LLM chain that is not configured
     async with h.factory() as db:
         events = await latest_labels(db)

@@ -56,7 +56,8 @@ pytestmark = pytest.mark.graph
 GOOGL = OptionContract(
     underlying="GOOGL", expiry=date(2026, 10, 2), strike=Decimal("357.5"), right="call"
 )
-TEXT = "Bought GOOGL 357.5C 10/2 @ 0.71"
+# "here" keeps it off the F070 fast path, so these tests exercise Jev / Laya
+TEXT = "Bought GOOGL 357.5C 10/2 @ 0.71 here"
 LAYA_ON = LayaConfig(enabled=True)
 
 

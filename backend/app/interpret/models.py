@@ -62,6 +62,7 @@ class SignalInstrument(StrEnum):
 
 
 class Interpreter(StrEnum):
+    FAST = "fast"  # F070: deterministic rules, no model
     JEV = "jev"
     LLM = "llm"
     LAYA = "laya"

@@ -231,7 +231,7 @@ async def test_no_interpreter_configured_gives_a_review_card_not_a_degraded_pars
 ) -> None:
     """Before any model is configured (Jev off, empty LLM chain) the LLM is optional: the
     message is a review card saying so (FR-9), and nothing is reported as failing."""
-    env = await h.message("Bought GOOGL 357.5C 10/2 @ 0.71", None, author=PROVIDER_A)
+    env = await h.message("Bought GOOGL 357.5C 10/2 @ 0.71 here", None, author=PROVIDER_A)
     await h.process(env, processor=h.processor(fixture=False))
     card = (await db_session.scalars(select(Card))).one()
     assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]
@@ -239,3 +239,12 @@ async def test_no_interpreter_configured_gives_a_review_card_not_a_degraded_pars
     assert flag is None or not flag.active
     assert (await db_session.scalars(select(Alert))).all() == []
     assert (await db_session.scalars(select(InboxItem.status))).one() == "done"
+
+
+async def test_an_obvious_entry_needs_no_model_at_all(h: Harness, db_session: AsyncSession) -> None:
+    """F070: with every model off, an obvious entry is still a normal card (fast path)."""
+    env = await h.message("Bought GOOGL 357.5C 10/2 @ 0.71", None, author=PROVIDER_A)
+    await h.process(env, processor=h.processor(fixture=False))
+    card = (await db_session.scalars(select(Card))).one()
+    assert (card.action, card.card_type) == (CardAction.ENTRY, CardType.NORMAL)
+    assert (await db_session.scalars(select(Signal.interpreter))).one() == "fast"

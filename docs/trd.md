@@ -346,6 +346,22 @@ The full catalog is in Appendix A. In summary:
 - **Signal context:** message type, instrument kind, number roles (one Choice per candidate number), ticker, call/put, expiry, size tier, exit fraction, stop basis, conditions, correction target.
 - **Provider-portfolio context:** which provider position this refers to, whether it is an add, strength of exit intent (Score), breakeven stop.
 
+### 4.3a Deterministic fast path (F070, `interpret/fast.py`)
+
+Before Jev, code settles a message whose **whole text** is one obvious instruction, with no model call:
+- an option entry `TICKER STRIKE{c|p|calls|puts} [expiry] [@]PRICE [sl X] [tp A/B] [tier]`;
+- an exit (`out`, `all out`, `closed`, `sold all|rest|runners` [TICKER]);
+- a trim (`trim[med]`, `sold/took` + `half|third|quarter|1/2|N%` [TICKER]);
+- a breakeven stop (`stop to be`, `sl breakeven`, `moving stops to breakeven`).
+
+Rules:
+- A word the rule does not explain sends the message on to Jev.
+- Follow-ups qualify only when the context resolver found exactly one position (F069): the fast path never chooses a position.
+- Every field is a literal span, verified like any interpreter's.
+- Edits and deletes never take the fast path, and neither do messages carrying a condition, a correction or several clauses.
+- The output is ordinary `ParsedSignals` (`interpreter = fast`), validated and decided like any other.
+- Stage `fast` is timed.
+
 ### 4.4 Routing rules (in `route`, code)
 
 | Condition | Action |

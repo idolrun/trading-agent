@@ -4,7 +4,8 @@
     -> resolve_context (F069: code-only reply chain / thread / stated contract -> candidates)
     -> find_candidates
     -> fixture_interpret (dev/tests) -> decide_apply
-    -> jev_interpret -> route: feed_only | assemble -> decide_apply
+    -> fast_interpret (F070: whole-message rules, no model) -> decide_apply
+       else jev_interpret -> route: feed_only | assemble -> decide_apply
                                slow_path (any reason) -> laya_interpret
     laya_interpret (only when Jev did not settle it): feed_only | assemble -> decide_apply,
                    else -> llm_extract (optional) -> decide_apply
@@ -48,6 +49,7 @@ from app.inbox.models import EventType, InboxStatus, Stage
 from app.interpret import context_repo
 from app.interpret.candidates import Candidates, find_candidates
 from app.interpret.context import BookEntry, ProviderContext, load_context
+from app.interpret.fast import fast_parse
 from app.interpret.interpreter import Interpreter, InterpreterUnavailable
 from app.interpret.jev.client import JevInterpreter
 from app.interpret.laya.client import LayaInterpreter, gate
@@ -108,6 +110,7 @@ def build_message_graph(
         ("resolve_context", n.resolve_context),
         ("find_candidates", n.find_candidates),
         ("fixture_interpret", n.fixture_interpret),
+        ("fast_interpret", n.fast_interpret),
         ("jev_interpret", n.jev_interpret),
         ("laya_interpret", n.laya_interpret),
         ("llm_extract", n.llm_extract),
@@ -121,9 +124,14 @@ def build_message_graph(
     g.add_edge("resolve_context", "find_candidates")
     g.add_conditional_edges(
         "find_candidates",
-        lambda _s: "fixture_interpret" if deps.fixture is not None else "jev_interpret",
+        lambda _s: "fixture_interpret" if deps.fixture is not None else "fast_interpret",
     )
     g.add_conditional_edges("fixture_interpret", _after_interpret)
+    # F070: an obvious message is settled by code; Jev is never called for it
+    g.add_conditional_edges(
+        "fast_interpret",
+        lambda s: _after_interpret(s) if s["route"] == "fast" else "jev_interpret",
+    )
     # Jev settles feed-only and complete signals; whatever it cannot settle (no answer, low
     # confidence, several signals, missing fields) goes to the local fallback, never both.
     g.add_conditional_edges(
@@ -220,6 +228,26 @@ class _Nodes:
             return {"raw_reason": "parser_degraded"}
         kind = "none" if parsed.interpreter == "stub" else parsed.interpreter
         return {"route": "fixture", "parsed": parsed.model_dump(mode="json"), "interpreter": kind}
+
+    async def fast_interpret(self, state: MessageState) -> dict[str, Any]:
+        """F070: whole-message rules, literal spans only; follow-ups only on a unique
+        resolution. Anything else continues to Jev."""
+        ctx = _processing(state)
+        env = ctx.envelope
+        if env.key.event_type != EventType.CREATE:
+            return {}
+        resolution = (
+            Resolution.model_validate(state["resolution"]) if state.get("resolution") else None
+        )
+        parsed = fast_parse(env.text or "", resolution, sorted(self.d.cfg().option_tiers or {}))
+        if parsed is None:
+            return {}
+        await self._stage(state, ctx, Stage.FAST)
+        return {
+            "route": "fast",
+            "parsed": parsed.model_dump(mode="json"),
+            "interpreter": "fast",
+        }
 
     async def jev_interpret(self, state: MessageState) -> dict[str, Any]:
         ctx = _processing(state)

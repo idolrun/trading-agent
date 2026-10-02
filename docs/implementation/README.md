@@ -199,6 +199,7 @@ cd frontend && pnpm dev                  # after F052
 | [F067](F067-discord-event-identity-threads.md) | Discord event identity: guild + thread ids, thread messages kept under their parent channel | F011, F050 listener | FR-1, C104 |
 | [F068](F068-lanes-channel-isolation.md) | Lanes: (channel, provider) scopes dispatch, context, book, links, C62 adds and review choices | F012, F017, F020, F021, F067 | FR-1a, FR-3, AC-18, C104 |
 | [F069](F069-signal-context-resolver.md) | Signal context resolver (reply chain, thread, stated contract) + deterministic cross-check of model links | F021, F033, F068 | FR-3, C31, PRD §10 |
+| [F070](F070-deterministic-fast-path.md) | Deterministic fast path: obvious whole messages settled by code, no model | F015, F016, F035, F069 | FR-7, C38 |
 
 ---
 

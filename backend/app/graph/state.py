@@ -13,12 +13,12 @@ class MessageState(TypedDict, total=False):
     resolution: dict[str, Any] | None  # Resolution (F069): the code's verdict on the target
     candidates: dict[str, Any]  # Candidates (F016)
     lot_ids: list[str]  # the user's open lot ids: scope-guard input only, never sent to a model
-    route: str  # feed_only | assemble | slow_path | fixture
+    route: str  # fast | feed_only | assemble | slow_path | fixture
     route_reasons: list[str]  # why the fast path did not settle the message
     jev_answered: bool  # Jev returned an answer (False: down, timed out, disabled)
     hints: dict[str, Any] | None  # Jev answers for the slow path
     parsed: dict[str, Any] | None  # ParsedSignals
-    interpreter: str | None  # jev | llm | none
+    interpreter: str | None  # fast | jev | laya | llm | none
     model_call_id: int | None
     raw_reason: str | None  # set -> raw review card
     card_ids: list[str]

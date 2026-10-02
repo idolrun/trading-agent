@@ -49,6 +49,7 @@ class Stage(StrEnum):
     RECEIVED = "received"
     DEQUEUED = "dequeued"
     CONTEXT = "context"
+    FAST = "fast"  # F070: settled by the deterministic fast path
     JEV = "jev"
     LLM = "llm"
     VALIDATED = "validated"
