@@ -141,3 +141,29 @@ async def test_stream_polls_every_symbol_every_time() -> None:
         ("SPY", Decimal(450)),
         ("QQQ", Decimal(380)),
     ]
+
+
+async def test_expiries_start_from_the_session_date_not_the_utc_date() -> None:
+    late = datetime(2026, 10, 2, 1, 30, tzinfo=UTC)  # 21:30 ET on Oct 1
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"option_contracts": []})
+
+    api = AlpacaApi("key", "secret", transport=httpx.MockTransport(handler))
+    await AlpacaMarketData(api, FixedClock(late)).expiries("SPY")
+    assert seen[0].url.params["expiration_date_gte"] == "2026-10-01"
+
+
+async def test_one_refused_symbol_does_not_blind_the_others() -> None:
+    def snapshots(request: httpx.Request) -> httpx.Response:
+        if "SPX" in request.url.params["symbols"].split(","):
+            return httpx.Response(400, json={"message": "invalid symbol: SPX"})
+        return httpx.Response(200, json={"SPY": snap(last=450)})
+
+    data, _ = md({"/v2/stocks/snapshots": snapshots})
+    stream = data.stream(["SPX", "SPY"])
+    symbol, quote = await anext(stream)
+    await stream.aclose()
+    assert (symbol, quote.last) == ("SPY", Decimal(450))

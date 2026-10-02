@@ -67,6 +67,7 @@ TYPES = {
     OrderType.STOP_MARKET: "stop",
     OrderType.STOP_LIMIT: "stop_limit",
 }
+DONE = (OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.REJECTED)
 MAX_BACKOFF_S = 30.0
 Connect = Callable[[str], AbstractAsyncContextManager[Any]]
 
@@ -118,28 +119,30 @@ class AlpacaBroker:
         return _order(raw)
 
     async def cancel(self, broker_order_id: str) -> None:
+        """A fill can land between the decision to cancel and the call: Alpaca then answers 422
+        "not cancelable". An order that is already done is a successful cancel (as `FakeBroker`
+        treats it); the fill itself arrives on the stream. Anything else is refused."""
         try:
             await self._api.delete(f"/v2/orders/{broker_order_id}")
-        except AlpacaRefused as exc:  # unknown order, or already done (422)
+        except AlpacaRefused as exc:
+            if exc.status == 422 and await self._is_done(broker_order_id):
+                return
             raise BrokerRejected(str(exc)) from exc
         except AlpacaError as exc:
             raise _failure(exc) from exc
 
+    async def _is_done(self, broker_order_id: str) -> bool:
+        try:
+            return _order(await self._api.get(f"/v2/orders/{broker_order_id}")).status in DONE
+        except (AlpacaError, KeyError, ValueError, TypeError):
+            return False  # cannot tell: report the refusal
+
     async def open_orders(self) -> list[BrokerOrder]:
         raw = await self._api.get("/v2/orders", status="open", limit=500, nested=False)
-        return [_order(o) for o in raw]
+        return _parsed(raw, _order)
 
     async def positions(self) -> list[BrokerPosition]:
-        held = []
-        for raw in await self._api.get("/v2/positions"):
-            qty = int(Decimal(str(raw["qty"])))  # fractional crypto truncates to 0 and is skipped
-            if qty != 0:
-                held.append(
-                    BrokerPosition(
-                        instrument_of(raw["symbol"]), qty, dec(raw.get("avg_entry_price"))
-                    )
-                )
-        return held
+        return [p for p in _parsed(await self._api.get("/v2/positions"), _position) if p.qty != 0]
 
     async def account(self) -> BrokerAccount:
         raw = await self._api.get("/v2/account")
@@ -163,8 +166,16 @@ class AlpacaBroker:
                     )
                     async for frame in socket:
                         message = json.loads(frame)
-                        backoff = self._reconnect_s
-                        for event in self._events_of(message):
+                        if message.get("stream") == "listening":  # authorized and subscribed
+                            backoff = self._reconnect_s
+                        try:
+                            events = self._events_of(message)
+                        except (KeyError, ValueError, TypeError, ArithmeticError) as exc:
+                            # one unreadable update (a symbol we cannot model) must not drop the
+                            # stream; reconciliation (F046) sees what it carried
+                            logger.warning("alpaca trade update skipped: %r", exc)
+                            continue
+                        for event in events:
                             yield event
             except Exception as exc:  # a dropped stream costs latency, never an event
                 logger.warning("alpaca trade stream dropped: %s", exc)
@@ -196,6 +207,25 @@ class AlpacaBroker:
                 )
             ]
         return [BrokerEvent(kind="status", **common)]
+
+
+def _parsed[T](rows: list[dict[str, Any]], parse: Callable[[dict[str, Any]], T]) -> list[T]:
+    """Parse a listing, skipping rows we cannot model (a crypto pair, an odd symbol in the
+    account): one foreign row must not fail the whole read and block reconciliation."""
+    parsed = []
+    for row in rows:
+        try:
+            parsed.append(parse(row))
+        except (KeyError, ValueError, TypeError, ArithmeticError) as exc:
+            logger.warning("alpaca row skipped (%s): %r", row.get("symbol"), exc)
+    return parsed
+
+
+def _position(raw: dict[str, Any]) -> BrokerPosition:
+    # whole contracts and shares only; a fractional foreign holding truncates (the app never
+    # places fractional orders)
+    qty = int(Decimal(str(raw["qty"])))
+    return BrokerPosition(instrument_of(raw["symbol"]), qty, dec(raw.get("avg_entry_price")))
 
 
 def _failure(exc: AlpacaError) -> Exception:
@@ -236,9 +266,9 @@ def _order_body(req: OrderRequest) -> dict[str, Any]:
         "client_order_id": req.client_order_id,
     }
     if req.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT):
-        body["limit_price"] = str(req.limit_price)
+        body["limit_price"] = format(req.limit_price, "f")
     if req.order_type != OrderType.LIMIT:
-        body["stop_price"] = str(req.stop_price)
+        body["stop_price"] = format(req.stop_price, "f")
     if isinstance(req.instrument, OptionContract):
         body["position_intent"] = "buy_to_open" if req.side == Side.BUY else "sell_to_close"
     return body

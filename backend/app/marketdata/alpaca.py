@@ -17,7 +17,7 @@ from typing import Any
 from app.alpaca_api import AlpacaApi, AlpacaRefused, alpaca_symbol, dec, instrument_of
 from app.instruments import Instrument, OptionContract, Stock
 from app.marketdata.port import Quote, QuoteUnavailable
-from app.markettime import Clock, SystemClock
+from app.markettime import ET, Clock, SystemClock
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,10 @@ class AlpacaMarketData:
                 "/v2/options/contracts",
                 underlying_symbols=underlying,
                 status="active",
-                expiration_date_gte=self._clock.now().date().isoformat(),
+                expiration_date_gte=self._clock.now()
+                .astimezone(ET)
+                .date()
+                .isoformat(),  # session date
                 limit=10000,
                 page_token=token,
             )
@@ -123,6 +126,22 @@ class AlpacaMarketData:
         return quote
 
     async def _snapshots(self, symbols: list[str], option: bool) -> dict[str, dict[str, Any]]:
+        try:
+            return await self._snapshots_of(symbols, option)
+        except AlpacaRefused:
+            if len(symbols) == 1:
+                raise
+        # One symbol Alpaca refuses (an index like SPX) must not blind the others (the
+        # underlying-stop watch reads several at once): ask one by one, keep what answers.
+        found: dict[str, dict[str, Any]] = {}
+        for symbol in symbols:
+            try:
+                found |= await self._snapshots_of([symbol], option)
+            except AlpacaRefused as exc:
+                logger.warning("alpaca refused %s: %s", symbol, exc)
+        return found
+
+    async def _snapshots_of(self, symbols: list[str], option: bool) -> dict[str, dict[str, Any]]:
         joined = ",".join(symbols)
         if option:
             body = await self._api.get(

@@ -280,3 +280,77 @@ async def test_events_reconnect_after_a_drop_and_a_failed_authorization() -> Non
     event = await anext(stream)
     await stream.aclose()
     assert (event.kind, event.status) == ("status", OrderStatus.SUBMITTED)
+
+
+async def test_cancel_of_an_order_that_just_filled_is_not_an_error() -> None:
+    not_cancelable = httpx.Response(422, json={"message": "order is not cancelable"})
+    fake = Alpaca(
+        **{
+            "DELETE /v2/orders/o-1": not_cancelable,
+            "GET /v2/orders/o-1": raw("o-1", "filled", filled_qty="2", filled_avg_price="1.6"),
+            "DELETE /v2/orders/o-2": not_cancelable,
+            "GET /v2/orders/o-2": raw("o-2", "new"),
+        }
+    )
+    b = broker(fake)
+    await b.cancel("o-1")  # done: the fill arrives on the stream
+    with pytest.raises(BrokerRejected, match="not cancelable"):
+        await b.cancel("o-2")  # still working: a real refusal
+
+
+async def test_rows_that_cannot_be_modelled_are_skipped_not_fatal() -> None:
+    crypto = {"id": "o-9", "symbol": "BTC/USD", "side": "buy", "qty": "1", "status": "new"}
+    fake = Alpaca(
+        **{
+            "GET /v2/orders": [crypto, raw("o-1")],
+            "GET /v2/positions": [
+                {"symbol": "BTC/USD", "qty": "1", "avg_entry_price": "60000"},
+                {"symbol": "SPY", "qty": "3", "avg_entry_price": "450"},
+            ],
+        }
+    )
+    b = broker(fake)
+    assert [o.broker_order_id for o in await b.open_orders()] == ["o-1"]
+    assert [p.instrument for p in await b.positions()] == [Stock(symbol="SPY")]
+
+
+async def test_prices_are_sent_in_plain_notation() -> None:
+    fake = Alpaca(**{"POST /v2/orders": raw()})
+    await broker(fake).submit(order(Stock(symbol="SPY"), limit_price=Decimal("1E+2")))
+    assert fake.body()["limit_price"] == "100"
+
+
+async def test_an_unreadable_update_does_not_drop_the_stream() -> None:
+    bad = json.dumps({"stream": "trade_updates", "data": {"event": "fill", "order": raw()}})
+    odd = json.dumps(
+        {"stream": "trade_updates", "data": {"event": "new", "order": raw(symbol="BTC/USD")}}
+    )
+    stream = broker(Alpaca(), [Socket([bad, odd, update("new")])]).events()
+    event = await anext(stream)  # same socket: no reconnect happened
+    await stream.aclose()
+    assert (event.kind, event.status) == ("status", OrderStatus.SUBMITTED)
+
+
+async def test_failed_authorization_backs_off_instead_of_hammering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleeps: list[float] = []
+
+    async def record(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("app.broker.alpaca.asyncio.sleep", record)
+    denied = json.dumps({"stream": "authorization", "data": {"status": "unauthorized"}})
+    listening = json.dumps({"stream": "listening", "data": {"streams": ["trade_updates"]}})
+    sockets = [
+        Socket([denied]),
+        Socket([denied]),
+        Socket([denied]),
+        Socket([listening, update("new")]),
+    ]
+    queue = iter(sockets)
+    api = AlpacaApi("key", "secret", transport=httpx.MockTransport(Alpaca()))
+    stream = AlpacaBroker(api, connect=lambda _url: next(queue), reconnect_s=1.0).events()  # type: ignore[arg-type]
+    await anext(stream)
+    await stream.aclose()  # type: ignore[attr-defined]
+    assert sleeps == [1.0, 2.0, 4.0]
