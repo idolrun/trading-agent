@@ -511,6 +511,7 @@ class ApprovalService:
         try:
             quote = await self._md.quote(target.instrument)
         except Exception:
+            logger.warning("no quote at revalidation", exc_info=True)
             if not add("quote", "blocked", "market_data_unavailable"):  # OD-12: never guess
                 return out
         if quote is not None:
