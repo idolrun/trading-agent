@@ -1,4 +1,4 @@
-# F051 — Alpaca Broker & Market-Data Adapters (built 2026-10-02; paper contract suite not yet run)
+# F051 — Alpaca Broker & Market-Data Adapters (built 2026-10-02; paper suite run with the market closed, fills not yet verified)
 
 ## Objective
 Implement `BrokerClient`, `BrokerEvents` and `MarketData` for Alpaca (chosen 2026-10-02, OD-34). The paper account is the paper stage (PRD §17).
@@ -22,16 +22,20 @@ Implement `BrokerClient`, `BrokerEvents` and `MarketData` for Alpaca (chosen 202
 ## Accepted gap
 Alpaca lists US equity and ETF options only: no SPX index quote, no SPXW chain. SPXW signals (C85) become review cards (`not_optionable` / market-data unavailable). Confirmed by the user 2026-10-02; the live suite records it.
 
-## Still to verify on the paper account (`uv run pytest -m live tests/live/test_alpaca.py`, needs paper keys)
-The docs were read through summaries and no call has been made from this code. The unit tests use canned responses, so these assumptions are unproven until the live suite runs:
-- [ ] paper account has options enabled (level 2: buying calls/puts); option stop orders and GTC are accepted; `position_intent` values
-- [ ] `fill` / `partial_fill` `qty` is the size of that fill (not cumulative); `execution_id` unique per fill
-- [ ] WebSocket frames (text vs binary), authorization message shape, the `new` update for a fresh order
-- [ ] 403 messages: "insufficient buying power" vs bad credentials (the classification keys on that word)
-- [ ] snapshot endpoints and parameters (`expiration_date`, paging, unknown symbols → 400 or omitted)
-- [ ] free-feed quality: IEX stock quotes can be thin or zero; indicative option quotes and their delay
+## Verified on the paper account (2026-10-02, market closed; `uv run pytest -m live tests/live/test_alpaca.py`)
+- [x] account reads (equity, buying power); the paper account has options level 3; no PDT flag returned (OD-3 stays open for live)
+- [x] stock and option snapshots, SPY expiries, option chain and option quote on the free feeds (iex / indicative)
+- [x] SPX gap confirmed: no SPX index quote, SPXW is not in the optionable list
+- [x] stock and option limit orders accepted; our `client_order_id` is stored and looked up; a retried id returns the same order; the order shows in `open_orders`
+- [x] `trade_updates` WebSocket: auth, listen, and the `new` update for a fresh order arrive
+- [x] cancel: a second cancel of a cancelled order is a silent success (no error); an unknown order id is refused
+
+## Still to verify (needs market hours; `test_market_buy_fills_...` runs then, it skips while closed)
+- [ ] `fill` / `partial_fill`: `qty` is the size of that fill (not cumulative), `price` is that fill's price, `execution_id` unique per fill
+- [ ] option stop orders and GTC are accepted (needs an open option position to sell against)
+- [ ] 403 message wording for insufficient buying power vs bad credentials (the classification keys on "insufficient")
+- [ ] free-feed quality during the session: IEX stock quotes can be thin or zero; indicative option quote delay
 - [ ] rate limits against 5 s underlying polling; paper partial fills (docs: about 10% random)
-- [ ] account type / PDT (OD-3)
 
 ## Files
 | File | Change |

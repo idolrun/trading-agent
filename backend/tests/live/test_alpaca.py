@@ -13,7 +13,7 @@ import pytest
 from app.alpaca_api import AlpacaApi
 from app.broker.alpaca import AlpacaBroker
 from app.broker.errors import BrokerRejected
-from app.broker.port import OrderRequest
+from app.broker.port import BrokerEvent, OrderRequest
 from app.config import get_settings
 from app.execution.models import OrderStatus, OrderType, Side, TimeInForce
 from app.instruments import OptionContract, Stock
@@ -21,6 +21,11 @@ from app.marketdata.alpaca import AlpacaMarketData
 from app.marketdata.port import QuoteUnavailable
 
 pytestmark = pytest.mark.live
+
+
+@pytest.fixture(autouse=True)
+def _clean_tables() -> None:
+    """Overrides the live conftest's database cleanup: these tests never touch Postgres."""
 
 
 @pytest.fixture
@@ -102,8 +107,11 @@ async def test_order_lifecycle_idempotent_submit_lookup_cancel_stream(
     event = await asyncio.wait_for(waiting, 10)  # the "new" update for this order
     assert event.client_order_id == request.client_order_id
     await broker.cancel(placed.broker_order_id)
+    await broker.cancel(
+        placed.broker_order_id
+    )  # Alpaca paper: cancelling a cancelled order is a no-op
     with pytest.raises(BrokerRejected):
-        await broker.cancel(placed.broker_order_id)  # already cancelled
+        await broker.cancel(str(uuid.uuid4()))  # an unknown order is refused
     await events.aclose()  # type: ignore[attr-defined]
 
 
@@ -125,3 +133,44 @@ async def test_option_limit_order_rests_and_cancels(
     )
     assert placed.instrument == contract
     await broker.cancel(placed.broker_order_id)
+
+
+async def test_market_buy_fills_with_an_execution_id_then_flattens(
+    api: AlpacaApi, broker: AlpacaBroker
+) -> None:
+    """Market hours only: fills need a market. Buys one SPY share, checks the fill, sells it."""
+    if not (await api.get("/v2/clock"))["is_open"]:
+        pytest.skip("market closed: paper orders do not fill")
+    events = broker.events()
+    await asyncio.sleep(2)  # let the stream connect, authenticate and listen
+
+    async def trade(side: Side) -> tuple[str, list[BrokerEvent]]:
+        request = OrderRequest(
+            client_order_id=f"cta-{uuid.uuid4()}",
+            instrument=Stock(symbol="SPY"),
+            side=side,
+            qty=1,
+            order_type=OrderType.LIMIT,
+            tif=TimeInForce.DAY,
+            # marketable: well through the market on the right side
+            limit_price=Decimal("1000") if side == Side.BUY else Decimal("1.00"),
+        )
+        await broker.submit(request)
+        seen: list[BrokerEvent] = []
+        async with asyncio.timeout(30):
+            while not any(e.kind == "fill" for e in seen):
+                event = await anext(events)
+                if event.client_order_id == request.client_order_id:
+                    seen.append(event)
+        return request.client_order_id, seen
+
+    try:
+        _, bought = await trade(Side.BUY)
+        fill = next(e for e in bought if e.kind == "fill")
+        assert fill.fill_id and fill.qty == 1 and fill.price is not None
+        assert [p.qty for p in await broker.positions() if p.instrument == Stock(symbol="SPY")] == [
+            1
+        ]
+    finally:
+        await trade(Side.SELL)  # flatten even if an assertion failed
+        await events.aclose()  # type: ignore[attr-defined]
