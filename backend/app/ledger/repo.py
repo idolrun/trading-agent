@@ -300,3 +300,72 @@ async def has_lot(db: AsyncSession, provider_position_id: uuid.UUID) -> bool:
         .limit(1)
     )
     return found is not None
+
+
+async def superseded_after_approval(
+    db: AsyncSession,
+    *,
+    provider_id: int,
+    position_id: uuid.UUID | None,
+    signal_id: uuid.UUID | None,
+    posted_at: datetime,
+    card_created_at: datetime,
+    superseding: frozenset[MsgType],
+) -> str | None:
+    """Why an entry/add card must not run any more, from messages that arrived after the card's
+    own message (PRD 7.2, OD-14): a later trim / stop / exit / correction of this provider
+    linked to the same position ("superseded"), or the card's own message deleted ("deleted")
+    or edited since ("corrected"). Pending cards are invalidated when such a message is
+    applied; this covers a card already approved and waiting to execute."""
+    if position_id is not None:
+        latest = (
+            select(col(MessageLink.signal_id), col(MessageLink.provider_position_id))
+            .order_by(col(MessageLink.signal_id), col(MessageLink.id).desc())
+            .distinct(col(MessageLink.signal_id))
+            .subquery()
+        )
+        later = await db.scalar(
+            select(col(Signal.signal_id))
+            .join(
+                MessageEvent,
+                and_(
+                    col(MessageEvent.message_id) == col(Signal.message_id),
+                    col(MessageEvent.event_type) == col(Signal.event_type),
+                    col(MessageEvent.event_seq) == col(Signal.event_seq),
+                ),
+            )
+            .join(latest, latest.c.signal_id == col(Signal.signal_id))
+            .where(
+                col(Signal.provider_id) == provider_id,
+                col(Signal.msg_type).in_(list(superseding)),
+                latest.c.provider_position_id == position_id,
+                col(MessageEvent.posted_at) > posted_at,
+            )
+            .limit(1)
+        )
+        if later is not None:
+            return "superseded"
+    own = await db.get(Signal, signal_id) if signal_id is not None else None
+    if own is None:
+        return None
+    if await db.scalar(
+        select(col(MessageEvent.message_id))
+        .where(
+            col(MessageEvent.message_id) == own.message_id,
+            col(MessageEvent.event_type) == "delete",
+        )
+        .limit(1)
+    ):
+        return "deleted"
+    # an edit read after the card was built (an edit that a held card already carries made its
+    # signal before the card existed)
+    edited = await db.scalar(
+        select(col(Signal.signal_id))
+        .where(
+            col(Signal.message_id) == own.message_id,
+            col(Signal.event_type) == "edit",
+            col(Signal.created_at) > card_created_at,
+        )
+        .limit(1)
+    )
+    return "corrected" if edited is not None else None

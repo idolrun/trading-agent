@@ -191,6 +191,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cards/{card_id}/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Card Preflight
+         * @description Revalidation checks against fresh quote, account, positions and working orders. Changes
+         *     nothing: the decision is revalidated again after approval, whatever this said.
+         */
+        get: operations["card_preflight_api_v1_cards__card_id__preflight_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config": {
         parameters: {
             query?: never;
@@ -1061,6 +1082,17 @@ export interface components {
             /** Newpassword */
             newPassword: string;
         };
+        /** CheckOut */
+        CheckOut: {
+            /** Detail */
+            detail: string | null;
+            /** Name */
+            name: string;
+            /** Reason */
+            reason: string | null;
+            /** Status */
+            status: string;
+        };
         /** ConfigChangeOut */
         ConfigChangeOut: {
             /** Actor */
@@ -1417,11 +1449,14 @@ export interface components {
         JevConfig: {
             /**
              * Enabled
-             * @default false
+             * @default true
              */
             enabled: boolean;
-            /** Model */
-            model?: string | null;
+            /**
+             * Model
+             * @default jev-latest
+             */
+            model: string | null;
             /**
              * Timeout Ms
              * @default 300
@@ -1552,13 +1587,14 @@ export interface components {
         LabelSource: "prelabel_corrected" | "manual" | "provider_correction";
         /**
          * LayaConfig
-         * @description Local fallback for when Jev gave no answer. Its answers are weak (it was right on ~27% of
-         *     labelled messages), so the gate is strict and it is off until switched on.
+         * @description Local fallback for when Jev did not settle a message (no answer, low confidence, multiple
+         *     signals). Its answers are weak (it was right on ~27% of labelled messages), so its gate is
+         *     strict: anything it cannot settle continues to the optional LLM, then to review.
          */
         LayaConfig: {
             /**
              * Enabled
-             * @default false
+             * @default true
              */
             enabled: boolean;
             /**
@@ -2148,6 +2184,59 @@ export interface components {
             lockWaits: number;
         };
         /**
+         * PreflightOut
+         * @description The revalidation checks run now, read-only (nothing is decided or stored). `applicable`
+         *     false = nothing to check (a review card, or a card that is no longer waiting).
+         */
+        PreflightOut: {
+            /** Applicable */
+            applicable: boolean;
+            /** Ask */
+            ask: string | null;
+            /** Bid */
+            bid: string | null;
+            /** Buyingpower */
+            buyingPower: string | null;
+            /** Cash */
+            cash: string | null;
+            /** Checks */
+            checks: components["schemas"]["CheckOut"][];
+            /** Dailypnl */
+            dailyPnl: string | null;
+            /** Equity */
+            equity: string | null;
+            /** Estcost */
+            estCost: string | null;
+            /** Exposure */
+            exposure: string | null;
+            /** Last */
+            last: string | null;
+            /** Limitprice */
+            limitPrice: string | null;
+            /** Maxdailyloss */
+            maxDailyLoss: string | null;
+            /** Maxexposure */
+            maxExposure: string | null;
+            /** Maxopenpositions */
+            maxOpenPositions: number | null;
+            /** Openpositions */
+            openPositions: number | null;
+            /** Projectedbuyingpower */
+            projectedBuyingPower: string | null;
+            /** Projectedexposure */
+            projectedExposure: string | null;
+            /** Qty */
+            qty: number | null;
+            /** Quoteat */
+            quoteAt: string | null;
+            /** Signalprice */
+            signalPrice: string | null;
+            /** Verdict */
+            verdict: string;
+            /** Workingexposure */
+            workingExposure: string | null;
+        };
+        /**
          * Price
          * @description USD per million tokens.
          */
@@ -2243,8 +2332,16 @@ export interface components {
         };
         /** ReconciliationStats */
         ReconciliationStats: {
+            /** Brokerpositions */
+            brokerPositions?: number | null;
+            /** Buyingpower */
+            buyingPower?: string | null;
+            /** Cash */
+            cash?: string | null;
             /** Clean */
             clean: boolean | null;
+            /** Equity */
+            equity?: string | null;
             /** Error */
             error: string | null;
             /** Lastrunat */
@@ -2331,14 +2428,15 @@ export interface components {
             identity_price_tolerance_pct?: number | string | null;
             /**
              * @default {
-             *       "enabled": false,
+             *       "enabled": true,
+             *       "model": "jev-latest",
              *       "timeout_ms": 300
              *     }
              */
             jev: components["schemas"]["JevConfig"];
             /**
              * @default {
-             *       "enabled": false,
+             *       "enabled": true,
              *       "t_chat": "0.95",
              *       "t_field": "0.9",
              *       "t_link": "0.9",
@@ -2403,6 +2501,8 @@ export interface components {
              * @default 3
              */
             poison_retry_limit: number;
+            /** Quote Max Age S */
+            quote_max_age_s?: number | null;
             /**
              * Stale Entry S
              * @default 30
@@ -3001,6 +3101,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardDetail"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    card_preflight_api_v1_cards__card_id__preflight_get: {
+        parameters: {
+            query?: {
+                qty?: number | null;
+            };
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreflightOut"];
                 };
             };
             /** @description Client Error */

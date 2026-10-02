@@ -19,6 +19,7 @@ export const INT_FIELDS = [
   "context_recent_messages",
   "entry_validity_s",
   "entry_cancel_after_s",
+  "quote_max_age_s",
   "exit_card_timeout_s",
   "exit_reprice_interval_s",
   "cutoff_1_min_before_close",
@@ -79,8 +80,8 @@ export function defaultDocument(): ConfigDoc {
     option_tiers: null,
     stock_tiers: null,
     symbol_map: { SPX: "SPXW" },
-    jev: { model: null, timeout_ms: 300, enabled: false },
-    laya: { enabled: false, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
+    jev: { model: "jev-latest", timeout_ms: 300, enabled: true },
+    laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
     llm: {
       roles: {
         extract: { deadline_ms: 3000, per_attempt_cap_ms: 2000, chain: [] },

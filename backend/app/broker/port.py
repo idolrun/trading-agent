@@ -66,6 +66,8 @@ class BrokerPosition:
 class BrokerAccount:
     equity: Decimal
     buying_power: Decimal
+    cash: Decimal | None = None  # None = the broker does not say
+    options_buying_power: Decimal | None = None  # when it differs from stock buying power
 
 
 class BrokerClient(Protocol):

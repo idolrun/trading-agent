@@ -904,6 +904,48 @@
         "title": "ChangePasswordRequest",
         "type": "object"
       },
+      "CheckOut": {
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "reason",
+          "detail"
+        ],
+        "title": "CheckOut",
+        "type": "object"
+      },
       "ConfigChangeOut": {
         "properties": {
           "actor": {
@@ -2046,7 +2088,7 @@
         "additionalProperties": false,
         "properties": {
           "enabled": {
-            "default": false,
+            "default": true,
             "title": "Enabled",
             "type": "boolean"
           },
@@ -2059,6 +2101,7 @@
                 "type": "null"
               }
             ],
+            "default": "jev-latest",
             "title": "Model"
           },
           "timeout_ms": {
@@ -2387,10 +2430,10 @@
       },
       "LayaConfig": {
         "additionalProperties": false,
-        "description": "Local fallback for when Jev gave no answer. Its answers are weak (it was right on ~27% of\nlabelled messages), so the gate is strict and it is off until switched on.",
+        "description": "Local fallback for when Jev did not settle a message (no answer, low confidence, multiple\nsignals). Its answers are weak (it was right on ~27% of labelled messages), so its gate is\nstrict: anything it cannot settle continues to the optional LLM, then to review.",
         "properties": {
           "enabled": {
-            "default": false,
+            "default": true,
             "title": "Enabled",
             "type": "boolean"
           },
@@ -4074,6 +4117,274 @@
         "title": "PostgresStats",
         "type": "object"
       },
+      "PreflightOut": {
+        "description": "The revalidation checks run now, read-only (nothing is decided or stored). `applicable`\nfalse = nothing to check (a review card, or a card that is no longer waiting).",
+        "properties": {
+          "applicable": {
+            "title": "Applicable",
+            "type": "boolean"
+          },
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
+          },
+          "buyingPower": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyingpower"
+          },
+          "cash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "dailyPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dailypnl"
+          },
+          "equity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity"
+          },
+          "estCost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estcost"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "limitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitprice"
+          },
+          "maxDailyLoss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxdailyloss"
+          },
+          "maxExposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxexposure"
+          },
+          "maxOpenPositions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxopenpositions"
+          },
+          "openPositions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openpositions"
+          },
+          "projectedBuyingPower": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectedbuyingpower"
+          },
+          "projectedExposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectedexposure"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty"
+          },
+          "quoteAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteat"
+          },
+          "signalPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signalprice"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          },
+          "workingExposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workingexposure"
+          }
+        },
+        "required": [
+          "applicable",
+          "verdict",
+          "checks",
+          "qty",
+          "bid",
+          "ask",
+          "last",
+          "quoteAt",
+          "signalPrice",
+          "limitPrice",
+          "estCost",
+          "equity",
+          "cash",
+          "buyingPower",
+          "projectedBuyingPower",
+          "exposure",
+          "workingExposure",
+          "projectedExposure",
+          "maxExposure",
+          "openPositions",
+          "maxOpenPositions",
+          "dailyPnl",
+          "maxDailyLoss"
+        ],
+        "title": "PreflightOut",
+        "type": "object"
+      },
       "Price": {
         "additionalProperties": false,
         "description": "USD per million tokens.",
@@ -4448,6 +4759,39 @@
       },
       "ReconciliationStats": {
         "properties": {
+          "brokerPositions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerpositions"
+          },
+          "buyingPower": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyingpower"
+          },
+          "cash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash"
+          },
           "clean": {
             "anyOf": [
               {
@@ -4458,6 +4802,17 @@
               }
             ],
             "title": "Clean"
+          },
+          "equity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity"
           },
           "error": {
             "anyOf": [
@@ -4797,14 +5152,15 @@
           "jev": {
             "$ref": "#/components/schemas/JevConfig",
             "default": {
-              "enabled": false,
+              "enabled": true,
+              "model": "jev-latest",
               "timeout_ms": 300
             }
           },
           "laya": {
             "$ref": "#/components/schemas/LayaConfig",
             "default": {
-              "enabled": false,
+              "enabled": true,
               "t_chat": "0.95",
               "t_field": "0.9",
               "t_link": "0.9",
@@ -4964,6 +5320,18 @@
             "exclusiveMinimum": 0.0,
             "title": "Poison Retry Limit",
             "type": "integer"
+          },
+          "quote_max_age_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Max Age S"
           },
           "stale_entry_s": {
             "default": 30,
@@ -6184,6 +6552,67 @@
           }
         },
         "summary": "Decide Card",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
+    "/api/v1/cards/{card_id}/preflight": {
+      "get": {
+        "description": "Revalidation checks against fresh quote, account, positions and working orders. Changes\nnothing: the decision is revalidated again after approval, whatever this said.",
+        "operationId": "card_preflight_api_v1_cards__card_id__preflight_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Card Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qty",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Qty"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Card Preflight",
         "tags": [
           "cards"
         ]

@@ -59,8 +59,20 @@ def entry_block_reason(
         return "max open positions"
     if card.qty is not None and card.limit_price is not None:
         cost = card.qty * card.limit_price * (OPTION_MULTIPLIER if option else 1)
-        if risk.exposure + cost > max_exposure:
+        if risk.exposure + cost > max_exposure:  # exposure includes unfilled working entries
             return "max exposure"  # no automatic down-sizing (not specified)
+        if risk.account_required:
+            available = (
+                risk.options_buying_power
+                if option and risk.options_buying_power is not None
+                else risk.buying_power
+            )
+            if available is None:
+                return "risk unknown: account unavailable"
+            if cost > available:  # the broker already reserves working orders in buying power
+                return "insufficient buying power"
+    elif risk.account_required and risk.buying_power is None:
+        return "risk unknown: account unavailable"
     return None
 
 

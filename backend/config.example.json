@@ -12,6 +12,7 @@
   "entry_chase_pct": null,
   "entry_validity_s": null,
   "entry_cancel_after_s": null,
+  "quote_max_age_s": null,
   "exit_card_timeout_s": null,
   "exit_reprice_interval_s": null,
   "exit_reprice_step_pct": null,
@@ -33,12 +34,12 @@
   "t_type": "0.8",
   "t_link": "0.8",
   "jev": {
-    "model": null,
+    "model": "jev-latest",
     "timeout_ms": 300,
-    "enabled": false
+    "enabled": true
   },
   "laya": {
-    "enabled": false,
+    "enabled": true,
     "timeout_ms": 10000,
     "t_chat": "0.95",
     "t_field": "0.9",

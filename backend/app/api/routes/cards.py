@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
@@ -8,7 +9,7 @@ from app.api.deps import AuditDep, AuthDep, ClientDep, SessionDep, SessionFactor
 from app.api.errors import ApiError
 from app.api.pagination import Cursor, Limit, Page
 from app.api.schemas.card_decisions import DecisionRequest
-from app.api.schemas.cards import CardDetail, CardOut
+from app.api.schemas.cards import CardDetail, CardOut, CheckOut, PreflightOut
 from app.auth.models import AuditAction
 from app.cards import queries
 from app.cards.approval_service import (
@@ -47,6 +48,32 @@ async def get_card(card_id: uuid.UUID, sessions: SessionFactoryDep, _ctx: Sessio
     if card is None:
         raise ApiError("card not found", "not_found", 404)
     return card
+
+
+@router.get("/cards/{card_id}/preflight")
+async def card_preflight(
+    card_id: uuid.UUID,
+    request: Request,
+    _ctx: SessionDep,
+    qty: Annotated[int | None, Query(ge=1)] = None,
+) -> PreflightOut:
+    """Revalidation checks against fresh quote, account, positions and working orders. Changes
+    nothing: the decision is revalidated again after approval, whatever this said."""
+    approvals: ApprovalService = request.app.state.approvals
+    try:
+        pf = await approvals.preflight(card_id, qty)
+    except CardNotFound:
+        raise ApiError("card not found", "not_found", 404) from None
+    statuses = {c.status for c in pf.checks}
+    verdict = "blocked" if "blocked" in statuses else "review" if "review" in statuses else "pass"
+    return PreflightOut(
+        verdict=verdict,
+        checks=[
+            CheckOut(name=c.name, status=c.status, reason=c.reason, detail=c.detail)
+            for c in pf.checks
+        ],
+        **{k: v for k, v in asdict(pf).items() if k != "checks"},
+    )
 
 
 @router.post("/cards/{card_id}/decision")

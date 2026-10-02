@@ -93,3 +93,24 @@ def test_opposite_direction_warning() -> None:
     same = risk(lots=(OpenLotBrief("GOOGL", "call"), OpenLotBrief("META", "put")))
     assert gated(risk=same).warnings == []
     assert FLAT.lots == ()
+
+
+def test_buying_power_gate() -> None:
+    """The order costs 5 x 1.75 x 100 = 875: the broker account must cover it."""
+    account = {"account_required": True, "equity": D(50000), "cash": D(900)}
+    assert reason(risk=risk(buying_power=D(875), **account)) is None
+    assert reason(risk=risk(buying_power=D(874), **account)) == "insufficient buying power"
+    assert reason(risk=risk(buying_power=None, **account)) == "risk unknown: account unavailable"
+    # options use their own buying power when the broker states one
+    own = risk(buying_power=D(100000), options_buying_power=D(500), **account)
+    assert reason(risk=own) == "insufficient buying power"
+    # a snapshot built without a broker (pure unit inputs) does not judge the account
+    assert reason(risk=risk()) is None
+
+
+def test_exposure_includes_working_orders_in_the_projection() -> None:
+    """Limit 2,000: 1,200 in lots + 500 working leaves 300; this order (875) must not fit."""
+    cfg = CONFIG.model_copy(update={"max_total_exposure_usd": D(2000)})
+    snap = risk(exposure=D(1700), working_exposure=D(500))  # exposure already holds the working 500
+    assert reason(config=cfg, risk=snap) == "max exposure"
+    assert reason(config=cfg, risk=risk(exposure=D(1100))) is None  # 1,100 + 875 = 1,975

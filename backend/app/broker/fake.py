@@ -51,6 +51,9 @@ class FakeBroker:
         self.calls: list[tuple[str, Any]] = []
         self.equity = Decimal(100_000)
         self.buying_power = Decimal(100_000)
+        self.cash = Decimal(100_000)
+        self.options_buying_power: Decimal | None = None
+        self.account_error: Exception | None = None  # tests: the broker cannot answer
         self._orders: dict[str, BrokerOrder] = {}  # by broker order id
         self._by_client: dict[str, str] = {}
         self._requests: dict[str, OrderRequest] = {}
@@ -120,7 +123,14 @@ class FakeBroker:
         ]
 
     async def account(self) -> BrokerAccount:
-        return BrokerAccount(equity=self.equity, buying_power=self.buying_power)
+        if self.account_error is not None:
+            raise self.account_error
+        return BrokerAccount(
+            equity=self.equity,
+            buying_power=self.buying_power,
+            cash=self.cash,
+            options_buying_power=self.options_buying_power,
+        )
 
     # --- BrokerEvents ---
 

@@ -12,6 +12,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -21,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col
 
+from app.broker.port import BrokerClient
 from app.cards import repo as cards
 from app.cards.edits import APPROVE_EDITS, EditInvalid, Edits, apply_edits
 from app.cards.models import (
@@ -33,26 +35,41 @@ from app.cards.models import (
     CardState,
     Decision,
 )
+from app.cards.preflight import Check, Preflight, Status
 from app.cards.state import IllegalTransition
-from app.cards.validity import ENTRY_ACTIONS, approval_blockers, check_entry, check_exit
+from app.cards.validity import (
+    ENTRY_ACTIONS,
+    SUPERSEDING,
+    approval_blockers,
+    check_entry,
+    check_exit,
+)
 from app.db import in_transaction, notify
 from app.decide.risk import entry_block_reason
 from app.decide.risk_snapshot import build_risk_snapshot, lot_contract
 from app.decide.types import FlagsView, ProposedAction
 from app.dispatcher.types import ProcessingContext
 from app.execution.card_executor import SELLS, CardExecutor, ExecutionBlocked, Target
-from app.execution.submit import EntriesBlocked, InvariantViolation, OutsideRegularHours
+from app.execution.models import OrderStatus
+from app.execution.submit import (
+    EntriesBlocked,
+    InvariantViolation,
+    ModeMismatch,
+    OutsideRegularHours,
+)
 from app.graph.approval_graph import build_approval_graph, thread_config
 from app.inbox.models import MessageEvent
 from app.inbox.repo import to_envelope_row
-from app.instruments import OptionContract
+from app.instruments import Instrument, OptionContract, broker_symbol
 from app.interpret.models import Signal
 from app.interpret.signal import F, ResolvedSource
 from app.ledger import repo as ledger
+from app.ledger.lots import OPTION_MULTIPLIER
 from app.ledger.models import Lot, LotStatus, PositionStatus, ProviderPosition
 from app.ledger.positions import PositionUpdate, contract_of, state_of
 from app.ledger.relink import RelinkFailed, RelinkService
 from app.logging import bind
+from app.marketdata.freshness import is_stale
 from app.marketdata.port import MarketData
 from app.markettime import Clock, is_regular_hours
 from app.pipeline.apply import BookChanged, position_id_for, stored_signal
@@ -90,14 +107,21 @@ class _Loaded:
     position: ProviderPosition | None
     lot: Lot | None
 
-    def target(self) -> Target | None:
+    def target(self, proposal: ProposedAction | None = None) -> Target | None:
         lot_open = self.lot is not None and self.lot.status == LotStatus.OPEN
         if self.lot is not None and self.card.action not in ENTRY_ACTIONS:
             instrument = lot_contract(self.lot)  # 7.5: after a provider correction the lot keeps
         elif self.position is not None:  # its own contract; foreign lots have no position (C47)
             instrument = contract_of(state_of(self.position))
-        elif self.approval is not None and self.approval.approved_proposal is not None:
-            contract = ProposedAction.model_validate(self.approval.approved_proposal).contract
+        elif (
+            self.approval is not None and self.approval.approved_proposal is not None
+        ) or proposal is not None:
+            approved = (
+                ProposedAction.model_validate(self.approval.approved_proposal)
+                if self.approval is not None and self.approval.approved_proposal is not None
+                else proposal
+            )
+            contract = approved.contract if approved else None
             if contract is None:  # a manual entry names its own contract (F047)
                 return None
             instrument = contract
@@ -132,7 +156,11 @@ class ApprovalService:
         config: ConfigService,
         flags: FlagService,
         clock: Clock,
+        broker: Callable[[], BrokerClient] | None = None,  # the broker of the trading mode
+        account: Callable[[], BrokerClient | None] | None = None,  # None result: shadow mode
     ) -> None:
+        self._broker = broker
+        self._account = account
         self._sessions = sessions
         self._executor = executor
         self._md = marketdata
@@ -408,52 +436,217 @@ class ApprovalService:
     # --- approval graph steps (ApprovalSteps) --------------------------------------------
 
     async def revalidate(self, card_id: uuid.UUID) -> str | None:
-        """C22 at approval time: fresh quote + band + entry gates for entries/adds; exits:
-        position still open and qty within the lot. Failure invalidates the card."""
+        """C22 at approval time, from fresh data (the approved card is never trusted as still
+        valid): hours, validity, quote + freshness + band, supersession, flags, account, working
+        orders, positions and risk limits for entries/adds; position, lot qty and broker
+        position for exits. Failure invalidates the card."""
         loaded = await self._load(card_id)
         if loaded.approval is None or loaded.approval.approved_proposal is None:
             return "no_approval"
         proposal = ProposedAction.model_validate(loaded.approval.approved_proposal)
-        reason = await self._revalidation_failure(loaded, proposal)
+        reason = (await self._preflight(loaded, proposal, stop_on_fail=True)).failure
         if reason is not None:
             await self._fail(card_id, reason)
         return reason
 
-    async def _revalidation_failure(self, loaded: _Loaded, p: ProposedAction) -> str | None:
-        if p.action == CardAction.REVIEW:
-            return None
-        if not is_regular_hours(self._clock.now()):
-            return "outside_regular_hours"  # 7.7: no order outside regular hours
-        target = loaded.target()
-        if target is None:
-            return "no_contract"
+    async def preflight(self, card_id: uuid.UUID, qty: int | None = None) -> Preflight:
+        """The revalidation checks, read-only, for a card the user is looking at (`qty`: what
+        they typed). Changes nothing; the decision itself is still revalidated after approval."""
+        loaded = await self._load(card_id)
+        card = loaded.card
+        if card.state not in (CardState.PENDING, CardState.APPROVED):
+            return Preflight(applicable=False)
+        raw = (
+            loaded.approval.approved_proposal
+            if loaded.approval and loaded.approval.approved_proposal
+            else card.proposal
+        )
+        proposal = ProposedAction.model_validate(raw)
+        if qty is not None:
+            proposal = proposal.model_copy(update={"qty": qty})
+        return await self._preflight(loaded, proposal, stop_on_fail=False)
+
+    async def _preflight(
+        self, loaded: _Loaded, p: ProposedAction, *, stop_on_fail: bool
+    ) -> Preflight:
+        out = Preflight(
+            applicable=p.action != CardAction.REVIEW,
+            qty=p.qty,
+            signal_price=p.signal_price,
+            limit_price=p.limit_price,
+        )
+        if not out.applicable:
+            return out
+
+        def add(
+            name: str, status: Status, reason: str | None = None, detail: str | None = None
+        ) -> bool:
+            out.checks.append(Check(name, status, reason, detail))
+            return status == "pass" or not stop_on_fail  # False = stop here
+
         now, cfg = self._clock.now(), self._cfg()
-        if p.action in ENTRY_ACTIONS:
-            try:
-                quote = await self._md.quote(target.instrument)
-            except Exception:
-                return "market_data_unavailable"  # OD-12: never guess
-            if r := check_entry(p, quote, now, cfg.entry_chase_pct or Decimal(0)):
-                return r.value
-            flags = FlagsView(
-                kill_switch=await self._flags.is_active(FlagName.KILL_SWITCH),
-                entries_blocked=await self._flags.is_active(FlagName.ENTRIES_BLOCKED),
+        if not add(
+            "hours",
+            "pass" if is_regular_hours(now) else "blocked",
+            None if is_regular_hours(now) else "outside_regular_hours",  # 7.7
+        ):
+            return out
+        target = loaded.target(p)
+        if target is None:
+            add("contract", "blocked", "no_contract")
+            return out
+        entry = p.action in ENTRY_ACTIONS
+        lapsed = p.valid_until is not None and now > p.valid_until
+        if not add(
+            "validity",
+            "blocked" if lapsed else "pass",
+            CardReason.TIMEOUT.value if lapsed else None,
+        ):
+            return out
+        if not entry:
+            await self._exit_checks(out, add, loaded, p, target, now)
+            return out
+
+        quote = None
+        try:
+            quote = await self._md.quote(target.instrument)
+        except Exception:
+            if not add("quote", "blocked", "market_data_unavailable"):  # OD-12: never guess
+                return out
+        if quote is not None:
+            out.bid, out.ask, out.last, out.quote_at = quote.bid, quote.ask, quote.last, quote.at
+            add("quote", "pass")
+            old = is_stale(quote, now, cfg.quote_max_age_s)
+            if not add(
+                "quote_fresh",
+                "blocked" if old else "pass",
+                "quote_stale" if old else None,
+                f"quote from {quote.at:%H:%M:%S}" if old else None,
+            ):
+                return out
+            band = check_entry(p, quote, now, cfg.entry_chase_pct or Decimal(0))
+            if band is not None and band != CardReason.TIMEOUT:
+                if not add("price_band", "blocked", band.value):
+                    return out
+            else:
+                add("price_band", "pass")
+        if not add("superseded", *await self._superseded(loaded)):
+            return out
+        await self._risk_checks(out, add, loaded, p, target, now)
+        return out
+
+    async def _superseded(self, loaded: _Loaded) -> tuple[Status, str | None]:
+        card = loaded.card
+        if card.provider_id is None:
+            return "pass", None  # a manual card has no provider message to be overtaken by
+        async with self._sessions() as db:
+            why = await ledger.superseded_after_approval(
+                db,
+                provider_id=card.provider_id,
+                position_id=card.provider_position_id,
+                signal_id=card.signal_id,
+                posted_at=card.posted_at,
+                card_created_at=card.created_at,
+                superseding=SUPERSEDING,
             )
-            try:
-                risk = await build_risk_snapshot(self._sessions, self._md, now)
-            except Exception:
-                logger.exception("risk snapshot failed at revalidation")
-                risk = None
-            option = isinstance(target.instrument, OptionContract)
-            return entry_block_reason(cfg, flags, risk, p, option=option)
+        return ("blocked", why) if why else ("pass", None)
+
+    async def _risk_checks(
+        self,
+        out: Preflight,
+        add: Callable[..., bool],
+        loaded: _Loaded,
+        p: ProposedAction,
+        target: Target,
+        now: datetime,
+    ) -> None:
+        cfg = self._cfg()
+        flags = FlagsView(
+            kill_switch=await self._flags.is_active(FlagName.KILL_SWITCH),
+            entries_blocked=await self._flags.is_active(FlagName.ENTRIES_BLOCKED),
+        )
+        try:
+            risk = await build_risk_snapshot(
+                self._sessions,
+                self._md,
+                now,
+                broker=self._account() if self._account else None,
+                max_quote_age_s=cfg.quote_max_age_s,
+                exclude_card_id=loaded.card.card_id,
+            )
+        except Exception:
+            logger.exception("risk snapshot failed at revalidation")
+            risk = None
+        option = isinstance(target.instrument, OptionContract)
+        if p.qty is not None and p.limit_price is not None:
+            out.est_cost = p.qty * p.limit_price * (OPTION_MULTIPLIER if option else 1)
+        out.max_exposure = cfg.max_total_exposure_usd
+        out.max_open_positions = cfg.max_open_positions
+        out.max_daily_loss = cfg.max_daily_loss_usd
+        if risk is not None:
+            out.equity, out.cash, out.buying_power = risk.equity, risk.cash, risk.buying_power
+            available = (
+                risk.options_buying_power
+                if option and risk.options_buying_power is not None
+                else risk.buying_power
+            )
+            if available is not None and out.est_cost is not None:
+                out.projected_buying_power = available - out.est_cost
+            out.exposure, out.working_exposure = risk.exposure, risk.working_exposure
+            if risk.exposure is not None and out.est_cost is not None:
+                out.projected_exposure = risk.exposure + out.est_cost
+            out.open_positions = risk.open_positions
+            if risk.realized_today is not None and risk.unrealized is not None:
+                out.daily_pnl = risk.realized_today + risk.unrealized
+        reason = entry_block_reason(cfg, flags, risk, p, option=option)
+        unknown = reason is not None and reason.startswith(("risk unknown", "config incomplete"))
+        add(
+            "risk",
+            "pass" if reason is None else "review" if unknown else "blocked",
+            reason,
+            reason,
+        )
+
+    async def _exit_checks(
+        self,
+        out: Preflight,
+        add: Callable[..., bool],
+        loaded: _Loaded,
+        p: ProposedAction,
+        target: Target,
+        now: datetime,
+    ) -> None:
         # the provider closing P is what an "all out" card is about: what dies is the USER's lot
-        if r := check_exit(p, target.lot_qty is None, now):
-            return r.value
-        if p.action in SELLS | {CardAction.STOP, CardAction.TP} and target.lot_qty is None:
-            return "no_open_lot"
+        gone = check_exit(p, target.lot_qty is None, now)
+        if not add("position", "blocked" if gone else "pass", gone.value if gone else None):
+            return
+        needs_lot = p.action in SELLS | {CardAction.STOP, CardAction.TP}
+        if needs_lot and target.lot_qty is None:
+            add("lot", "blocked", "no_open_lot")
+            return
         if p.action in SELLS and p.qty is not None and p.qty > (target.lot_qty or 0):
-            return "qty_exceeds_lot"
-        return None
+            add("lot", "blocked", "qty_exceeds_lot")
+            return
+        add("lot", "pass")
+        if p.action in SELLS and p.qty is not None and self._broker is not None:
+            held = await self._broker_qty(target.instrument)
+            short = held is None or held < p.qty
+            add(
+                "broker_position",
+                "blocked" if short else "pass",
+                "broker_position_short" if short else None,
+            )
+
+    async def _broker_qty(self, instrument: Instrument) -> int | None:
+        """The broker's own holding of this symbol, fresh; None = unreadable (refuse the sell)."""
+        assert self._broker is not None  # noqa: S101 — callers check
+        try:
+            positions = await self._broker().positions()
+        except Exception:
+            logger.exception("broker positions unavailable at revalidation")
+            return None
+        symbol = broker_symbol(instrument)
+        return sum(pos.qty for pos in positions if broker_symbol(pos.instrument) == symbol)
 
     async def execute(self, card_id: uuid.UUID) -> list[uuid.UUID]:
         loaded = await self._load(card_id)
@@ -470,9 +663,24 @@ class ApprovalService:
             orders = await self._executor.execute(
                 loaded.card, proposal, approval.approval_id, target
             )
-        except (ExecutionBlocked, EntriesBlocked, InvariantViolation, OutsideRegularHours) as exc:
+        except (
+            ExecutionBlocked,
+            EntriesBlocked,
+            InvariantViolation,
+            ModeMismatch,
+            OutsideRegularHours,
+        ) as exc:
             await self._fail(card_id, f"execution: {exc}")
             return []
+        if orders and all(o.status == OrderStatus.REJECTED for o in orders):
+            # the broker refused it: the card says so instead of claiming a submission
+            await self._fail(
+                card_id,
+                "order_rejected",
+                code=CardReason.ORDER_REJECTED,
+                extra={"order_ids": [str(o.order_id) for o in orders]},
+            )
+            return [o.order_id for o in orders]
         async with in_transaction(self._sessions, None) as db:
             card = await cards.lock(db, card_id)
             if card is not None and card.state == CardState.APPROVED:
@@ -553,7 +761,14 @@ class ApprovalService:
                 lot = await ledger.open_lot_for_position(db, position.provider_position_id)
         return _Loaded(card, approval, position, lot)
 
-    async def _fail(self, card_id: uuid.UUID, reason: str) -> None:
+    async def _fail(
+        self,
+        card_id: uuid.UUID,
+        reason: str,
+        *,
+        code: CardReason = CardReason.REVALIDATE_FAILED,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
         async with in_transaction(self._sessions, None) as db:
             card = await cards.lock(db, card_id)
             if card is None or card.state != CardState.APPROVED:
@@ -562,9 +777,9 @@ class ApprovalService:
                 db,
                 card,
                 CardState.INVALIDATED,
-                CardReason.REVALIDATE_FAILED,
+                code,
                 CardActor.SYSTEM,
-                detail={"reason": reason},
+                detail={"reason": reason, **(extra or {})},
             )
             await notify(db, "cards", _event(card_id))
 

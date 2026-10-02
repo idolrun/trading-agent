@@ -460,7 +460,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 - (c2) Market-data source for option quotes and the SPX index level (paid feed / entitlement likely). Decided in architecture.
 - ~~(g) Provider-position scope~~ **Resolved 2026-09-28: per provider (author); `channel_id` is metadata only [C96].** Revisit only if one provider runs separate channels that hold the same contract.
 - (h) The Discord listener uses a user-account token, which Discord's terms forbid (§15, C95). Decide: keep it (throwaway account), or wait for the Message API. Not a build blocker, but a go-live risk decision.
-- (i) Jev go/no-go. The Jev fast path is built and switched off by default; nothing is benchmarked yet (the TypeSafe bench needs vendor access). Until it is, the LLM-only path is the go-live default.
+- (i) Jev go/no-go. The Jev fast path is built and **on by default** (F066); Laya-MLX is the default fallback when Jev does not settle a message, then the optional LLM, then a review card. The TypeSafe bench is still not run, so the go-live accuracy of that hierarchy is unproven.
 
 **Non-blocking:**
 - (d) LLM cost ceiling. The build reads it as `llm_monthly_budget_usd` (no default); spend alerts use it.
@@ -520,10 +520,10 @@ Detail: `docs/implementation/README.md` (roadmap, decision register OD-x) and `d
 |---|---|
 | Ingest, inbox, per-provider dispatcher, feed health, catch-up, gap backfill (FR-1–FR-4, FR-1a–FR-1e) | Built, tested on fakes. Discord listener built. Message API webhook payload provisional. |
 | Interpretation: candidates, LLM provider layer and extraction agent, advisory note and guard (FR-5–FR-10) | Built. Live provider tests need API keys. |
-| Jev fast path and routing | Built, **off by default**; benchmark not run (open item (i)). |
+| Jev fast path and routing | Built, **on by default** (Jev → Laya-MLX fallback → optional LLM → review); benchmark not run (open item (i)). |
 | Validation, ledgers, decision engine, cards, apply transaction (FR-11–FR-19) | Built. |
 | Execution: `submit_order`, entry, stops, brackets, exit re-pricing, underlying stops, expiration, reconciliation (FR-20–FR-24, §11) | Built against a **fake and a simulated broker**. |
-| Real broker and market-data adapters | **Not built.** Blocked on the broker and data-source decisions (open items (b), (c2)). |
+| Real broker and market-data adapters | Built for **Alpaca** (F051): paper and live endpoints, `trade_updates` fills, options + stock data (no SPX). Paper lifecycle hardening (account in risk, working orders, quote freshness, post-approval revalidation, mode/endpoint safety): F066. The application-level paper run (`tests/live/test_paper_app_flow.py`) is the stage-3 check; see F066 for its status. |
 | Real message API adapter | **Not built.** Blocked on the API spike (open item (a)). |
 | Dashboard, live updates, push (FR-25–FR-27) | Built. |
 | Manual operations, kill switch, provider corrections (§7.9) | Built. |

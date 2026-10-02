@@ -5,11 +5,13 @@ order over an in-memory copy of the provider's book. All I/O is here; `apply_eve
 
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.broker.port import BrokerClient
 from app.cards.models import CardAction, CardType
 from app.decide.engine import decide
 from app.decide.risk_snapshot import build_risk_snapshot
@@ -28,6 +30,7 @@ from app.ledger.positions import (
     contract_of,
 )
 from app.logging import bind
+from app.marketdata.freshness import is_stale
 from app.marketdata.port import MarketData
 from app.pipeline.apply import SignalOutcome, position_id_for, signal_id_for
 from app.runtime_config.schema import RuntimeConfig
@@ -55,7 +58,9 @@ class Planner:
         validation: ValidationService,
         marketdata: MarketData,
         flags: FlagService,
+        broker: Callable[[], BrokerClient | None] | None = None,
     ) -> None:
+        self._broker = broker  # paper / live broker for the account (None in shadow mode)
         self._sessions = sessions
         self._validation = validation
         self._md = marketdata
@@ -77,7 +82,7 @@ class Planner:
         flags = await self._flags_view()
         risk = None
         if any(s.msg_type in SIZED_TYPES for s in parsed.signals):
-            risk = await self._risk(now)
+            risk = await self._risk(now, config)
 
         outcomes = []
         for idx, sig in enumerate(parsed.signals):  # in order: later signals see earlier effects
@@ -101,7 +106,7 @@ class Planner:
                 elif link is not None and link.outcome == LinkOutcome.NEW_POSITION:
                     position_id = position_id_for(signal_id)
                 if position is not None and position.instrument == "option" and norm is not None:
-                    v = await self._scale_follow_up(v, norm, position, config)
+                    v = await self._scale_follow_up(v, norm, position, config, now)
                     norm = v.normalized
 
                 update: PositionUpdate | None = None
@@ -174,7 +179,7 @@ class Planner:
         v = await self._validation.validate(sig, ctx.envelope, config=config, now=now)
         norm = v.normalized
         if position is not None and position.instrument == "option" and norm is not None:
-            v = await self._scale_follow_up(v, norm, position, config)
+            v = await self._scale_follow_up(v, norm, position, config, now)
             norm = v.normalized
         return decide(
             DecisionInputs(
@@ -187,7 +192,7 @@ class Planner:
                 tick=await self._tick(sig, v, position, norm),
                 posted_at=posted_at,
                 flags=await self._flags_view(),
-                risk=await self._risk(now) if sig.msg_type in SIZED_TYPES else None,
+                risk=await self._risk(now, config) if sig.msg_type in SIZED_TYPES else None,
             )
         )
 
@@ -221,7 +226,7 @@ class Planner:
                 tick=await self._tick(sig, v, None, v.normalized),
                 posted_at=ctx.envelope.posted_at,
                 flags=await self._flags_view(),
-                risk=await self._risk(now),
+                risk=await self._risk(now, config),
             )
         )
         return proposals, update
@@ -238,6 +243,7 @@ class Planner:
         norm: NormalizedSignal,
         position: PositionState,
         config: RuntimeConfig,
+        now: datetime,
     ) -> ValidationResult:
         """Follow-up premiums were left unscaled (no contract then): scale them now against
         the linked contract's live quote (FR-12). Unavailable quote -> review, never a guess."""
@@ -248,6 +254,8 @@ class Planner:
         except Exception:
             logger.warning("no quote to scale follow-up prices")
             return v.model_copy(update={"status": "review", "reasons": ["market_data_unavailable"]})
+        if is_stale(quote, now, config.quote_max_age_s):
+            return v.model_copy(update={"status": "review", "reasons": ["quote_stale"]})
         scaled = scale_prices(
             norm.model_copy(update={"instrument": "option"}),
             mid=mid_price(quote),
@@ -283,9 +291,15 @@ class Planner:
             logger.warning("tick size unavailable")
             return None  # decide -> review "tick_unknown" (OD-25)
 
-    async def _risk(self, now: datetime) -> RiskSnapshot | None:
+    async def _risk(self, now: datetime, config: RuntimeConfig) -> RiskSnapshot | None:
         try:
-            return await build_risk_snapshot(self._sessions, self._md, now)
+            return await build_risk_snapshot(
+                self._sessions,
+                self._md,
+                now,
+                broker=self._broker() if self._broker else None,
+                max_quote_age_s=config.quote_max_age_s,
+            )
         except Exception:
             logger.exception("risk snapshot failed")
             return None  # entries disabled "risk unknown"

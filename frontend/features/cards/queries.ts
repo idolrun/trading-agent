@@ -8,6 +8,7 @@ import type { CardDetail, CardListFilters } from "@/features/cards/types"
 export const cardKeys = domainKeys("cards")
 
 export type CardPage = Schemas["Page_CardOut_"]
+export type Preflight = Schemas["PreflightOut"]
 
 export function fetchCardPage(filters: CardListFilters, cursor?: string): Promise<CardPage> {
   return apiGet<CardPage>("/api/v1/cards", { ...filters, cursor })
@@ -37,6 +38,26 @@ export function cardDetailQuery(cardId: string) {
     staleTime: 4_000,
     refetchInterval: 8_000,
   })
+}
+
+/**
+ * The server's revalidation checks against a fresh quote, account and risk limits (read-only).
+ * A deciding user sees the same list the approval will be revalidated with; the approval is
+ * revalidated again after the click, whatever this showed. Under the card's detail key, so a
+ * decision refetches it.
+ */
+export function preflightQuery(cardId: string, enabled: boolean) {
+  return queryOptions({
+    queryKey: [...cardKeys.detail(cardId), "preflight"],
+    queryFn: () => apiGet<Preflight>(`/api/v1/cards/${encodeURIComponent(cardId)}/preflight`),
+    enabled: enabled && cardId.length > 0,
+    staleTime: 15_000,
+    refetchInterval: 30_000, // each run reads the broker account and positions: keep it gentle
+  })
+}
+
+export function usePreflight(cardId: string, enabled: boolean) {
+  return useQuery(preflightQuery(cardId, enabled))
 }
 
 export function useCardList(filters: CardListFilters) {

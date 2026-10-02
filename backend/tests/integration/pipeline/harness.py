@@ -39,7 +39,7 @@ from app.markettime import FixedClock
 from app.pipeline.apply import position_id_for, signal_id_for
 from app.pipeline.plan import Planner
 from app.runtime_config.models import Actor
-from app.runtime_config.schema import RuntimeConfig
+from app.runtime_config.schema import RuntimeConfig, TradingMode
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.validate.service import ValidationService
@@ -93,6 +93,7 @@ class Harness:
     alerts: AlertService
     fixtures: Path
     clock: FixedClock
+    broker: SimulatedBroker | None = None  # set by `approval_service`: the account the risk reads
 
     @classmethod
     async def create(cls, factory: Factory, fixtures: Path, **overrides: Any) -> "Harness":
@@ -162,10 +163,17 @@ class Harness:
             ),
             marketdata=self.md,
             flags=flags,
+            broker=self.account_broker,
         )
+
+    def account_broker(self) -> Any:
+        """As the lifespan wires it: the broker's account is read in paper / live mode only."""
+        mode = (self.config.get() or RuntimeConfig()).trading_mode
+        return None if mode == TradingMode.SHADOW else self.broker
 
     def approval_service(self, checkpointer: Any, broker: SimulatedBroker) -> ApprovalService:
         """F036 approvals over the shadow broker (`broker`); its FakeBroker base records calls."""
+        self.broker = broker
         flags = FlagService(self.factory, self.alerts)
         orders = OrderService(
             self.factory,
@@ -205,6 +213,8 @@ class Harness:
             config=self.config,
             flags=flags,
             clock=self.clock,
+            broker=lambda: broker,
+            account=self.account_broker,
         )
         approvals.relink = RelinkService(
             self.factory, planner=self.planner(flags), config=self.config, clock=self.clock

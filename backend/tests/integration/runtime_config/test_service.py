@@ -94,3 +94,26 @@ async def test_listener_refreshes_other_process_cache(service_factory: Factory) 
         await eventually(lambda: (c := reader.get()) is not None and c.feed_silence_s == 43)
     finally:
         listener.cancel()
+
+
+async def test_extra_errors_refuse_a_config_this_process_cannot_serve(
+    owner_engine: object, db_session: AsyncSession
+) -> None:
+    from app.broker.safety import ALPACA_LIVE, mode_validator
+    from app.runtime_config.service import ConfigInvalid
+
+    engine = create_async_engine(_url("test_database_url"), poolclass=NullPool)
+    service = ConfigService(
+        create_session_factory(engine),
+        extra_errors=mode_validator(ALPACA_LIVE),  # a process on the live endpoint
+    )
+    await service.load()
+    with pytest.raises(ConfigInvalid, match="trading_mode=paper"):
+        await service.update(
+            RuntimeConfig(trading_mode="paper"), expected_version=0, actor=Actor.USER, reason="x"
+        )
+    assert service.get() is None  # nothing saved
+    await service.update(  # shadow never touches a broker: always allowed
+        RuntimeConfig(trading_mode="shadow"), expected_version=0, actor=Actor.USER, reason="y"
+    )
+    await engine.dispose()

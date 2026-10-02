@@ -114,7 +114,9 @@ Approval graph — one per card, started by apply/notify (thread card:<card_id>,
 await_approval ── langgraph interrupt(); resumed by: user approve/edit/reject, expiry timer,
   │                superseding message, or crash-recovery (expire)
   ▼
-revalidate ── code: C22 validity (price band, freshness, supersession)
+revalidate ── code: hours, validity, quote + freshness (`quote_max_age_s`), price band, supersession
+  │          (later trim/stop/exit/correction, delete or edit of the card's message), broker account,
+  │          working orders, positions and risk limits, exit lot qty + broker position (F066)
   ▼
 submit_order ── code: FR-20 invariants → broker (idempotent, see §5.6)
   ▼
@@ -268,7 +270,7 @@ Without either, a Postgres outage loses messages (PRD FR-1d, C91).
 | Layer | Choice | Notes |
 |---|---|---|
 | Language | Python 3.13, asyncio; `uv` for dependencies | `Decimal` for all money. `ruff` and strict `mypy` gate every change. |
-| **Semantic decisions** | **TypeSafe Jev** via `typesafe-sdk` (`AsyncTypeSafeClient`), model `jev-latest` pinned to a dated version once chosen | Choice / Score / Noul (§4, Appendix A). Built; **off by default** (`jev.enabled = false`, no `TYPESAFE_API_KEY`) until the week-0 bench (PRD (i)); with it off every message takes the LLM path. |
+| **Semantic decisions** | **TypeSafe Jev** via `typesafe-sdk` (`AsyncTypeSafeClient`), model `jev-latest` pinned to a dated version once chosen | Choice / Score / Noul (§4, Appendix A). Built; **on by default** (`jev.enabled = true`, model `jev-latest`; needs `TYPESAFE_API_KEY`, without it every message goes to the fallback). Anything Jev does not settle goes to Laya-MLX (local fallback, strict gate, off Apple Silicon it fails to load and alerts), then the optional LLM, then a review card. Bench still pending (PRD (i)). |
 | **Generative slow path + note** | **Provider-agnostic** through LangChain `init_chat_model("<provider>:<model>")`. Supported: **Anthropic** (`langchain-anthropic`), **OpenAI** (`langchain-openai`), **DeepSeek** (`langchain-deepseek`). Optional: an OpenAI-compatible endpoint (`ChatOpenAI(base_url=…)`), Bedrock (`langchain-aws`, **not implemented**: the registry accepts `anthropic`, `openai`, `deepseek`, `openai_compat`) | Model registry and fallback chain in config (§4.8). |
 | **Orchestration** | **LangGraph** `StateGraph`, `interrupt()` / `Command(resume=…)` | §5. |
 | **Agent harness** | **LangChain** `create_agent` + middleware | LLM slow path only. |
@@ -993,7 +995,7 @@ Detail and per-feature specs: `docs/implementation/README.md` (roadmap, decision
 |---|---|---|
 | Infrastructure, schema, config, time, alerts, auth, ports + fakes | F001–F010 | Done |
 | Ingest, inbox, dispatcher, feed health, gap backfill, signal contract, candidates, context, normalization, validation, ledgers, decide, cards, apply, timers, `submit_order`, SSE/push, read API | F011–F030 | Done |
-| LLM provider layer, extraction agent, Jev fast path, advisory note | F031–F034 | Done (Jev off by default; no bench yet) |
+| LLM provider layer, extraction agent, Jev fast path, advisory note | F031–F034 | Done (Jev on by default with Laya fallback, F066; no bench yet) |
 | Message graph, approval graph, out-of-order, corrections, off-hours | F035–F039 | Done |
 | Fill intake, entry, brackets, exit re-pricing, underlying stops, expiration, reconciliation, manual ops, evalkit, observability | F040–F049 | Done, on the fake and simulated broker |
 | Real Message API adapter | F050 | **Not built** (blocked: spike S1) |

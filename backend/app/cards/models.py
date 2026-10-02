@@ -71,6 +71,7 @@ class CardReason(StrEnum):
     EDITED = "edited"
     REVIEW_COMPLETED = "review_completed"
     SUBMITTED = "submitted"
+    ORDER_REJECTED = "order_rejected"  # approved, then the broker refused the order
 
 
 class CardActor(StrEnum):

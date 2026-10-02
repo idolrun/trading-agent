@@ -111,3 +111,39 @@ class ApprovalOut(CamelModel):
 class CardDetail(CardOut):
     events: list[CardEventOut]
     approval: ApprovalOut | None
+
+
+class CheckOut(CamelModel):
+    name: str  # hours | validity | quote | quote_fresh | price_band | superseded | risk | ...
+    status: str  # pass | review | blocked
+    reason: str | None
+    detail: str | None
+
+
+class PreflightOut(CamelModel):
+    """The revalidation checks run now, read-only (nothing is decided or stored). `applicable`
+    false = nothing to check (a review card, or a card that is no longer waiting)."""
+
+    applicable: bool
+    verdict: str  # pass | review | blocked
+    checks: list[CheckOut]
+    qty: int | None
+    bid: Num | None
+    ask: Num | None
+    last: Num | None
+    quote_at: datetime | None
+    signal_price: Num | None
+    limit_price: Num | None
+    est_cost: Num | None
+    equity: Num | None
+    cash: Num | None
+    buying_power: Num | None
+    projected_buying_power: Num | None
+    exposure: Num | None
+    working_exposure: Num | None
+    projected_exposure: Num | None
+    max_exposure: Num | None
+    open_positions: int | None
+    max_open_positions: int | None
+    daily_pnl: Num | None
+    max_daily_loss: Num | None

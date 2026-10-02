@@ -38,6 +38,7 @@ from app.auth.service import AuthService
 from app.broker.alpaca import AlpacaBroker
 from app.broker.fake import FakeBroker
 from app.broker.port import BrokerClient, BrokerEvents
+from app.broker.safety import check_mode, mode_validator
 from app.broker.simulated import SimulatedBroker
 from app.cards.approval_service import ApprovalService
 from app.cards.corrections import CorrectionService
@@ -117,8 +118,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         session_factory,
         libpq_dsn(str(settings.database_url)),
         allow_ungated_models=settings.ungated_models_allowed,
+        extra_errors=mode_validator(
+            settings.broker_kind, allow_fake=settings.environment == "test"
+        ),
     )
     await config_service.load()
+    # A stored mode this process cannot serve (paper vs live endpoint) stops startup: never
+    # corrected silently, never traded.
+    if stored := config_service.get():
+        if why := check_mode(
+            stored.trading_mode, settings.broker_kind, allow_fake=settings.environment == "test"
+        ):
+            logger.error("unsafe trading mode: %s", why)
+            await engine.dispose()
+            raise RuntimeError(why)
     config_listener = asyncio.create_task(config_service.listen(), name="config-listener")
 
     app.state.engine = engine
@@ -175,6 +188,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         alerts=app.state.alerts,
         config=config_service,
         clock=app.state.clock,
+        broker_kind=settings.broker_kind,
+        allow_fake_broker=settings.environment == "test",
     )
     # LangGraph checkpointer + store (schema langgraph): approval threads live here (F036).
     graph_pool = open_pool(libpq_dsn(str(settings.database_url)))
@@ -187,6 +202,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         marketdata=marketdata,
         flags=app.state.flags,
+        broker=app.state.orders.account_broker,
     )
     relink = RelinkService(
         session_factory, planner=planner, config=config_service, clock=app.state.clock
@@ -225,6 +241,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         config=config_service,
         flags=app.state.flags,
         clock=app.state.clock,
+        broker=app.state.orders.broker_for_mode,
+        account=app.state.orders.account_broker,
     )
     app.state.approvals.relink = relink
     app.state.approvals.planner = planner  # AC-14: a confirmed underlying re-plans the card
@@ -408,7 +426,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
         background.append(asyncio.create_task(discord_listener.run(), name="discord-listener"))
-        laya.start()  # no-op unless config.laya.enabled; loads the weights off the hot path
+        if settings.environment != "test":  # tests never download or load the local model
+            laya.start()  # no-op unless config.laya.enabled; loads the weights off the hot path
         background.append(
             asyncio.create_task(
                 run_daily(

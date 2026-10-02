@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -32,7 +33,9 @@ class ConfigService:
         listen_dsn: str | None = None,
         *,
         allow_ungated_models: bool = False,
+        extra_errors: Callable[[RuntimeConfig], list[str]] | None = None,
     ) -> None:
+        self._extra_errors = extra_errors  # process-level checks (e.g. trading mode vs broker)
         self._sessions = session_factory
         self._listen_dsn = listen_dsn
         self._allow_ungated = allow_ungated_models
@@ -68,6 +71,8 @@ class ConfigService:
             errors = await validate_llm_config(
                 config.llm, session, allow_ungated=self._allow_ungated
             )
+            if self._extra_errors is not None:
+                errors = [*errors, *self._extra_errors(config)]
             if errors:
                 raise ConfigInvalid(errors)
             before = await repo.load(session)

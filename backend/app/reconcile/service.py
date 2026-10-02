@@ -22,7 +22,13 @@ from sqlmodel import col
 
 from app.alerts.models import AlertKind, Severity
 from app.alerts.service import AlertService
-from app.broker.port import BrokerClient, BrokerEvent, BrokerOrder, BrokerPosition
+from app.broker.port import (
+    BrokerAccount,
+    BrokerClient,
+    BrokerEvent,
+    BrokerOrder,
+    BrokerPosition,
+)
 from app.db import in_transaction
 from app.execution import repo as orders_repo
 from app.execution.consumer import BrokerEventConsumer
@@ -53,11 +59,18 @@ AFTER_FILL_DEBOUNCE_S = 2.0
 PERIODIC_SETTLE_S = 30.0
 
 
+AVG_PRICE_TOLERANCE = Decimal("0.01")  # relative; the system's average may differ from FIFO
+AVG_PRICE_NOISE = Decimal("0.01")  # absolute dollars (broker rounds to cents)
+
+
 @dataclass(frozen=True)
 class Mismatch:
     symbol: str
     broker_qty: int
     lot_qty: int
+    # set when the quantities agree but the average cost does not (broker avg, lots' avg)
+    broker_avg: Decimal | None = None
+    lot_avg: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +90,8 @@ class ReconcileReport:
     foreign: tuple[ForeignChange, ...] = ()
     unknown_orders: tuple[str, ...] = ()  # our `cta-` client ids the DB has no row for
     orders_synced: int = 0
+    account: BrokerAccount | None = None  # reported (equity, cash, buying power), never gated
+    broker_positions: int | None = None
     skipped: str | None = None  # e.g. "shadow"; a skipped run counts as clean
     error: str | None = None  # broker unreadable: cannot verify -> not clean
 
@@ -104,6 +119,8 @@ def compare(
         broker_qty = position.qty if position else 0
         lot_qty = sum(lot.qty for lot in symbol_lots)
         if broker_qty == lot_qty:
+            if drift := _avg_drift(position, symbol_lots):
+                mismatches.append(Mismatch(symbol, broker_qty, lot_qty, *drift))
             continue
         if broker_qty < 0 or any(not lot.is_foreign for lot in symbol_lots):
             mismatches.append(Mismatch(symbol, broker_qty, lot_qty))
@@ -128,6 +145,25 @@ def compare(
     return ReconcileReport(
         mismatches=tuple(mismatches), foreign=tuple(foreign), unknown_orders=unknown
     )
+
+
+def _avg_drift(
+    position: BrokerPosition | None, lots: Sequence[Lot]
+) -> tuple[Decimal, Decimal] | None:
+    """(broker avg, lots' avg) when both are known and differ by more than the tolerance.
+    Unknown on either side is no finding: a missing value is never invented."""
+    if position is None or position.avg_price is None or not lots:
+        return None
+    if any(lot.avg_price is None or lot.is_foreign for lot in lots):
+        return None  # a foreign lot is the broker's own figure, not ours to second-guess
+    qty = sum(lot.qty for lot in lots)
+    if qty == 0:
+        return None
+    lot_avg = sum((lot.qty * (lot.avg_price or Decimal(0)) for lot in lots), Decimal(0)) / qty
+    allowed = max(AVG_PRICE_NOISE, position.avg_price * AVG_PRICE_TOLERANCE)
+    if abs(position.avg_price - lot_avg) > allowed:
+        return position.avg_price, lot_avg.quantize(Decimal("0.0001"))
+    return None
 
 
 def order_events(
@@ -180,6 +216,13 @@ def _findings(report: ReconcileReport) -> dict[str, tuple[str, dict[str, Any]]]:
     """signature -> (alert message, details) for everything that keeps entries blocked."""
     found: dict[str, tuple[str, dict[str, Any]]] = {}
     for m in report.mismatches:
+        if m.broker_avg is not None:
+            found[f"avg:{m.symbol}:{m.broker_avg}:{m.lot_avg}"] = (
+                f"Reconciliation mismatch {m.symbol}: broker average {m.broker_avg}, "
+                f"lots average {m.lot_avg}",
+                {"symbol": m.symbol, "broker_avg": str(m.broker_avg), "lot_avg": str(m.lot_avg)},
+            )
+            continue
         found[f"lot:{m.symbol}:{m.broker_qty}:{m.lot_qty}"] = (
             f"Reconciliation mismatch {m.symbol}: broker holds {m.broker_qty}, lots {m.lot_qty}",
             {"symbol": m.symbol, "broker_qty": m.broker_qty, "lot_qty": m.lot_qty},
@@ -266,6 +309,7 @@ class Reconciler:
             broker_orders = await self._broker.open_orders()
             synced = await self._sync_orders(timedelta(seconds=settle_s))
             positions = await self._broker.positions()
+            account = await self._account()
         except Exception as exc:
             logger.exception("reconciliation could not read the broker")
             return ReconcileReport(error=f"{type(exc).__name__}: {exc}")
@@ -279,12 +323,26 @@ class Reconciler:
             known = await orders_repo.known_client_ids(db, ours) if ours else set()
         # ponytail: a fill between the broker read and the lot read can show as a one-run
         # mismatch; the next run (post-fill hook) clears it. Add a re-check if it gets noisy.
-        report = replace(compare(positions, lots, broker_orders, known), orders_synced=synced)
+        report = replace(
+            compare(positions, lots, broker_orders, known),
+            orders_synced=synced,
+            account=account,
+            broker_positions=len(positions),
+        )
         if report.foreign:
             async with in_transaction(self._sessions, None) as db:
                 for change in report.foreign:
                     await _apply_foreign(db, change)
         return report
+
+    async def _account(self) -> BrokerAccount | None:
+        """Equity, cash and buying power for the health view. Reported, never gating: a broker
+        that cannot say is simply not shown (no value is invented)."""
+        try:
+            return await self._broker.account()
+        except Exception:
+            logger.warning("broker account unavailable for the health report")
+            return None
 
     async def _sync_orders(self, settle: timedelta) -> int:
         """Adopt the broker's view of every order we sent (never a resubmit, FR-22)."""

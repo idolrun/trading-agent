@@ -22,6 +22,7 @@ from app.alerts.models import AlertKind, Severity
 from app.alerts.service import AlertService
 from app.broker.errors import BrokerRejected, BrokerTimeout, BrokerUnavailable
 from app.broker.port import BrokerClient, BrokerOrder, OrderRequest
+from app.broker.safety import FAKE, check_mode
 from app.db import in_transaction
 from app.execution import repo
 from app.execution.fills import TERMINAL
@@ -49,6 +50,10 @@ class OutsideRegularHours(Exception):
     """PRD 7.7 / C59: approved orders are submitted in regular hours only."""
 
 
+class ModeMismatch(Exception):
+    """The trading mode and the broker this process talks to disagree (paper vs live)."""
+
+
 class InvariantViolation(Exception):
     def __init__(self, reasons: list[str]) -> None:
         super().__init__(", ".join(reasons))
@@ -66,7 +71,11 @@ class OrderService:
         alerts: AlertService,
         config: ConfigService,
         clock: Clock,
+        broker_kind: str = FAKE,
+        allow_fake_broker: bool = True,  # lifespan: only when ENVIRONMENT=test
     ) -> None:
+        self._broker_kind = broker_kind
+        self._allow_fake = allow_fake_broker
         self._sessions = sessions
         self._clock = clock
         self._brokers = {Mode.SHADOW: simulated, Mode.PAPER: broker, Mode.LIVE: broker}
@@ -75,6 +84,16 @@ class OrderService:
         self._config = config
         # client ids with a broker call in flight in this process: not stuck, just not back yet
         self._sending: set[str] = set()
+
+    def broker_for_mode(self) -> BrokerClient:
+        """The broker of the current trading mode: shadow = the simulator, else paper / live."""
+        return self._brokers[Mode((self._config.get() or RuntimeConfig()).trading_mode)]
+
+    def account_broker(self) -> BrokerClient | None:
+        """The broker whose account the risk reads: paper / live. Shadow has none: its simulated
+        account is made up, so entries are not judged against it."""
+        mode = Mode((self._config.get() or RuntimeConfig()).trading_mode)
+        return None if mode == Mode.SHADOW else self._brokers[mode]
 
     async def submit_order(self, intent: OrderIntent, auth: Approved | Auto) -> Order:
         coid = client_order_id(intent, auth)
@@ -91,6 +110,9 @@ class OrderService:
                 return await self._recover(existing, intent, coid)
             return existing  # AC-7: re-executed node, same id, no second order
         mode = Mode((self._config.get() or RuntimeConfig()).trading_mode)
+        if why := check_mode(mode, self._broker_kind, allow_fake=self._allow_fake):
+            await self._alert(AlertKind.INVARIANT_BLOCK, f"Order refused: {why}", intent, coid)
+            raise ModeMismatch(why)  # last line of defence: nothing is stored or sent
         broker = self._brokers[mode]
         if intent.kind == OrderKind.ENTRY:
             allowed, why = await self._flags.entries_allowed()

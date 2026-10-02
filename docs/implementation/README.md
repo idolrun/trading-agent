@@ -195,6 +195,7 @@ cd frontend && pnpm dev                  # after F052
 | [F063](F063-load-fault-tests.md) | Load & fault test suite | F046, F049 | AC-22, AC-23, §17 |
 | [F064](F064-deployment-runbooks.md) | Deployment, runbooks & stage gates | F062, F063 | §17, §18, AC-12 |
 | [F065](F065-shadow-lifecycle-verification.md) | Shadow position lifecycle verification (tests only) | F040–F043, F046, F062 | §7.1–7.4, FR-20, AC-2, AC-3, AC-15, AC-16 |
+| [F066](F066-paper-lifecycle-hardening.md) | Alpaca-paper lifecycle hardening: Jev→Laya defaults, account + working orders in risk, mode/endpoint safety, quote freshness, revalidation + supersession, rejection state, preflight card | F036, F040–F043, F046, F051 | §7.1–7.2, FR-12, FR-18, FR-20, FR-22, §11, §17 |
 
 ---
 

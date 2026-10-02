@@ -19,6 +19,7 @@ NO_DEFAULT = {
     "entry_chase_pct",
     "entry_validity_s",
     "entry_cancel_after_s",
+    "quote_max_age_s",
     "exit_card_timeout_s",
     "exit_reprice_interval_s",
     "exit_reprice_step_pct",
@@ -43,6 +44,7 @@ COMPLETE = {
     "entry_chase_pct": "5",
     "entry_validity_s": 60,
     "entry_cancel_after_s": 120,
+    "quote_max_age_s": 60,
     "exit_card_timeout_s": 300,
     "exit_reprice_interval_s": 5,
     "exit_reprice_step_pct": "2",
@@ -66,7 +68,7 @@ def test_defaults() -> None:
     assert c.symbol_map == {"SPX": "SPXW"}
     assert c.missing_underlying_proximity_pct == Decimal(10)
     assert (c.t_chat, c.t_field, c.t_link) == (Decimal("0.9"), Decimal("0.8"), Decimal("0.8"))
-    assert c.jev.enabled is False
+    assert (c.jev.enabled, c.jev.model, c.laya.enabled) == (True, "jev-latest", True)
     assert c.llm.roles.extract.chain == [] and c.llm.roles.extract.deadline_ms == 3000
     assert c.note_guard_enabled is True
     assert c.channels == c.muted_authors == []

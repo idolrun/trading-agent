@@ -60,11 +60,11 @@ describe("ConfigScreen", () => {
     await userEvent.click(await screen.findByLabelText("Laya enabled"))
     await userEvent.clear(screen.getByLabelText("Laya t_type (0 to 1)"))
     await userEvent.type(screen.getByLabelText("Laya t_type (0 to 1)"), "0.95")
-    await save("turn on the local fallback")
+    await save("tighten the local fallback")
 
     await screen.findByText("Version 4")
     expect(puts[0].document).toMatchObject({
-      laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.95", t_link: "0.9" },
+      laya: { enabled: false, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.95", t_link: "0.9" }, // on by default: the click turns it off
     })
   })
 
@@ -91,7 +91,7 @@ describe("ConfigScreen", () => {
       channels: ["999888777666555444"],
       stock_tiers: null,
       feed_silence_s: 60,
-      jev: { model: null, timeout_ms: 300, enabled: false },
+      jev: { model: "jev-latest", timeout_ms: 300, enabled: true },
     })
     // dirty state reset: reason cleared, nothing to save
     expect(screen.getByLabelText("Reason for this change")).toHaveValue("")

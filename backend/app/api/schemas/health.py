@@ -78,6 +78,10 @@ class ReconciliationStats(CamelModel):
     unknown_orders: int
     error: str | None
     mismatch_alerts: int  # `reconcile_mismatch` alerts in the window
+    equity: Num | None = None  # the broker account as of the last run (paper / live only)
+    cash: Num | None = None
+    buying_power: Num | None = None
+    broker_positions: int | None = None
 
 
 class PostgresStats(CamelModel):

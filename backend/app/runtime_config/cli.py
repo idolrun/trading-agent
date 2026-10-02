@@ -12,6 +12,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from app.broker.safety import mode_validator
 from app.config import get_settings
 from app.db import create_engine, create_session_factory
 from app.runtime_config.models import Actor
@@ -24,7 +25,11 @@ async def run(args: argparse.Namespace, new_config: RuntimeConfig | None) -> int
     settings = get_settings()
     engine = create_engine(settings)
     service = ConfigService(
-        create_session_factory(engine), allow_ungated_models=settings.ungated_models_allowed
+        create_session_factory(engine),
+        allow_ungated_models=settings.ungated_models_allowed,
+        extra_errors=mode_validator(
+            settings.broker_kind, allow_fake=settings.environment == "test"
+        ),
     )
     try:
         await service.load()

@@ -88,8 +88,17 @@ class RiskSnapshot:
     realized_today: Decimal | None
     unrealized: Decimal | None
     open_positions: int
-    exposure: Decimal | None  # cost basis of open lots
+    exposure: Decimal | None  # cost basis of open lots + unfilled working entries
     lots: tuple[OpenLotBrief, ...] = ()
+    # Broker account (fresh read). `account_required` = the snapshot was built with a broker,
+    # so an unreadable account (None) disables entries instead of being assumed fine.
+    account_required: bool = False
+    equity: Decimal | None = None
+    cash: Decimal | None = None
+    buying_power: Decimal | None = None  # stock buying power
+    options_buying_power: Decimal | None = None
+    working_exposure: Decimal = Decimal(0)  # unfilled entry orders, already inside `exposure`
+    working_entries: int = 0  # unfilled entries on symbols not held yet, inside `open_positions`
 
 
 @dataclass(frozen=True)

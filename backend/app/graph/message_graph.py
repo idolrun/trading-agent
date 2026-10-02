@@ -3,9 +3,10 @@
     load_context -> find_candidates -> fixture_interpret (dev/tests) -> decide_apply
                                     -> jev_interpret -> route:
                                          feed_only | assemble -> decide_apply
-                                         slow_path, Jev gave no answer -> laya_interpret
-                                         slow_path -> llm_extract (optional) -> decide_apply
-    laya_interpret: feed_only | assemble -> decide_apply, else -> llm_extract
+                                         slow_path (any reason) -> laya_interpret
+                                         -> llm_extract (optional) -> decide_apply
+    laya_interpret (only when Jev did not settle it): feed_only | assemble -> decide_apply,
+                   else -> llm_extract
     llm_extract (not configured / exhausted / rejected) | decide_apply (span mismatch) -> raw_review
     decide_apply | raw_review -> notify -> END
     recheck mode (F037): after interpretation -> END (no apply, no notify)
@@ -117,13 +118,11 @@ def build_message_graph(
         lambda _s: "fixture_interpret" if deps.fixture is not None else "jev_interpret",
     )
     g.add_conditional_edges("fixture_interpret", _after_interpret)
+    # Jev settles feed-only and complete signals; whatever it cannot settle (no answer, low
+    # confidence, several signals, missing fields) goes to the local fallback, never both.
     g.add_conditional_edges(
         "jev_interpret",
-        lambda s: (
-            ("laya_interpret" if not s["jev_answered"] else "llm_extract")
-            if s["route"] == "slow_path"
-            else _after_interpret(s)
-        ),
+        lambda s: "laya_interpret" if s["route"] == "slow_path" else _after_interpret(s),
     )
     g.add_conditional_edges(
         "laya_interpret",
@@ -222,8 +221,9 @@ class _Nodes:
         }
 
     async def laya_interpret(self, state: MessageState) -> dict[str, Any]:
-        """Jev gave no answer (down, timed out, disabled): the local model gets one try, under
-        its own strict thresholds. Anything it cannot settle continues to the optional LLM."""
+        """Jev did not settle the message (no answer, or low confidence / several signals /
+        missing fields): the local model gets one try, under its own strict thresholds.
+        Anything it cannot settle continues to the optional LLM, then to review."""
         ctx = _processing(state)
         result = None
         if self.d.laya is not None:
@@ -238,9 +238,17 @@ class _Nodes:
             return {}
         await self._stage(state, ctx, Stage.JEV)
         decision = route(result, gate(self.d.cfg()))
+        reasons = (
+            list(decision.reasons)
+            if decision.path != "slow_path"
+            else [
+                *state["route_reasons"],
+                *(f"laya: {r}" for r in decision.reasons),
+            ]
+        )
         return {
             "route": decision.path,
-            "route_reasons": list(decision.reasons),
+            "route_reasons": reasons,
             "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
             "interpreter": "laya",
             "model_call_id": result.model_call_id,

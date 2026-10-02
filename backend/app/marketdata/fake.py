@@ -2,7 +2,8 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Iterable
-from datetime import date
+from dataclasses import replace
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal
@@ -32,6 +33,7 @@ class FakeMarketData:
         self.clock = clock or SystemClock()
         self.quotes: dict[str, Quote] = {}  # by broker symbol
         self.underlyings: dict[str, Quote] = {}
+        self._pinned: set[str] = set()  # symbols whose quote keeps its scripted timestamp
         self.chains: dict[tuple[str, date], list[OptionContract]] = {}
         self.optionable: set[str] = set()
         self.option_ticks: dict[str, tuple[Decimal, Decimal]] = {}
@@ -68,9 +70,14 @@ class FakeMarketData:
         bid: Decimal | None,
         ask: Decimal | None,
         last: Decimal | None = None,
+        at: datetime | None = None,
     ) -> Quote:
-        quote = Quote(bid=bid, ask=ask, last=last, at=self.clock.now())
-        self.quotes[broker_symbol(instrument)] = quote
+        """`at` pins the quote's timestamp (to script a stale or delayed feed); without it the
+        quote is as live as the clock: every read is stamped with the current time."""
+        quote = Quote(bid=bid, ask=ask, last=last, at=at or self.clock.now())
+        symbol = broker_symbol(instrument)
+        self.quotes[symbol] = quote
+        (self._pinned.add if at else self._pinned.discard)(symbol)
         return quote
 
     def set_underlying(self, symbol: str, price: Decimal) -> Quote:
@@ -87,10 +94,12 @@ class FakeMarketData:
     # --- MarketData ---
 
     async def quote(self, instrument: Instrument) -> Quote:
+        symbol = broker_symbol(instrument)
         try:
-            return self.quotes[broker_symbol(instrument)]
+            quote = self.quotes[symbol]
         except KeyError:
-            raise QuoteUnavailable(broker_symbol(instrument)) from None
+            raise QuoteUnavailable(symbol) from None
+        return quote if symbol in self._pinned else replace(quote, at=self.clock.now())
 
     async def underlying_price(self, symbol: str) -> Quote:
         try:

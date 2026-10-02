@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, or_, select
@@ -21,6 +22,7 @@ from app.execution.models import (
     OrderStatus,
     Side,
 )
+from app.ledger.models import Instrument
 
 
 async def by_client_id(db: AsyncSession, client_order_id: str) -> Order | None:
@@ -137,3 +139,26 @@ async def known_client_ids(db: AsyncSession, client_order_ids: list[str]) -> set
         select(col(Order.client_order_id)).where(col(Order.client_order_id).in_(client_order_ids))
     )
     return set(rows.all())
+
+
+async def working_entries(
+    db: AsyncSession, *, exclude_card_id: uuid.UUID | None = None
+) -> list[tuple[str, Instrument, int, Decimal | None]]:
+    """Unfilled entry buys that are open at a broker or stored as intents:
+    (broker symbol, instrument, qty still to fill, limit). They are exposure that no lot shows
+    yet. `exclude_card_id`: the card being revalidated (its own intent, after a crash resume)."""
+    query = select(
+        col(Order.broker_symbol),
+        col(Order.instrument),
+        col(Order.qty) - col(Order.filled_qty),
+        col(Order.limit_price),
+    ).where(
+        col(Order.kind) == OrderKind.ENTRY,
+        col(Order.status).in_(OPEN_ORDER_STATUSES),
+    )
+    if exclude_card_id is not None:
+        query = query.where(
+            or_(col(Order.card_id).is_(None), col(Order.card_id) != exclude_card_id)
+        )
+    rows = await db.execute(query)
+    return [(sym, kind, int(left), price) for sym, kind, left, price in rows.all() if left > 0]

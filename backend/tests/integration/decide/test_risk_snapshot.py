@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.broker.fake import FakeBroker
 from app.db import create_session_factory, in_transaction
 from app.decide.risk_snapshot import build_risk_snapshot
 from app.decide.types import OpenLotBrief
@@ -110,3 +111,104 @@ async def test_snapshot(factory: Factory, db_session: AsyncSession) -> None:
 
     del md.quotes[AAPL.symbol]
     assert (await build_risk_snapshot(factory, md, NOW)).unrealized is None  # never 0
+
+
+async def _held_lot(factory: Factory, db_session: AsyncSession, qty: int = 3) -> None:
+    sig = await add_signal(db_session, provider_id=7)
+    entry = NormalizedSignal(
+        msg_type="entry",
+        instrument="option",
+        underlying="GOOGL",
+        expiry=GOOGL.expiry,
+        strike=GOOGL.strike,
+        right="call",
+    )
+    async with in_transaction(factory, None) as db:
+        opened = apply_to_position(None, entry)
+        assert opened is not None
+        position = await repo.record(
+            db, provider_id=7, row=None, update=opened, signal_id=sig.signal_id
+        )
+        await repo.record_lot(
+            db,
+            apply_fill(None, "buy", qty, D("1.00")),
+            instrument=GOOGL,
+            provider_position_id=position.provider_position_id,
+            provider_id=7,
+        )
+
+
+async def _working_entry(factory: Factory, contract: OptionContract, qty: int, price: str) -> None:
+    async with in_transaction(factory, None) as db:
+        db.add(
+            Order(
+                client_order_id=f"t-{uuid.uuid4()}",
+                auto_reason=AutoReason.EOD_FORCED_CLOSE,  # any allowed reason: AC-2 check only
+                kind="entry",
+                side="buy",
+                instrument="option",
+                broker_symbol=contract.occ_symbol(),
+                qty=qty,
+                order_type="limit",
+                limit_price=D(price),
+                tif="day",
+                status="working",
+                mode="paper",
+            )
+        )
+
+
+async def test_account_and_working_entries_are_part_of_the_snapshot(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    await _held_lot(factory, db_session)  # 3 x 1.00 x 100 = 300
+    other = OptionContract(
+        underlying="AAPL", expiry=date(2026, 10, 2), strike=D("190"), right="call"
+    )
+    await _working_entry(factory, other, 5, "0.50")  # 5 x 0.50 x 100 = 250, a new symbol
+    await _working_entry(factory, GOOGL, 2, "1.00")  # 200 more on a held symbol
+    md = FakeMarketData()
+    md.set_quote(GOOGL, D("1.00"), D("1.00"))
+    broker = FakeBroker()
+    broker.equity, broker.cash, broker.buying_power = D("50000"), D("20000"), D("40000")
+    snap = await build_risk_snapshot(factory, md, NOW, broker=broker)
+    assert snap.exposure == D("750")  # lots 300 + working 450
+    assert snap.working_exposure == D("450")
+    assert (snap.open_positions, snap.working_entries) == (2, 1)  # held lot + the new symbol
+    assert (snap.equity, snap.cash, snap.buying_power) == (D("50000"), D("20000"), D("40000"))
+    assert snap.account_required
+
+
+async def test_a_holding_the_ledger_lacks_counts_at_the_brokers_cost(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    await _held_lot(factory, db_session)  # ledger: 3 contracts at 1.00 = 300
+    md = FakeMarketData()
+    md.set_quote(GOOGL, D("1.00"), D("1.00"))
+    broker = FakeBroker()
+    broker._positions[GOOGL.occ_symbol()] = (GOOGL, 5, D("5.00"))  # broker: 5 at 1.00 = 500
+    broker._positions["AAPL"] = (AAPL, 10, D("1800"))  # a holding no lot shows: 1800
+    snap = await build_risk_snapshot(factory, md, NOW, broker=broker)
+    assert snap.exposure == D("2300")
+    assert snap.open_positions == 2
+
+
+async def test_unreadable_broker_leaves_the_account_unknown(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    broker = FakeBroker()
+    broker.account_error = RuntimeError("down")
+    snap = await build_risk_snapshot(factory, FakeMarketData(), NOW, broker=broker)
+    assert snap.account_required and snap.buying_power is None  # the gate disables entries
+
+
+async def test_a_stale_mark_leaves_unrealized_unknown(
+    factory: Factory, db_session: AsyncSession
+) -> None:
+    await _held_lot(factory, db_session)
+    md = FakeMarketData()
+    md.set_quote(GOOGL, D("1.10"), D("1.30"), at=NOW - timedelta(minutes=30))
+    fresh = await build_risk_snapshot(factory, md, NOW)
+    assert fresh.unrealized is not None  # no limit configured: nothing is judged stale
+    stale = await build_risk_snapshot(factory, md, NOW, max_quote_age_s=60)
+    assert stale.unrealized is None  # never assumed 0

@@ -8,6 +8,7 @@ export function EntryValiditySection() {
       <ScalarField name="entry_chase_pct" label="Chase limit (%)" />
       <ScalarField name="entry_validity_s" label="Card validity (s)" />
       <ScalarField name="entry_cancel_after_s" label="Cancel unfilled after (s)" />
+      <ScalarField name="quote_max_age_s" label="Quote max age (s)" hint="Free Alpaca options data is ~15 min delayed: use about 1200 there." />
     </Section>
   )
 }

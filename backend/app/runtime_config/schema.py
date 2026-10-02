@@ -28,16 +28,19 @@ class _Strict(BaseModel):
 
 
 class JevConfig(_Strict):
-    model: str | None = None
+    model: str | None = "jev-latest"  # TRD §4.3: pin to a dated version once chosen
     timeout_ms: PositiveInt = 300
-    enabled: bool = False
+    enabled: bool = (
+        True  # primary interpreter; needs TYPESAFE_API_KEY, else every message falls back
+    )
 
 
 class LayaConfig(_Strict):
-    """Local fallback for when Jev gave no answer. Its answers are weak (it was right on ~27% of
-    labelled messages), so the gate is strict and it is off until switched on."""
+    """Local fallback for when Jev did not settle a message (no answer, low confidence, multiple
+    signals). Its answers are weak (it was right on ~27% of labelled messages), so its gate is
+    strict: anything it cannot settle continues to the optional LLM, then to review."""
 
-    enabled: bool = False
+    enabled: bool = True  # loads only on Apple Silicon; a failed load alerts and falls through
     timeout_ms: PositiveInt = 10000  # ~20 questions take 3-13 s on an M4
     t_chat: Probability = Decimal("0.95")
     t_field: Probability = Decimal("0.9")
@@ -115,6 +118,9 @@ class RuntimeConfig(_Strict):
     entry_chase_pct: Pct | None = None
     entry_validity_s: PositiveInt | None = None
     entry_cancel_after_s: PositiveInt | None = None
+    # A quote older than this is not used for any actionable decision (FR-12 / OD-12). Alpaca's
+    # free indicative options feed is ~15 min delayed: set ~1200 there, a few seconds on OPRA.
+    quote_max_age_s: PositiveInt | None = None
     # Exit (C25)
     exit_card_timeout_s: PositiveInt | None = None
     exit_reprice_interval_s: PositiveInt | None = None

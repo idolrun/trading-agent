@@ -11,7 +11,7 @@ TRANSITIONS: dict[tuple[CardState | None, CardState], frozenset[CardReason]] = {
     (S.PENDING, S.REJECTED): frozenset({R.REJECTED}),
     (S.PENDING, S.EXPIRED): frozenset({R.TIMEOUT, R.RESTART}),
     (S.PENDING, S.INVALIDATED): frozenset({R.SUPERSEDED, R.CORRECTION, R.DELETED, R.PRICE_BAND}),
-    (S.APPROVED, S.INVALIDATED): frozenset({R.REVALIDATE_FAILED}),
+    (S.APPROVED, S.INVALIDATED): frozenset({R.REVALIDATE_FAILED, R.ORDER_REJECTED}),
     (S.APPROVED, S.SUBMITTED): frozenset({R.SUBMITTED}),
 }
 

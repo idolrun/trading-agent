@@ -46,7 +46,9 @@ def broker_order(
 
 
 def test_matching_quantities_are_clean() -> None:
-    report = compare([position("SPY", 5)], [lot("SPY", 3), lot("SPY", 2, foreign=True)], [], set())
+    report = compare(
+        [position("SPY", 5, "1.00")], [lot("SPY", 3), lot("SPY", 2, foreign=True)], [], set()
+    )
     assert report.clean and report.foreign == ()
 
 
@@ -135,3 +137,18 @@ def test_order_events_status_only_and_cancel_after_partial() -> None:
         AT,
     )
     assert (fill.kind, cancel.kind, cancel.status) == ("fill", "status", OrderStatus.CANCELLED)
+
+
+def test_equal_quantities_with_a_different_average_cost_are_a_mismatch() -> None:
+    report = compare([position("SPY", 3, "1.50")], [lot("SPY", 3)], [], set())  # lots: 1.00
+    [m] = report.mismatches
+    assert (m.symbol, m.broker_qty, m.lot_qty) == ("SPY", 3, 3)
+    assert (m.broker_avg, m.lot_avg) == (Decimal("1.50"), Decimal("1.0000"))
+    assert not report.clean
+
+
+def test_average_cost_within_the_tolerance_or_unknown_is_clean() -> None:
+    assert compare([position("SPY", 3, "1.005")], [lot("SPY", 3)], [], set()).clean  # noise
+    assert compare([position("SPY", 3, None)], [lot("SPY", 3)], [], set()).clean  # not stated
+    foreign = [lot("SPY", 3, foreign=True)]
+    assert compare([position("SPY", 3, "9.99")], foreign, [], set()).clean  # the broker's own

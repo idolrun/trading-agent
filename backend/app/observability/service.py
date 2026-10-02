@@ -150,6 +150,10 @@ class HealthService:
             unknown_orders=len(last.unknown_orders) if last else 0,
             error=last.error if last else None,
             mismatch_alerts=mismatch_alerts,
+            equity=last.account.equity if last and last.account else None,
+            cash=last.account.cash if last and last.account else None,
+            buying_power=last.account.buying_power if last and last.account else None,
+            broker_positions=last.broker_positions if last else None,
         )
 
 

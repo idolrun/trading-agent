@@ -21,6 +21,7 @@ from app.interpret.models import MsgType
 from app.interpret.signal import ParsedSignal
 from app.ledger import repo as ledger
 from app.marketdata.cache import TtlCache
+from app.marketdata.freshness import is_stale
 from app.marketdata.port import MarketData, Quote
 from app.markettime import Clock
 from app.runtime_config.schema import RuntimeConfig
@@ -90,7 +91,7 @@ class ValidationService:
             return ValidationResult(status="ok", normalized=norm)
         try:
             if norm.msg_type == MsgType.STOCK_ENTRY or norm.instrument == "stock":
-                return await self._stock(norm)
+                return await self._stock(norm, config, now)
             return await self._option(norm, env, config, now)
         except MarketDataUnavailable as exc:
             await self._market_data_alert(str(exc), now)
@@ -131,6 +132,13 @@ class ValidationService:
                 status="review", reasons=["contract_not_in_chain"], normalized=norm
             )
         contract, quote = found
+        if is_stale(quote, now, config.quote_max_age_s):  # OD-12: never decide on an old quote
+            return _review(
+                NeedsReview(reasons=["quote_stale"]),
+                normalized=norm,
+                contract=contract,
+                quote=quote,
+            )
         scaled = scale_prices(
             norm, mid=mid_price(quote), tolerance_pct=config.identity_price_tolerance_pct
         )
@@ -150,7 +158,9 @@ class ValidationService:
             status="ok", warnings=warnings, normalized=scaled, contract=contract, quote=quote
         )
 
-    async def _stock(self, norm: NormalizedSignal) -> ValidationResult:
+    async def _stock(
+        self, norm: NormalizedSignal, config: RuntimeConfig, now: datetime
+    ) -> ValidationResult:
         if norm.underlying is None:
             return ValidationResult(
                 status="review", reasons=["underlying_missing"], normalized=norm
@@ -161,6 +171,10 @@ class ValidationService:
             )
         stock = Stock(symbol=norm.underlying)
         quote = await self._fetch(self._md.quote(stock))
+        if is_stale(quote, now, config.quote_max_age_s):
+            return _review(
+                NeedsReview(reasons=["quote_stale"]), normalized=norm, contract=stock, quote=quote
+            )
         scaled = scale_prices(norm, mid=mid_price(quote), tolerance_pct=None)
         assert isinstance(scaled, NormalizedSignal)  # noqa: S101 — stocks are never scaled
         return ValidationResult(status="ok", normalized=scaled, contract=stock, quote=quote)

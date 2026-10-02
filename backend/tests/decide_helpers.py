@@ -31,6 +31,7 @@ CONFIG = RuntimeConfig(
     entry_chase_pct=D("5"),
     entry_validity_s=60,
     entry_cancel_after_s=120,
+    quote_max_age_s=60,
     exit_card_timeout_s=600,
     exit_reprice_interval_s=5,
     exit_reprice_step_pct=D("2"),

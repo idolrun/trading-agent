@@ -265,7 +265,38 @@ export const discordStatusFixture: Schemas["DiscordStatus"] = {
   channels: [{ id: "999888777666555444", name: "alerts", guild: "Owls", visible: true }],
 }
 
+export const preflightFixture: Schemas["PreflightOut"] = {
+  applicable: true,
+  verdict: "pass",
+  checks: [
+    { name: "hours", status: "pass", reason: null, detail: null },
+    { name: "quote_fresh", status: "pass", reason: null, detail: null },
+    { name: "risk", status: "pass", reason: null, detail: null },
+  ],
+  qty: 13,
+  bid: "0.70",
+  ask: "0.71",
+  last: null,
+  quoteAt: "2026-09-29T14:30:00Z",
+  signalPrice: "0.71",
+  limitPrice: "0.74",
+  estCost: "962.00",
+  equity: "50000",
+  cash: "20000",
+  buyingPower: "40000",
+  projectedBuyingPower: "39038.00",
+  exposure: "1000",
+  workingExposure: "0",
+  projectedExposure: "1962.00",
+  maxExposure: "20000",
+  openPositions: 1,
+  maxOpenPositions: 10,
+  dailyPnl: "-120",
+  maxDailyLoss: "2000",
+}
+
 export const handlers = [
+  http.get("*/api/v1/cards/:id/preflight", () => HttpResponse.json(preflightFixture)),
   http.get("*/api/v1/discord/status", () => HttpResponse.json(discordStatusFixture)),
   http.get("*/api/v1/config", () => HttpResponse.json(configFixture)),
   http.put("*/api/v1/config", async ({ request }) => {

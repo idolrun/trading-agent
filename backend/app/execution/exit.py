@@ -42,7 +42,7 @@ from app.execution.models import (
     TimeInForce,
 )
 from app.execution.pricing import floor_price, next_price, round_to_tick
-from app.execution.submit import EntriesBlocked, InvariantViolation, OrderService
+from app.execution.submit import EntriesBlocked, InvariantViolation, ModeMismatch, OrderService
 from app.instruments import Instrument
 from app.ledger.models import Lot, LotStatus
 from app.marketdata.port import MarketData
@@ -118,7 +118,7 @@ class ExitPolicy:
         )
         try:
             root = await self._orders.submit_order(intent, auth)
-        except (InvariantViolation, EntriesBlocked):
+        except (InvariantViolation, EntriesBlocked, ModeMismatch):
             await self._brackets.restore_protection(lot_id)
             raise
         await self._note(root, {"exit_floor": str(floor), "start_mid": str(mid), "tick": str(tick)})

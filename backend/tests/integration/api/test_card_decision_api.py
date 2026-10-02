@@ -160,3 +160,26 @@ async def test_ac14_suggested_underlying_needs_confirmation(signed_in: Api) -> N
     r = await signed_in.client.post(url, json=decision("edit", confirmedUnderlying="GOOGL"))
     assert r.status_code == 200 and r.json()["version"] == 2
     assert r.json()["proposal"]["missingFields"] == []
+
+
+async def test_preflight_is_read_only_and_describes_the_checks(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, ids = seeded
+    url = f"/api/v1/cards/{ids['trim']}/preflight"
+    r = await api.client.get(url)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applicable"] is True
+    assert body["verdict"] in ("pass", "review", "blocked")
+    assert body["checks"] and {"name", "status", "reason", "detail"} <= set(body["checks"][0])
+    assert (await api.client.get(f"/api/v1/cards/{ids['trim']}")).json()["state"] == "pending"
+    typed = await api.client.get(url, params={"qty": 2})
+    assert typed.status_code == 200 and typed.json()["qty"] == 2
+
+
+async def test_preflight_unknown_card_and_signed_out(api: Api) -> None:
+    assert (await api.client.get(f"/api/v1/cards/{uuid.uuid4()}/preflight")).status_code == 401
+    await api.sign_in()
+    r = await api.client.get(f"/api/v1/cards/{uuid.uuid4()}/preflight")
+    assert r.status_code == 404

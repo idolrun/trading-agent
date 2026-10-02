@@ -149,6 +149,8 @@ class AlpacaBroker:
         return BrokerAccount(
             equity=dec(raw.get("equity")) or Decimal(0),
             buying_power=dec(raw.get("buying_power")) or Decimal(0),
+            cash=dec(raw.get("cash")),
+            options_buying_power=dec(raw.get("options_buying_power")),
         )
 
     # --- BrokerEvents ---

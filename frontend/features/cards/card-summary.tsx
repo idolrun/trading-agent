@@ -6,6 +6,7 @@ import { useExpired } from "@/features/cards/countdown"
 import { QTY_ACTIONS, SIZED_ACTIONS } from "@/features/cards/card-actions"
 import { CardDetails } from "@/features/cards/card-details"
 import { TradeIdentity } from "@/features/cards/option-details"
+import { PreflightSummary } from "@/features/cards/preflight-summary"
 import { RiskSummary } from "@/features/cards/risk-summary"
 import { SourceMessages } from "@/features/cards/source-messages"
 import { TradeSummary } from "@/features/cards/trade-summary"
@@ -48,6 +49,7 @@ export function CardSummary({
         <TradeIdentity card={card} />
         <TradeTargets card={card} showLegs={!legsEditable} />
         <RiskSummary card={card} />
+        {decidable ? <PreflightSummary cardId={card.id} /> : null}
         <AdvisoryNote note={card.note} hidden={card.noteHidden} />
         <SourceMessages card={card} />
         {actions}

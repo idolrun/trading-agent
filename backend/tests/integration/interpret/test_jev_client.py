@@ -115,7 +115,7 @@ async def test_disabled_jev_makes_no_call(
     off = JevInterpreter(
         sessions,
         settings.model_copy(update={"typesafe_api_key": SecretStr("k")}),
-        lambda: CFG,  # jev.enabled defaults to False
+        lambda: CFG.model_copy(update={"jev": JevConfig(enabled=False)}),
         FixedClock(datetime(2026, 9, 28, tzinfo=UTC)),
         client=fake,  # type: ignore[arg-type]
     )

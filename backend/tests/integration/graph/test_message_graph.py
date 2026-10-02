@@ -357,7 +357,7 @@ async def test_laya_answers_when_jev_is_down(
     assert flag is None or not flag.active
 
 
-async def test_laya_is_not_asked_while_jev_is_answering(
+async def test_laya_is_asked_when_jev_is_unsure(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
     h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
@@ -365,8 +365,34 @@ async def test_laya_is_not_asked_while_jev_is_answering(
     env = await example(h)
     unsure = jev(h, msg_type=c("entry", 0.6))
     await h.process(env, processor=h.processor(fixture=False, jev=unsure, laya=await laya(h, fake)))
-    assert fake.calls == 0  # a weak model never second-guesses a Jev answer
+    assert fake.calls == 1  # Jev answered but did not settle it: the fallback gets one try
+    [signal] = await signals(db_session)
+    assert (signal.msg_type, signal.interpreter) == ("entry", "laya")
+
+
+async def test_laya_is_not_asked_when_jev_settles_the_message(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers())
+    env = await example(h)
+    await h.process(env, processor=h.processor(fixture=False, jev=jev(h), laya=await laya(h, fake)))
+    assert fake.calls == 0  # a settled Jev answer is never second-guessed
+    [signal] = await signals(db_session)
+    assert (signal.msg_type, signal.interpreter) == ("entry", "jev")
+
+
+async def test_unsure_jev_and_unsure_laya_end_in_a_review_card_without_orders(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers(msg_type=c("entry", 0.5)))
+    env = await example(h)
+    unsure = jev(h, msg_type=c("entry", 0.6))
+    await h.process(env, processor=h.processor(fixture=False, jev=unsure, laya=await laya(h, fake)))
+    assert fake.calls == 1
     [card] = await cards(db_session)
+    assert card.card_type == "review"
     assert card.proposal["review_reasons"][0].startswith("needs_review: msg_type")
 
 

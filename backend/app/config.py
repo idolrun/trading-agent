@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, PostgresDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.broker.safety import ALPACA_LIVE, ALPACA_PAPER, FAKE
+
 ALPACA_HOSTS = frozenset({"paper-api.alpaca.markets", "api.alpaca.markets"})
 ROOT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
@@ -84,6 +86,14 @@ class Settings(BaseSettings):
         if host == "api.alpaca.markets" and self.environment != "production":
             raise ValueError("the live APCA_API_BASE_URL needs ENVIRONMENT=production")
         return self
+
+    @property
+    def broker_kind(self) -> str:
+        """Which money orders would touch: `fake`, `alpaca-paper` or `alpaca-live`."""
+        if self.broker_adapter != "alpaca":
+            return FAKE
+        live = urlparse(self.alpaca_endpoint).netloc == "api.alpaca.markets"
+        return ALPACA_LIVE if live else ALPACA_PAPER
 
     @property
     def ungated_models_allowed(self) -> bool:
