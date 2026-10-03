@@ -78,6 +78,29 @@ const metrics = (title: string, rows: [string, Cell][]) => (
   <Table key={title} title={title} head={["Metric", "Value"]} rows={rows} numeric={[1]} />
 )
 
+const rate = (value: number | null | undefined) => (value == null ? "-" : percent(value))
+
+/** F081: how messages were interpreted and how follow-ups were linked. */
+function interpretation(stats: NonNullable<HealthDetails["interpretation"]>) {
+  const paths = stats.pathRates
+  const links = stats.links
+  return metrics("Interpretation", [
+    ["Interpreted messages", stats.events],
+    ["Settled by code (fast path)", rate(paths.fast)],
+    ["Asked Jev", rate(paths.jev)],
+    ["Asked Laya", rate(paths.laya)],
+    ["Asked the LLM", rate(paths.llm)],
+    ["Ended in review", rate(paths.review)],
+    ["Feed only", rate(paths.feed_only)],
+    ["Feed-only verdicts refused (open position)", stats.feedGuardBlocks],
+    ["Follow-up links", links.followUps],
+    ["Linked by code evidence", rate(links.uniqueRate)],
+    ["Ambiguous (review)", rate(links.ambiguousRate)],
+    ["…with a model proposal", rate(links.modelProposedRate)],
+    ["Code links a person moved (wrong-link rate)", `${links.correctedByUser} (${rate(links.wrongLinkRate)})`],
+  ])
+}
+
 function Details({ health }: { health: HealthDetails }) {
   const { llm, messages, orders, reconciliation } = health
   const budget = llm.monthlyBudgetUsd
@@ -119,20 +142,22 @@ function Details({ health }: { health: HealthDetails }) {
         ["Failed", messages.failed],
         ["Duplicates since start", messages.duplicatesSinceStart],
       ])}
+      {health.interpretation && interpretation(health.interpretation)}
       {metrics("LLM spend", [
         ["Month to date vs budget", spendVsBudget],
         ["Slow-path share", llm.slowPathShare == null ? "-" : percent(llm.slowPathShare)],
       ])}
       <Table
         title="LLM models"
-        head={["Provider", "Model", "Calls", "p50", "p95", "Error rate", "Fallback calls", "Spend"]}
-        numeric={[2, 3, 4, 5, 6, 7]}
+        head={["Provider", "Model", "Calls", "p50", "p95", "p99", "Error rate", "Fallback calls", "Spend"]}
+        numeric={[2, 3, 4, 5, 6, 7, 8]}
         rows={llm.models.map((row) => [
           row.provider,
           row.model,
           row.calls,
           ms(row.latencyP50Ms),
           ms(row.latencyP95Ms),
+          ms(row.latencyP99Ms),
           percent(row.errorRate),
           row.fallbackCalls,
           usd(row.spendUsd),

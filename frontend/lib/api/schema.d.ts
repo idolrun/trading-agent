@@ -1393,6 +1393,7 @@ export interface components {
             };
             /** Heartbeatageseconds */
             heartbeatAgeSeconds: number | null;
+            interpretation?: components["schemas"]["InterpretationStats"] | null;
             /** Invariantblocks */
             invariantBlocks: number;
             /** Latency */
@@ -1446,6 +1447,37 @@ export interface components {
         IngestResponse: {
             /** Accepted */
             accepted: boolean;
+        };
+        /**
+         * InterpretationStats
+         * @description F081: how interpretation ended (`inbox.interpret_outcome`, F078) and why.
+         */
+        InterpretationStats: {
+            /** Counterssincestart */
+            countersSinceStart: {
+                [key: string]: number;
+            };
+            /** Events */
+            events: number;
+            /** Feedguardblocks */
+            feedGuardBlocks: number;
+            /** Jev */
+            jev: {
+                [key: string]: number;
+            };
+            /** Jevfailures */
+            jevFailures: {
+                [key: string]: number;
+            };
+            links: components["schemas"]["LinkStats"];
+            /** Outcomes */
+            outcomes: {
+                [key: string]: number;
+            };
+            /** Pathrates */
+            pathRates: {
+                [key: string]: number;
+            };
         };
         /**
          * JevConfig
@@ -1662,6 +1694,32 @@ export interface components {
             signalId: string;
         };
         /**
+         * LinkStats
+         * @description Follow-up links (F077): how they were decided. Rates over `follow_ups`.
+         */
+        LinkStats: {
+            /** Ambiguous */
+            ambiguous: number;
+            /** Ambiguousrate */
+            ambiguousRate: number | null;
+            /** Correctedbyuser */
+            correctedByUser: number;
+            /** Followups */
+            followUps: number;
+            /** Modelproposed */
+            modelProposed: number;
+            /** Modelproposedrate */
+            modelProposedRate: number | null;
+            /** None */
+            none: number;
+            /** Unique */
+            unique: number;
+            /** Uniquerate */
+            uniqueRate: number | null;
+            /** Wronglinkrate */
+            wrongLinkRate: number | null;
+        };
+        /**
          * LlmConfig
          * @description Model registry (TRD §4.8). Keys of `prices`/`params` are "provider:model".
          */
@@ -1719,6 +1777,11 @@ export interface components {
             latencyP50Ms: number;
             /** Latencyp95Ms */
             latencyP95Ms: number;
+            /**
+             * Latencyp99Ms
+             * @default 0
+             */
+            latencyP99Ms: number;
             /** Model */
             model: string;
             /** Outcomes */

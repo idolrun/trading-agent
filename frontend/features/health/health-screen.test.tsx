@@ -29,6 +29,9 @@ describe("HealthScreen", () => {
     const messages = screen.getByRole("table", { name: "Messages" })
     expect(within(messages).getByRole("row", { name: /Duplicates since start 6/ })).toBeInTheDocument()
 
+    const interp = screen.getByRole("table", { name: "Interpretation" })
+    expect(within(interp).getByRole("row", { name: /Settled by code \(fast path\) 25%/ })).toBeInTheDocument()
+    expect(within(interp).getByRole("row", { name: /wrong-link rate\) 0 \(0%\)/ })).toBeInTheDocument()
     const models = screen.getByRole("table", { name: "LLM models" })
     expect(within(models).getByText("claude-haiku")).toBeInTheDocument()
     expect(within(models).getByText("10%")).toBeInTheDocument()

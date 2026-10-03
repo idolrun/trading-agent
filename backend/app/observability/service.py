@@ -116,6 +116,7 @@ class HealthService:
                     spend_month_to_date_usd=spend,
                     monthly_budget_usd=budget,
                 ),
+                interpretation=await queries.interpretation_stats(db, since, dict(counts)),
                 card_outcomes=await queries.card_outcomes(db, since),
                 orders=await queries.order_stats(db, since),
                 invariant_blocks=alerts.get(AlertKind.INVARIANT_BLOCK, 0),

@@ -210,6 +210,7 @@ cd frontend && pnpm dev                  # after F052
 | [F078](F078-interpretation-outcomes.md) | Interpretation outcomes: Jev time budget (700/250/1200 ms), failures by reason, Laya only on model failure, invalid answers and scope violations never poison | F033, F035, F074, F077 | C38, FR-8, FR-9 |
 | [F079](F079-feed-guard-condition-gate.md) | Feed-only guard (no "chatter" verdict silences a possible instruction while a position is open) + explicit condition gate; spec §34 scenario | F072, F077, F078 | FR-7, C30, C31 |
 | [F080](F080-version-pinning-catalog.md) | Jev pinned to jev-1.13.0 + `model_returned`; question-set version = catalog fingerprint; unused questions dropped; replayable audit row | F033, F078 | TRD §4.3, C44 |
+| [F081](F081-interpretation-metrics.md) | Interpretation metrics: path shares, Jev statuses/failures, feed-guard blocks, link decisions, live wrong-link rate, model p99 | F049, F077, F078 | PRD §16 |
 
 ---
 

@@ -37,6 +37,7 @@ class LlmModelStats(CamelModel):
     calls: int
     latency_p50_ms: float
     latency_p95_ms: float
+    latency_p99_ms: float = 0.0
     outcomes: dict[str, int]
     error_rate: float  # calls whose outcome is not `ok`
     fallback_calls: int  # attempts after the first of a chain
@@ -57,6 +58,35 @@ class LlmStats(CamelModel):
     slow_path_share: float | None  # messages that needed the LLM / messages interpreted
     spend_month_to_date_usd: Num
     monthly_budget_usd: Num | None
+
+
+class LinkStats(CamelModel):
+    """Follow-up links (F077): how they were decided. Rates over `follow_ups`."""
+
+    follow_ups: int
+    unique: int  # linked by code evidence: reply / thread / contract / sole candidate
+    ambiguous: int  # review cards
+    model_proposed: int  # ambiguous with an acceptable model pick (shown, never used)
+    none: int  # nothing open in the lane
+    unique_rate: float | None
+    ambiguous_rate: float | None
+    model_proposed_rate: float | None
+    # a person later moved a code-made link to another position: the live wrong-link signal
+    corrected_by_user: int
+    wrong_link_rate: float | None
+
+
+class InterpretationStats(CamelModel):
+    """F081: how interpretation ended (`inbox.interpret_outcome`, F078) and why."""
+
+    events: int  # interpreted events in the window
+    outcomes: dict[str, int]  # fast_success / jev_success / fallback_success / review / ...
+    path_rates: dict[str, float]  # fast / jev / laya / llm / review / feed_only shares
+    jev: dict[str, int]  # jev status in the trace: success / ambiguous / model_failure / ...
+    jev_failures: dict[str, int]  # model_failure detail: timeout / queue_timeout / ...
+    feed_guard_blocks: int  # chatter verdicts the F079 guard refused
+    counters_since_start: dict[str, int]  # in-process `jev:*` counters
+    links: LinkStats
 
 
 class CardOutcome(CamelModel):
@@ -103,6 +133,7 @@ class HealthDetails(CamelModel):
     queue_wait: list[QueueWait]
     messages: MessageCounts
     llm: LlmStats
+    interpretation: InterpretationStats | None = None
     card_outcomes: list[CardOutcome]
     orders: OrderStats
     invariant_blocks: int

@@ -153,6 +153,7 @@ async def test_details_has_every_section(
     assert d.llm.spend_month_to_date_usd == Decimal("0.07")
     assert d.llm.monthly_budget_usd == 100
     assert d.messages.total == 7 and d.messages.failed == 0
+    assert d.interpretation is not None and d.interpretation.links.follow_ups == 0
     assert d.postgres.connections >= 1 and d.postgres.lock_waits == 0
     assert d.reconciliation.last_run_at is None and d.orders.by_status == {}
     assert (await health.details("session")).latency == []  # nothing happened since start
@@ -317,3 +318,102 @@ async def test_counters_duplicates_and_semaphore_waits(
     await asyncio.gather(hold(0.05), hold(0))
     assert per_provider("slot") == {"openai": 2}
     assert per_provider("slot_waited") == {"openai": 1}
+
+
+async def test_interpretation_and_link_stats(db_session: AsyncSession) -> None:
+    """F081: path shares from inbox.interpret_outcome / interpret_reasons (F078) and how
+    follow-up links were decided (F077), including a code link a person later moved."""
+    from app.interpret.models import MessageLink
+    from app.ledger.models import ProviderPosition
+
+    traces = [
+        ("fast_success", {"route": "fast"}),
+        ("jev_success", {"jev": "success", "route": "assemble"}),
+        ("jev_success", {"jev": "success", "route": "feed_only"}),
+        ("fallback_success", {"jev": "model_failure", "jev_detail": "timeout", "laya": "success"}),
+        ("review", {"jev": "ambiguous", "llm": "not_configured", "reasons": ["feed_guard: x"]}),
+        (
+            "review",
+            {"jev": "invalid", "jev_detail": "invalid", "laya": "off", "llm": "not_configured"},
+        ),
+    ]
+    for n, (outcome, trace) in enumerate(traces):
+        event = await add_message(db_session, message_id=3000 + n, provider_id=7)
+        await add_inbox(
+            db_session,
+            event,
+            status=InboxStatus.DONE,
+            interpret_outcome=outcome,
+            interpret_reasons=trace,
+        )
+    spy, qqq = (
+        ProviderPosition(
+            provider_id=7, underlying=u, status="open", opened_at=T0, instrument="stock"
+        )
+        for u in ("SPY", "QQQ")
+    )
+    db_session.add_all([spy, qqq])
+    await db_session.flush()
+    sigs = [await add_signal(db_session, provider_id=7, message_id=4000 + n) for n in range(4)]
+
+    def link(i: int, outcome: str, rule: str, position: object = None, **kw: Any) -> MessageLink:
+        return MessageLink(
+            signal_id=sigs[i].signal_id,
+            provider_id=7,
+            outcome=outcome,
+            method=kw.pop("method", "code"),
+            provider_position_id=position,
+            evidence={"resolver": {}, "rule": rule},
+            created_at=T0,
+            **kw,
+        )
+
+    wrong = link(0, "linked", "code", spy.provider_position_id)
+    db_session.add_all(
+        [
+            wrong,
+            link(1, "linked", "reply", qqq.provider_position_id, method="reply"),
+            link(2, "ambiguous", "model_proposed", method="jev"),
+            link(3, "ambiguous", "unresolved", method="jev"),
+        ]
+    )
+    await db_session.flush()
+    db_session.add(  # the user moves signal 0 from SPY to QQQ
+        MessageLink(
+            signal_id=sigs[0].signal_id,
+            provider_id=7,
+            outcome="linked",
+            method="user_correction",
+            provider_position_id=qqq.provider_position_id,
+            supersedes_link_id=wrong.id,
+            evidence={"resolver": {}, "rule": "user_choice"},
+            created_at=T0,
+        )
+    )
+    await db_session.commit()
+
+    stats = await queries.interpretation_stats(
+        db_session, T0 - timedelta(days=1), {"jev:requests": 5, "slot:typesafe": 9}
+    )
+    assert stats.events == 6
+    assert stats.outcomes == {
+        "fallback_success": 1,
+        "fast_success": 1,
+        "jev_success": 2,
+        "review": 2,
+    }
+    assert stats.path_rates == {
+        "fast": round(1 / 6, 4),
+        "jev": round(5 / 6, 4),
+        "laya": round(1 / 6, 4),
+        "llm": 0.0,
+        "review": round(2 / 6, 4),
+        "feed_only": round(1 / 6, 4),
+    }
+    assert stats.jev == {"success": 2, "model_failure": 1, "ambiguous": 1, "invalid": 1}
+    assert stats.jev_failures == {"timeout": 1, "invalid": 1}
+    assert stats.feed_guard_blocks == 1
+    assert stats.counters_since_start == {"jev:requests": 5}
+    links = stats.links
+    assert (links.follow_ups, links.unique, links.ambiguous, links.model_proposed) == (4, 2, 2, 1)
+    assert (links.corrected_by_user, links.wrong_link_rate) == (1, 0.5)

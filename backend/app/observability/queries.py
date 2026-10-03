@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.alerts.models import AlertKind
 from app.api.schemas.health import (
     CardOutcome,
+    InterpretationStats,
+    LinkStats,
     LlmModelStats,
     MessageCounts,
     OrderStats,
@@ -131,7 +133,8 @@ async def llm_models(db: AsyncSession, since: datetime) -> list[LlmModelStats]:
         SELECT provider, model, count(*) AS calls, count(*) FILTER (WHERE attempt > 1) AS fb,
             coalesce(sum(cost_usd), 0) AS spend,
             percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms) AS p50,
-            percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95
+            percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95,
+            percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) AS p99
         FROM model_calls WHERE started_at >= :since AND outcome <> 'circuit_open'
         GROUP BY provider, model ORDER BY provider, model
         """,
@@ -154,6 +157,7 @@ async def llm_models(db: AsyncSession, since: datetime) -> list[LlmModelStats]:
             calls=r["calls"],
             latency_p50_ms=_ms(r["p50"]),
             latency_p95_ms=_ms(r["p95"]),
+            latency_p99_ms=_ms(r["p99"]),
             outcomes=(o := outcomes[r["provider"], r["model"]]),
             error_rate=round(1 - o.get("ok", 0) / r["calls"], 4),
             fallback_calls=r["fb"],
@@ -161,6 +165,120 @@ async def llm_models(db: AsyncSession, since: datetime) -> list[LlmModelStats]:
         )
         for r in stats
     ]
+
+
+def _rate(n: int, total: int) -> float | None:
+    return round(n / total, 4) if total else None
+
+
+async def interpretation_stats(
+    db: AsyncSession, since: datetime, counters: dict[str, int]
+) -> InterpretationStats:
+    """F081: outcome / path / Jev status shares from `inbox` (F078), links from `message_links`
+    (F077). Laya / LLM count when they were actually asked (not `off` / `not_configured`)."""
+    r = (
+        await _rows(
+            db,
+            """
+            SELECT count(*) AS events,
+                count(*) FILTER (WHERE interpret_outcome = 'fast_success') AS fast,
+                count(*) FILTER (WHERE interpret_reasons ? 'jev') AS jev,
+                count(*) FILTER (WHERE interpret_reasons->>'laya' IN
+                                 ('success', 'unsure', 'no_answer', 'scope')) AS laya,
+                count(*) FILTER (WHERE interpret_reasons ? 'llm'
+                                 AND interpret_reasons->>'llm' <> 'not_configured') AS llm,
+                count(*) FILTER (WHERE interpret_outcome IN
+                                 ('review', 'validation_failure', 'scope_violation')) AS review,
+                count(*) FILTER (WHERE interpret_reasons->>'route' = 'feed_only') AS feed_only,
+                count(*) FILTER (WHERE interpret_reasons::text LIKE '%feed_guard%') AS guard
+            FROM inbox WHERE interpret_outcome IS NOT NULL AND posted_at >= :since
+            """,
+            since=since,
+        )
+    )[0]
+    outcomes = {
+        x["o"]: x["n"]
+        for x in await _rows(
+            db,
+            """
+            SELECT interpret_outcome AS o, count(*) AS n FROM inbox
+            WHERE interpret_outcome IS NOT NULL AND posted_at >= :since GROUP BY 1 ORDER BY 1
+            """,
+            since=since,
+        )
+    }
+    jev: dict[str, int] = {}
+    failures: dict[str, int] = {}
+    for x in await _rows(
+        db,
+        """
+        SELECT interpret_reasons->>'jev' AS s, interpret_reasons->>'jev_detail' AS d,
+            count(*) AS n
+        FROM inbox WHERE interpret_reasons ? 'jev' AND posted_at >= :since GROUP BY 1, 2
+        """,
+        since=since,
+    ):
+        jev[x["s"]] = jev.get(x["s"], 0) + x["n"]
+        if x["d"]:
+            failures[x["d"]] = failures.get(x["d"], 0) + x["n"]
+    total = r["events"]
+    return InterpretationStats(
+        events=total,
+        outcomes=outcomes,
+        path_rates={
+            k: _rate(r[k], total) or 0.0
+            for k in ("fast", "jev", "laya", "llm", "review", "feed_only")
+        },
+        jev=jev,
+        jev_failures=failures,
+        feed_guard_blocks=r["guard"],
+        counters_since_start={k: v for k, v in sorted(counters.items()) if k.startswith("jev:")},
+        links=await link_stats(db, since),
+    )
+
+
+async def link_stats(db: AsyncSession, since: datetime) -> LinkStats:
+    """Follow-up links only (`evidence ? 'resolver'`, F069/F077): the system's own decision (the
+    first row per signal). `corrected_by_user`: a later user_correction row that moved a
+    code-made link to another position, the live wrong-link signal."""
+    r = (
+        await _rows(
+            db,
+            """
+            WITH first AS (  -- how the system decided each follow-up, before any person
+                SELECT DISTINCT ON (signal_id) * FROM message_links
+                WHERE created_at >= :since AND evidence ? 'resolver'
+                ORDER BY signal_id, id
+            )
+            SELECT count(*) AS follow_ups,
+                count(*) FILTER (WHERE outcome = 'linked') AS unique_,
+                count(*) FILTER (WHERE outcome = 'ambiguous') AS ambiguous,
+                count(*) FILTER (WHERE evidence->>'rule' = 'model_proposed') AS proposed,
+                count(*) FILTER (WHERE outcome = 'none') AS none_,
+                (SELECT count(*) FROM message_links n JOIN message_links o
+                     ON n.supersedes_link_id = o.id
+                 WHERE n.method = 'user_correction' AND o.outcome = 'linked'
+                   AND n.created_at >= :since
+                   AND n.provider_position_id IS DISTINCT FROM o.provider_position_id
+                ) AS corrected
+            FROM first
+            """,
+            since=since,
+        )
+    )[0]
+    n = r["follow_ups"]
+    return LinkStats(
+        follow_ups=n,
+        unique=r["unique_"],
+        ambiguous=r["ambiguous"],
+        model_proposed=r["proposed"],
+        none=r["none_"],
+        unique_rate=_rate(r["unique_"], n),
+        ambiguous_rate=_rate(r["ambiguous"], n),
+        model_proposed_rate=_rate(r["proposed"], n),
+        corrected_by_user=r["corrected"],
+        wrong_link_rate=_rate(r["corrected"], r["unique_"]),
+    )
 
 
 async def slow_path_share(db: AsyncSession, since: datetime) -> float | None:

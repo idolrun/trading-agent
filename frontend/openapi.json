@@ -1931,6 +1931,16 @@
             ],
             "title": "Heartbeatageseconds"
           },
+          "interpretation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InterpretationStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "invariantBlocks": {
             "title": "Invariantblocks",
             "type": "integer"
@@ -2088,6 +2098,69 @@
           "accepted"
         ],
         "title": "IngestResponse",
+        "type": "object"
+      },
+      "InterpretationStats": {
+        "description": "F081: how interpretation ended (`inbox.interpret_outcome`, F078) and why.",
+        "properties": {
+          "countersSinceStart": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counterssincestart",
+            "type": "object"
+          },
+          "events": {
+            "title": "Events",
+            "type": "integer"
+          },
+          "feedGuardBlocks": {
+            "title": "Feedguardblocks",
+            "type": "integer"
+          },
+          "jev": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Jev",
+            "type": "object"
+          },
+          "jevFailures": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Jevfailures",
+            "type": "object"
+          },
+          "links": {
+            "$ref": "#/components/schemas/LinkStats"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Outcomes",
+            "type": "object"
+          },
+          "pathRates": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Pathrates",
+            "type": "object"
+          }
+        },
+        "required": [
+          "events",
+          "outcomes",
+          "pathRates",
+          "jev",
+          "jevFailures",
+          "feedGuardBlocks",
+          "countersSinceStart",
+          "links"
+        ],
+        "title": "InterpretationStats",
         "type": "object"
       },
       "JevConfig": {
@@ -2568,6 +2641,93 @@
         "title": "LinkOut",
         "type": "object"
       },
+      "LinkStats": {
+        "description": "Follow-up links (F077): how they were decided. Rates over `follow_ups`.",
+        "properties": {
+          "ambiguous": {
+            "title": "Ambiguous",
+            "type": "integer"
+          },
+          "ambiguousRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ambiguousrate"
+          },
+          "correctedByUser": {
+            "title": "Correctedbyuser",
+            "type": "integer"
+          },
+          "followUps": {
+            "title": "Followups",
+            "type": "integer"
+          },
+          "modelProposed": {
+            "title": "Modelproposed",
+            "type": "integer"
+          },
+          "modelProposedRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelproposedrate"
+          },
+          "none": {
+            "title": "None",
+            "type": "integer"
+          },
+          "unique": {
+            "title": "Unique",
+            "type": "integer"
+          },
+          "uniqueRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uniquerate"
+          },
+          "wrongLinkRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wronglinkrate"
+          }
+        },
+        "required": [
+          "followUps",
+          "unique",
+          "ambiguous",
+          "modelProposed",
+          "none",
+          "uniqueRate",
+          "ambiguousRate",
+          "modelProposedRate",
+          "correctedByUser",
+          "wrongLinkRate"
+        ],
+        "title": "LinkStats",
+        "type": "object"
+      },
       "LlmConfig": {
         "additionalProperties": false,
         "description": "Model registry (TRD \u00a74.8). Keys of `prices`/`params` are \"provider:model\".",
@@ -2639,6 +2799,11 @@
           },
           "latencyP95Ms": {
             "title": "Latencyp95Ms",
+            "type": "number"
+          },
+          "latencyP99Ms": {
+            "default": 0.0,
+            "title": "Latencyp99Ms",
             "type": "number"
           },
           "model": {
