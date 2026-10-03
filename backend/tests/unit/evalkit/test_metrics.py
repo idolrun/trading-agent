@@ -142,3 +142,25 @@ def test_link_scores_review_rate_and_path_shares() -> None:
     assert m["review_rate"] == 0.5  # the raw review and the ambiguous link
     assert m["path_shares"] == {"assemble": 0.25, "fast": 0.25, "slow_path": 0.5}
     assert m["latency_ms_all"]["n"] == 4
+
+
+def test_a_ticker_compares_as_a_symbol() -> None:
+    """F082: the interpreter keeps "$spy"; the label says "SPY": the same contract."""
+    m = compute([case([entry()], [entry(underlying="$googl")])])
+    assert (m["field_accuracy"], m["wrong_contracts"]) == (1.0, 0)
+
+
+def test_false_feed_only_and_outcomes() -> None:
+    exit_ = Sig("full_exit", {"exit_fraction": "all"})
+    cases = [
+        case([exit_], [Sig("chatter")], path="feed_only"),  # silenced: the safety failure
+        case([Sig("chatter")], [Sig("chatter")], path="feed_only"),
+        case([exit_], None, path="slow_path"),  # a review, not silenced
+    ]
+    cases = [
+        c.__class__(**{**c.__dict__, "outcome": o})
+        for c, o in zip(cases, ("jev_success", "jev_success", "review"), strict=True)
+    ]
+    m = compute(cases)
+    assert (m["false_feed_only"], m["false_feed_only_rate"]) == (1, 0.5)
+    assert m["outcomes"] == {"jev_success": 2, "review": 1}

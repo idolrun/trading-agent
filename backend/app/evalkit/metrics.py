@@ -58,6 +58,7 @@ class Case:
     path: str  # fixture | fast | feed_only | assemble | slow_path
     latency_ms: float
     link: str | None = None  # correct | wrong | ambiguous; None = no labeled link to score
+    outcome: str | None = None  # F082: inbox.interpret_outcome the live run would record
 
 
 def is_actionable(msg_type: str) -> bool:
@@ -82,8 +83,15 @@ def canon(v: Any) -> Any:
 
 
 def _present(fields: dict[str, Any]) -> dict[str, Any]:
+    """Set fields, canonical. A ticker compares as a symbol ("$spy" == "SPY") and an expiry token
+    without case ("2DTE" == "2dte"): the interpreter keeps the provider's spelling and validation
+    normalizes it later (F082)."""
     return {
-        k: canon(v)
+        k: str(v).lstrip("$").upper()
+        if k == "underlying"
+        else str(v).casefold()
+        if k == "expiry_token"
+        else canon(v)
         for k, v in fields.items()
         if v is not None and v is not False and v != [] and v != ""
     }
@@ -123,6 +131,12 @@ def compute(cases: list[Case], *, cost_usd: float = 0.0) -> dict[str, Any]:
     for c in cases:
         by_path[c.path].append(c.latency_ms)
     links = Counter(c.link for c in cases if c.link is not None)
+    # F082: a labeled instruction that ended feed-only was silenced (the F079 guard's target)
+    false_feed = sum(
+        c.path == "feed_only" and any(is_actionable(s.msg_type) for s in c.expected.values())
+        for c in cases
+    )
+    outcomes = Counter(c.outcome for c in cases if c.outcome is not None)
     link_cases = sum(links.values())
     reviews = sum(c.predicted is None or c.link == "ambiguous" for c in cases)
     return {
@@ -144,6 +158,9 @@ def compute(cases: list[Case], *, cost_usd: float = 0.0) -> dict[str, Any]:
         "links_ambiguous": links["ambiguous"],
         "wrong_link_rate": _ratio(links["wrong"], link_cases),
         "review_rate": _ratio(reviews, len(cases)),
+        "false_feed_only": false_feed,
+        "false_feed_only_rate": _ratio(false_feed, actionable),
+        "outcomes": dict(sorted(outcomes.items())),
         "latency_ms": {
             path: {"n": len(v), "p50": percentile(v, 50), "p95": percentile(v, 95)}
             for path, v in sorted(by_path.items())

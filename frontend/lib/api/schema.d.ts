@@ -1635,7 +1635,7 @@ export interface components {
          * LabelSource
          * @enum {string}
          */
-        LabelSource: "prelabel_corrected" | "manual" | "provider_correction";
+        LabelSource: "prelabel_corrected" | "manual" | "provider_correction" | "assistant";
         /**
          * LayaConfig
          * @description Local fallback for when Jev did not settle a message (no answer, low confidence, multiple

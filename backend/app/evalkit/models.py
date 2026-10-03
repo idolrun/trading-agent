@@ -22,6 +22,9 @@ class LabelSource(StrEnum):
     PRELABEL_CORRECTED = "prelabel_corrected"
     MANUAL = "manual"
     PROVIDER_CORRECTION = "provider_correction"
+    ASSISTANT = (
+        "assistant"  # F082: written by an AI assistant from the corpus; a person spot-checks
+    )
 
 
 class EvalRunKind(StrEnum):

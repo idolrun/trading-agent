@@ -1,6 +1,7 @@
 """Evaluation kit CLI (F048). Reads the database and calls models; never a broker.
 
 uv run python -m app.evalkit import history.json
+uv run python -m app.evalkit import-labels labels.json
 uv run python -m app.evalkit prelabel --limit 200
 uv run python -m app.evalkit replay --split dev [--model-ref anthropic:claude-x:extract@v1]
 uv run python -m app.evalkit sweep --model-ref anthropic:claude-x:extract@v1
@@ -14,6 +15,7 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -21,7 +23,7 @@ from app.alerts.service import AlertService
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
 from app.evalkit.gate import run_gate, run_sweep
-from app.evalkit.import_export import import_history
+from app.evalkit.import_export import import_history, import_labels
 from app.evalkit.labels import latest_labels, prelabel_batch
 from app.evalkit.models import Split
 from app.evalkit.replay import measure, parse_model_ref, pin_extract
@@ -78,7 +80,7 @@ async def stack(settings: Settings) -> AsyncIterator[tuple[GraphDeps, LlmChain]]
         await engine.dispose()
 
 
-async def run(args: argparse.Namespace, payloads: list[object] | None) -> int:
+async def run(args: argparse.Namespace, payloads: Any) -> int:
     settings = get_settings()
     configure_logging(settings.log_level)
     async with stack(settings) as (deps, chain):
@@ -87,6 +89,11 @@ async def run(args: argparse.Namespace, payloads: list[object] | None) -> int:
                 assert payloads is not None  # noqa: S101 — `import` always parses a file first
                 result = await import_history(deps.sessions, payloads, deps.clock.now())
                 print(result)
+            case "import-labels":
+                assert isinstance(payloads, dict)  # noqa: S101 — parsed in main
+                labeled = await import_labels(deps.sessions, payloads)
+                print(labeled)
+                return 0 if not labeled.invalid else 1
             case "prelabel":
                 recent_n = deps.cfg().context_recent_messages
                 answered = await prelabel_batch(
@@ -120,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("import", help="store a historical export as backfilled events").add_argument(
         "file"
     )
+    sub.add_parser("import-labels", help="store a label file (F082)").add_argument("file")
     sub.add_parser("prelabel", help="LLM suggestions for unlabeled messages").add_argument(
         "--limit", type=int, default=100
     )
@@ -141,6 +149,10 @@ def main(argv: list[str] | None = None) -> int:
             payloads = json.loads(Path(args.file).read_text())
             if not isinstance(payloads, list):
                 raise ValueError("the export must be a JSON list of message payloads")
+        if args.command == "import-labels":
+            payloads = json.loads(Path(args.file).read_text())
+            if not isinstance(payloads, dict) or not isinstance(payloads.get("labels"), dict):
+                raise ValueError('a label file is {"source": ..., "labels": {event key: label}}')
     except (ValidationError, ValueError, OSError) as exc:
         print(exc, file=sys.stderr)
         return 2

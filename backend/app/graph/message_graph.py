@@ -107,6 +107,7 @@ class GraphDeps:
     corrections: CorrectionService | None = None  # F038; None: edits/deletes are feed-only
     book: Callable[[Envelope], list[BookEntry]] | None = None  # replay only: the label ledger
     alerts: AlertService | None = None  # F078: a scope violation is an urgent alert
+    resolution: Callable[[Envelope], Resolution] | None = None  # replay only (F082)
     background: set[asyncio.Task[Any]] = field(default_factory=set)
 
     def cfg(self) -> RuntimeConfig:
@@ -239,8 +240,12 @@ class _Nodes:
                 if labelled is not None
                 else [BookEntry(id=r.provider_position_id, summary=summarize(r)) for r in rows],
             )
-            if labelled is not None:  # the label ledger has summaries only: all candidates
-                resolution = Resolution.unresolved({b.id: b for b in labelled})
+            if labelled is not None:  # replay: the label ledger's history (F082)
+                resolution = (
+                    self.d.resolution(env)
+                    if self.d.resolution is not None
+                    else Resolution.unresolved({b.id: b for b in labelled})
+                )
             else:
                 states = {r.provider_position_id: state_of(r) for r in rows}
                 resolution = await ledger.load_resolution(db, env, states)

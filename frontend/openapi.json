@@ -2515,7 +2515,8 @@
         "enum": [
           "prelabel_corrected",
           "manual",
-          "provider_correction"
+          "provider_correction",
+          "assistant"
         ],
         "title": "LabelSource",
         "type": "string"

@@ -82,9 +82,11 @@ class Corpus:
         when: datetime,
         author: int = PROVIDER_A,
         link: dict[str, Any] | None = None,
+        reply_to: Envelope | None = None,
     ) -> Envelope:
         """A stored event (never queued), its recorded interpretation and its label."""
-        env = to_envelope(create(when, text, author=author), when)
+        extra = {} if reply_to is None else {"reply_to_id": str(reply_to.key.message_id)}
+        env = to_envelope(create(when, text, author=author, **extra), when)
         answer = ParsedSignals(signals=recorded, interpreter="llm")
         (self.h.fixtures / f"{env.key.message_id}.json").write_text(answer.model_dump_json())
         body: dict[str, Any] = {"signals": [{"idx": i, **s} for i, s in enumerate(label)]}

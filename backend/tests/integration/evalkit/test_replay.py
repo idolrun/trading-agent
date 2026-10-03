@@ -125,7 +125,9 @@ async def test_book_is_rebuilt_from_earlier_labels_in_post_time_order(
     await Replayer(replay_deps(h, spy)).run(events, Split.TEST)
     books = [book for _, book in spy.seen]
     assert books[0] == []  # nothing before the first message
-    assert len(books[1]) == 1 and books[1][0].startswith("GOOGL 357.5C exp 10/2, entered 0.71")
+    assert len(books[1]) == 1 and books[1][0].startswith(
+        "GOOGL 357.5C exp 2026-10-02, entered 0.71"
+    )
     assert books[2] == []  # closed by the labeled exit
     assert spy.seen[3][0] == str(other.key.message_id) and books[3] == []  # per provider
 
@@ -246,14 +248,16 @@ async def test_import_is_idempotent_backfilled_and_never_queued(
     assert sorted(ids) == [PROVIDER_A, PROVIDER_B]
 
 
-async def test_link_scores_count_a_wrong_pick_apart_from_an_ambiguous_one(
+async def test_link_scores_count_a_wrong_link_apart_from_an_ambiguous_one(
     h: Harness, corpus: Corpus
 ) -> None:
-    """F076: two GOOGL / TSLA entries, then three labeled exits of GOOGL: the interpreter picks
-    GOOGL (correct), TSLA (wrong), and nothing (ambiguous)."""
-    import uuid
-
-    from app.evalkit.replay import LEDGER_NS
+    """F076/F082: links are scored the way live code decides them (production resolver +
+    `resolve_link` over the label ledger). GOOGL and TSLA open:
+    - "trim half", the model picks GOOGL: no code evidence -> ambiguous (F077);
+    - "trim GOOGL": the stated contract -> correct;
+    - "out TSLA": the stated contract -> correct (TSLA closes);
+    - "trim half" labeled as TSLA's: code links the sole open GOOGL -> wrong."""
+    from app.evalkit.replay import position_id_of
     from tests.integration.pipeline.harness import follow_up, option_entry
 
     googl_env = await corpus.add(GOOGL_TEXT, [googl()], [GOOGL_LABEL], when=at(TEST_DAY, 0))
@@ -264,30 +268,117 @@ async def test_link_scores_count_a_wrong_pick_apart_from_an_ambiguous_one(
         [tsla_label],
         when=at(TEST_DAY, 1),
     )
-    book_id = {
-        env.key.message_id: uuid.uuid5(LEDGER_NS, f"{env.key.message_id}.create.0.0")
-        for env in (googl_env, tsla_env)
-    }
-    exit_label = {"msg_type": "trim", "fields": {"underlying": "GOOGL"}}
-    link = {"idx": 0, "provider_position_id": str(book_id[googl_env.key.message_id])}
-    for minute, pick in (
-        (5, book_id[googl_env.key.message_id]),
-        (6, book_id[tsla_env.key.message_id]),
-        (7, "ambiguous"),
+    googl_id = position_id_of(f"{googl_env.key.message_id}.create.0")
+    tsla_id = position_id_of(f"{tsla_env.key.message_id}.create.0")
+    for minute, text, pick, msg_type, labeled in (
+        (5, "trim half", googl_id, "trim", googl_id),
+        (6, "trim GOOGL", googl_id, "trim", googl_id),
+        (7, "out TSLA", tsla_id, "full_exit", tsla_id),
+        (8, "trim half", googl_id, "trim", tsla_id),
     ):
         await corpus.add(
-            "trim half",
-            [follow_up("trim", pick, exit_fraction="half")],
-            [exit_label],
+            text,
+            [follow_up(msg_type, pick, exit_fraction="half")],
+            [{"msg_type": msg_type, "fields": {}}],
             when=at(TEST_DAY, minute),
-            link=link,
+            link={"idx": 0, "provider_position_id": str(labeled)},
         )
     async with h.factory() as db:
         events = await latest_labels(db)
     metrics = await measure(replay_deps(h), events, Split.TEST)
     assert (metrics["links_correct"], metrics["links_wrong"], metrics["links_ambiguous"]) == (
-        1,
+        2,
         1,
         1,
     )
-    assert metrics["wrong_link_rate"] == pytest.approx(1 / 3)
+    assert metrics["wrong_link_rate"] == pytest.approx(1 / 4)
+
+
+async def test_replay_resolves_links_like_live(h: Harness, corpus: Corpus) -> None:
+    """F082 parity: the replay's resolution is the production resolver over the label ledger,
+    so the fast path settles a sole-position follow-up and a reply by code, as live would, and
+    a follow-up between two positions with no evidence stays a review."""
+    from app.evalkit.replay import position_id_of
+    from tests.integration.pipeline.harness import option_entry
+
+    googl_env = await corpus.add(GOOGL_TEXT, [googl()], [GOOGL_LABEL], when=at(TEST_DAY, 0))
+    googl_id = position_id_of(f"{googl_env.key.message_id}.create.0")
+    trim = {"msg_type": "trim", "fields": {"exit_fraction": "half"}}
+    link = {"idx": 0, "provider_position_id": str(googl_id)}
+    await corpus.add("trim half", [], [trim], when=at(TEST_DAY, 1), link=link)  # sole: code
+    tsla_label = {**GOOGL_LABEL, "fields": {**GOOGL_LABEL["fields"], "underlying": "TSLA"}}
+    await corpus.add(
+        "Bought TSLA 400C 10/2 @ 3.10",
+        [option_entry("TSLA", "400", "400C", "10/2", "3.10")],
+        [tsla_label],
+        when=at(TEST_DAY, 2),
+    )
+    await corpus.add(  # two open, a reply to the GOOGL entry: code
+        "trim half", [], [trim], when=at(TEST_DAY, 3), link=link, reply_to=googl_env
+    )
+    await corpus.add("trim half", [], [trim], when=at(TEST_DAY, 4), link=link)  # two, no evidence
+    deps = replace(replay_deps(h), fixture=None)  # fast path, no Jev, no LLM: what code alone does
+    async with h.factory() as db:
+        events = await latest_labels(db)
+    cases = await Replayer(deps).run(events, Split.TEST)
+    assert [(c.path, c.link, c.outcome) for c in cases] == [
+        ("fast", None, "fast_success"),
+        ("fast", "correct", "fast_success"),
+        ("fast", None, "fast_success"),
+        ("fast", "correct", "fast_success"),
+        ("slow_path", "ambiguous", "review"),
+    ]
+
+
+async def test_a_labeled_instruction_ended_feed_only_is_counted(h: Harness, corpus: Corpus) -> None:
+    """F082: `false_feed_only` = a labeled actionable message the interpreter silenced."""
+    exit_label = {"msg_type": "full_exit", "fields": {"exit_fraction": "all"}}
+    await corpus.add("gotta go here", [CHATTER], [exit_label], when=at(TEST_DAY, 0))
+    await corpus.add("gm", [CHATTER], [CHATTER_LABEL], when=at(TEST_DAY, 1))
+    async with h.factory() as db:
+        events = await latest_labels(db)
+    cases = await Replayer(replay_deps(h)).run(events, Split.TEST)
+    from app.evalkit.metrics import compute
+
+    metrics = compute([replace(c, path="feed_only") for c in cases])
+    assert (metrics["false_feed_only"], metrics["false_feed_only_rate"]) == (1, 1.0)
+
+
+async def test_import_labels_expands_open_links_and_is_idempotent(
+    h: Harness, corpus: Corpus, db_session: AsyncSession
+) -> None:
+    """F082: a label file names a position by the message that opened it."""
+    from app.evalkit.import_export import import_labels
+    from app.evalkit.labels import event_key
+    from app.evalkit.models import EvalLabel
+    from app.evalkit.replay import position_id_of
+    from app.inbox import repo as inbox
+    from app.ingest.adapter import to_envelope
+
+    entry = to_envelope(create(at(TEST_DAY, 0), GOOGL_TEXT), at(TEST_DAY, 0))
+    trim = to_envelope(create(at(TEST_DAY, 1), "trim half"), at(TEST_DAY, 1))
+    async with h.factory() as db:
+        for env in (entry, trim):
+            await inbox.store_event(db, env)
+        await db.commit()
+    doc = {
+        "source": "assistant",
+        "labels": {
+            event_key(entry.key): {"signals": [{"idx": 0, **GOOGL_LABEL}]},
+            event_key(trim.key): {
+                "signals": [{"idx": 0, "msg_type": "trim", "fields": {"exit_fraction": "half"}}],
+                "link": {"idx": 0, "providerPositionId": f"open:{event_key(entry.key)}"},
+            },
+            "1.create.0": {"signals": []},  # no such event
+            "x": {"signals": []},
+        },
+    }
+    result = await import_labels(h.factory, doc)
+    assert (result.read, result.inserted, result.unchanged, len(result.invalid)) == (4, 2, 0, 2)
+    rows = (await db_session.scalars(select(EvalLabel).order_by(col(EvalLabel.labeled_at)))).all()
+    assert {r.source for r in rows} == {"assistant"}
+    linked = next(r for r in rows if r.message_id == trim.key.message_id)
+    expected = str(position_id_of(event_key(entry.key)))
+    assert linked.label["link"]["provider_position_id"] == expected
+    again = await import_labels(h.factory, doc)
+    assert (again.inserted, again.unchanged) == (0, 2)
