@@ -89,6 +89,7 @@ from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.system.heartbeat import run_heartbeat
+from app.system.singleton import hold_instance_lock
 from app.timers.models import TimerKind
 from app.timers.service import TimerService
 from app.validate.service import ValidationService
@@ -354,7 +355,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ]
     dispatcher = None
     graph_deps: GraphDeps | None = None
+    instance_lock = None
     if settings.background_enabled:
+        # F076: the in-process locks (lanes, entry gate, brackets) need exactly one instance
+        instance_lock = await hold_instance_lock(libpq_dsn(str(settings.database_url)))
 
         def runtime() -> RuntimeConfig:
             return config_service.get() or RuntimeConfig()
@@ -470,6 +474,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await graph_pool.close()
         if alpaca is not None:
             await alpaca.aclose()
+        if instance_lock is not None:
+            await instance_lock.close()  # releases the instance lock
         await engine.dispose()
 
 

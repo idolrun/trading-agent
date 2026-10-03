@@ -11,6 +11,11 @@ A `Case` pairs what a message was labeled with what the interpreter answered. Si
 - field accuracy: over normal cards paired with a labeled actionable signal, the fields (union
   of labeled and answered non-empty values) that match exactly / all such fields;
 - wrong contract: a normal card whose underlying, expiry, strike or right differs from the label.
+- links (F076), over labeled follow-ups that name a position: `correct` / `wrong` (the
+  interpreter's pick, after the code cross-check on the stated ticker, is another position) /
+  `ambiguous` (no pick: a review card). `wrong_link_rate` is the critical number: a wrong link
+  can sell the wrong lot; an ambiguous one only costs a review.
+- review rate: messages that end in a person's hands (raw review or an ambiguous link).
 """
 
 import math
@@ -50,8 +55,9 @@ class Case:
     provider_id: int
     expected: dict[int, Sig]  # by idx
     predicted: dict[int, Sig] | None  # None: no interpretation (raw review)
-    path: str  # fixture | feed_only | assemble | slow_path
+    path: str  # fixture | fast | feed_only | assemble | slow_path
     latency_ms: float
+    link: str | None = None  # correct | wrong | ambiguous; None = no labeled link to score
 
 
 def is_actionable(msg_type: str) -> bool:
@@ -116,6 +122,9 @@ def compute(cases: list[Case], *, cost_usd: float = 0.0) -> dict[str, Any]:
     by_path: defaultdict[str, list[float]] = defaultdict(list)
     for c in cases:
         by_path[c.path].append(c.latency_ms)
+    links = Counter(c.link for c in cases if c.link is not None)
+    link_cases = sum(links.values())
+    reviews = sum(c.predicted is None or c.link == "ambiguous" for c in cases)
     return {
         "messages": len(cases),
         "actionable": actionable,
@@ -128,9 +137,21 @@ def compute(cases: list[Case], *, cost_usd: float = 0.0) -> dict[str, Any]:
         "wrong_contracts": wrong_contracts,
         "confusion": {k: dict(v) for k, v in sorted(confusion.items())},
         "slow_path_share": _ratio(len(by_path.get("slow_path", [])), len(cases)),
+        "path_shares": {p: _ratio(len(v), len(cases)) for p, v in sorted(by_path.items())},
+        "link_cases": link_cases,
+        "links_correct": links["correct"],
+        "links_wrong": links["wrong"],
+        "links_ambiguous": links["ambiguous"],
+        "wrong_link_rate": _ratio(links["wrong"], link_cases),
+        "review_rate": _ratio(reviews, len(cases)),
         "latency_ms": {
             path: {"n": len(v), "p50": percentile(v, 50), "p95": percentile(v, 95)}
             for path, v in sorted(by_path.items())
+        },
+        "latency_ms_all": {
+            "n": len(cases),
+            "p50": percentile([c.latency_ms for c in cases], 50) if cases else None,
+            "p95": percentile([c.latency_ms for c in cases], 95) if cases else None,
         },
         "cost_usd": cost_usd,
     }

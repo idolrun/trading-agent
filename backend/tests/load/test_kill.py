@@ -67,6 +67,9 @@ SLOW = sd.story_message("entry", P + 1, CONTRACTS[3], path="slow", seed=2)  # QQ
 _META = sd.story_message("entry", P + 2, CONTRACTS[7], path="slow", seed=3)
 # The LLM quotes a price that is not in the text: literal-span verification fails -> raw review
 RAW = replace(_META, signal={**_META.signal, "entry_price": {"raw": "99.99"}})
+# F070: "Bought SPY 577c 10/2 @ 5.04" alone is settled by the deterministic fast path, which never
+# reaches the model nodes these cases crash; " here" keeps them on the Jev / LLM path.
+FAST, SLOW, RAW = (replace(m, text=f"{m.text} here") for m in (FAST, SLOW, RAW))
 CHAT = sd.story_message("chatter", P + 3, CONTRACTS[0], seed=4)
 SCENARIO = (FAST, SLOW, RAW, CHAT)
 CARDS = {FAST.text: 1, SLOW.text: 1, RAW.text: 1, CHAT.text: 0}  # cards per message

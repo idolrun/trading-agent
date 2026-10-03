@@ -244,3 +244,50 @@ async def test_import_is_idempotent_backfilled_and_never_queued(
     assert await count(db_session, InboxItem) == 0 and await count(db_session, StageTiming) == 0
     ids = (await db_session.scalars(select(col(MessageEvent.provider_id)))).all()
     assert sorted(ids) == [PROVIDER_A, PROVIDER_B]
+
+
+async def test_link_scores_count_a_wrong_pick_apart_from_an_ambiguous_one(
+    h: Harness, corpus: Corpus
+) -> None:
+    """F076: two GOOGL / TSLA entries, then three labeled exits of GOOGL: the interpreter picks
+    GOOGL (correct), TSLA (wrong), and nothing (ambiguous)."""
+    import uuid
+
+    from app.evalkit.replay import LEDGER_NS
+    from tests.integration.pipeline.harness import follow_up, option_entry
+
+    googl_env = await corpus.add(GOOGL_TEXT, [googl()], [GOOGL_LABEL], when=at(TEST_DAY, 0))
+    tsla_label = {**GOOGL_LABEL, "fields": {**GOOGL_LABEL["fields"], "underlying": "TSLA"}}
+    tsla_env = await corpus.add(
+        "Bought TSLA 400C 10/2 @ 3.10",
+        [option_entry("TSLA", "400", "400C", "10/2", "3.10")],
+        [tsla_label],
+        when=at(TEST_DAY, 1),
+    )
+    book_id = {
+        env.key.message_id: uuid.uuid5(LEDGER_NS, f"{env.key.message_id}.create.0.0")
+        for env in (googl_env, tsla_env)
+    }
+    exit_label = {"msg_type": "trim", "fields": {"underlying": "GOOGL"}}
+    link = {"idx": 0, "provider_position_id": str(book_id[googl_env.key.message_id])}
+    for minute, pick in (
+        (5, book_id[googl_env.key.message_id]),
+        (6, book_id[tsla_env.key.message_id]),
+        (7, "ambiguous"),
+    ):
+        await corpus.add(
+            "trim half",
+            [follow_up("trim", pick, exit_fraction="half")],
+            [exit_label],
+            when=at(TEST_DAY, minute),
+            link=link,
+        )
+    async with h.factory() as db:
+        events = await latest_labels(db)
+    metrics = await measure(replay_deps(h), events, Split.TEST)
+    assert (metrics["links_correct"], metrics["links_wrong"], metrics["links_ambiguous"]) == (
+        1,
+        1,
+        1,
+    )
+    assert metrics["wrong_link_rate"] == pytest.approx(1 / 3)

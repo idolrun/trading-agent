@@ -28,6 +28,7 @@ from app.inbox.envelope import Envelope, Lane
 from app.inbox.models import EventType
 from app.interpret.context import BookEntry
 from app.interpret.signal import ParsedSignals
+from app.ledger.correlation import FOLLOW_UPS
 from app.llm.models import ModelCall, ModelRole
 from app.markettime import to_et
 from app.runtime_config.schema import ChainEntry, RuntimeConfig
@@ -76,21 +77,30 @@ class Ledger:
 
     def apply(self, env: Envelope, label: dict[str, Any]) -> None:
         book = self._books[env.lane]
-        link = label.get("link") or {}
         for sig in label["signals"]:
             fields = sig.get("fields", {})
             if sig["msg_type"] in OPENING:
                 key = f"{env.key.message_id}.{env.key.event_type}.{env.key.event_seq}.{sig['idx']}"
                 book[uuid.uuid5(LEDGER_NS, key)] = (fields.get("underlying"), _summary(env, fields))
             elif sig["msg_type"] in CLOSING:
-                linked = link.get("provider_position_id") if link.get("idx") == sig["idx"] else None
-                target = uuid.UUID(linked) if linked else None
-                if target not in book:  # F047 links name real ledger ids: match by ticker instead
-                    target = next(
-                        (i for i in reversed(book) if book[i][0] == fields.get("underlying")), None
-                    )
+                target = self.target(env, label, sig)
                 if target is not None:
                     del book[target]
+
+    def target(self, env: Envelope, label: dict[str, Any], sig: dict[str, Any]) -> uuid.UUID | None:
+        """The labeled position of a follow-up signal, as an id of this lane's label book."""
+        book = self._books[env.lane]
+        link = label.get("link") or {}
+        linked = link.get("provider_position_id") if link.get("idx") == sig["idx"] else None
+        target = uuid.UUID(linked) if linked else None
+        if target not in book:  # F047 links name real ledger ids: match by ticker instead
+            underlying = sig.get("fields", {}).get("underlying")
+            target = next((i for i in reversed(book) if book[i][0] == underlying), None)
+        return target
+
+    def underlying(self, env: Envelope, position_id: uuid.UUID) -> str | None:
+        entry = self._books[env.lane].get(position_id)
+        return entry[0] if entry else None
 
 
 def _summary(env: Envelope, f: dict[str, Any]) -> str:
@@ -184,7 +194,29 @@ class Replayer:
             predicted,
             state.get("route") or "none",
             latency_ms,
+            link=self._link(ev, ParsedSignals.model_validate(parsed) if predicted else None),
         )
+
+    def _link(self, ev: Labeled, parsed: ParsedSignals | None) -> str | None:
+        """F076: score the labeled follow-up's link. The replay has no position states, so the
+        code cross-check is the one on the stated ticker (the label book knows underlyings)."""
+        env, label = ev.envelope, ev.label
+        link = label.get("link") or {}
+        sig = next((s for s in label["signals"] if s["idx"] == link.get("idx")), None)
+        if sig is None or sig["msg_type"] not in FOLLOW_UPS:
+            return None
+        expected = self._ledger.target(env, label, sig)
+        if expected is None:
+            return None
+        got = parsed.signals[sig["idx"]] if parsed and sig["idx"] < len(parsed.signals) else None
+        target = got.link_hint.target if got is not None else None
+        if not isinstance(target, uuid.UUID):
+            return "ambiguous"
+        stated = got.fields.underlying.value if got and got.fields.underlying else None
+        held = self._ledger.underlying(env, target)
+        if stated is not None and held is not None and stated.upper() != held.upper():
+            return "ambiguous"  # live code refuses a pick that contradicts the stated ticker
+        return "correct" if target == expected else "wrong"
 
 
 async def measure(

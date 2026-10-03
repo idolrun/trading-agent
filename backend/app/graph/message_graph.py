@@ -48,7 +48,7 @@ from app.inbox.envelope import Envelope
 from app.inbox.models import EventType, InboxStatus, Stage
 from app.interpret import context_repo
 from app.interpret.candidates import Candidates, find_candidates
-from app.interpret.context import BookEntry, ProviderContext, load_context
+from app.interpret.context import BookEntry, ProviderContext, load_context, summarize
 from app.interpret.fast import fast_parse
 from app.interpret.interpreter import Interpreter, InterpreterUnavailable
 from app.interpret.jev.client import JevInterpreter
@@ -178,35 +178,44 @@ class _Nodes:
             return {"skip": True, "superseded_ids": [str(c) for c in invalidated]}
         cfg = self.d.cfg()
         profile = await self._profile(env.provider_id)
+        labelled = self.d.book(env) if replay and self.d.book else None
         async with in_transaction(self.d.sessions, None) as db:
+            # the lane book is read once: for the model's context and for the resolver (F069)
+            rows = (
+                []
+                if labelled is not None
+                else await context_repo.open_book(db, env.lane, env.posted_at)
+            )
             context = await load_context(
                 db,
                 env,
                 recent_n=cfg.context_recent_messages,
                 now=env.posted_at if replay else self.d.clock.now(),
                 profile=profile,
-                book=self.d.book(env) if replay and self.d.book else None,
+                book=labelled
+                if labelled is not None
+                else [BookEntry(id=r.provider_position_id, summary=summarize(r)) for r in rows],
             )
+            if labelled is not None:  # the label ledger has summaries only: all candidates
+                resolution = Resolution.unresolved({b.id: b for b in labelled})
+            else:
+                states = {r.provider_position_id: state_of(r) for r in rows}
+                resolution = await ledger.load_resolution(db, env, states)
             lots = [] if replay else await ledger.open_lots(db)  # the user's lots: never replayed
             if not replay:
                 await record_stage(db, env.key, ctx.attempt, Stage.CONTEXT)
         return {
             "context": context.model_dump(mode="json"),
+            "resolution": resolution.model_dump(mode="json"),
             "lot_ids": [str(lot.lot_id) for lot in lots],
         }
 
     async def resolve_context(self, state: MessageState) -> dict[str, Any]:
         """F069: which lane positions the message can be about, from code-only evidence (reply
-        chain, thread, stated contract). Narrows what a model may link to."""
-        env = _processing(state).envelope
+        chain, thread, stated contract; read in `load_context`'s transaction). Narrows what a
+        model may link to."""
         context = _context(state)
-        if state["replay"]:  # the label ledger has summaries only: no evidence, all candidates
-            resolution = Resolution.unresolved({b.id: b for b in context.provider_book})
-        else:
-            async with self.d.sessions() as db:
-                rows = await context_repo.open_book(db, env.lane, env.posted_at)
-                book = {r.provider_position_id: state_of(r) for r in rows}
-                resolution = await ledger.load_resolution(db, env, book)
+        resolution = Resolution.model_validate(state["resolution"])
         allowed = set(resolution.candidates)
         narrowed = context.model_copy(
             update={"link_candidates": [b for b in context.provider_book if b.id in allowed]}

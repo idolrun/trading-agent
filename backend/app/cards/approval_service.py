@@ -172,6 +172,12 @@ class ApprovalService:
         self.planner: Planner | None = None  # AC-14: re-plan on underlying confirmation
         self.unblock_poll_s = 5.0
         self._deferred: asyncio.Task[None] | None = None
+        # F076: one account. The last risk check before an entry's submission and the
+        # submission itself (which commits the order row the next check counts as working
+        # exposure) run one entry at a time, so two approvals cannot both pass on the same
+        # snapshot. ponytail: in-process lock (one app process, `app.system.singleton`);
+        # pg_advisory_xact_lock around check + order insert if the app ever scales out.
+        self._entry_gate = asyncio.Lock()
         self._graph: CompiledStateGraph[Any, Any, Any, Any] = build_approval_graph(
             self, checkpointer
         )
@@ -678,9 +684,21 @@ class ApprovalService:
             return []  # a completed review places nothing; the card stays approved
         assert target is not None  # noqa: S101 — revalidate refused a card without one
         try:
-            orders = await self._executor.execute(
-                loaded.card, proposal, approval.approval_id, target
-            )
+            if proposal.action in ENTRY_ACTIONS:
+                async with self._entry_gate:
+                    # revalidation ran outside the gate: another entry may have been submitted
+                    # since. Check again against what is committed now, then submit.
+                    final = await self._preflight(loaded, proposal, stop_on_fail=True)
+                    if final.failure is not None:
+                        await self._fail(card_id, final.failure)
+                        return []
+                    orders = await self._executor.execute(
+                        loaded.card, proposal, approval.approval_id, target
+                    )
+            else:
+                orders = await self._executor.execute(
+                    loaded.card, proposal, approval.approval_id, target
+                )
         except (
             ExecutionBlocked,
             EntriesBlocked,

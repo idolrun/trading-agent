@@ -120,3 +120,25 @@ def test_gate_needs_size_and_perfect_quality() -> None:
     ):
         failed = [c.name for c in gate_checks({**good, key: bad}) if not c.passed]
         assert len(failed) == 1, key
+
+
+def test_link_scores_review_rate_and_path_shares() -> None:
+    """F076: wrong links are counted apart from ambiguous ones (a review is recoverable)."""
+    entry = {0: Sig("trim")}
+    cases = [
+        Case(1, entry, entry, "assemble", 10.0, link="correct"),
+        Case(1, entry, entry, "slow_path", 20.0, link="wrong"),
+        Case(1, entry, entry, "fast", 1.0, link="ambiguous"),
+        Case(1, entry, None, "slow_path", 30.0),
+    ]
+    m = compute(cases)
+    assert (m["link_cases"], m["links_correct"], m["links_wrong"], m["links_ambiguous"]) == (
+        3,
+        1,
+        1,
+        1,
+    )
+    assert m["wrong_link_rate"] == pytest.approx(1 / 3)
+    assert m["review_rate"] == 0.5  # the raw review and the ambiguous link
+    assert m["path_shares"] == {"assemble": 0.25, "fast": 0.25, "slow_path": 0.5}
+    assert m["latency_ms_all"]["n"] == 4

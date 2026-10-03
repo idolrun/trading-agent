@@ -15,6 +15,7 @@ Deploy the system safely (app VM + managed HA PostgreSQL 17), document operator 
 ## Scope
 - **Images:** backend (uv-based multi-stage, non-root), frontend (`next build` standalone). Pin base image digests.
 - **Compose prod:** backend + frontend + Caddy (TLS, rate limiting on `/api/v1/auth/*`, `/ingest` exposed, security headers). No Postgres container in prod.
+- **Exactly one backend instance** (F076): `uvicorn --workers 1`, `replicas: 1`, no auto-scaling. Lane ordering, the account entry gate and bracket locks are in-process. A second instance on the same database is refused at startup (`SecondInstance`, Postgres advisory lock held on its own connection; released automatically if the process dies).
 - **Postgres:** managed provider (OD-9) with HA/sync standby and PITR; private network path (OD-17); `DATABASE_URL` via root-only env file; migrations run as owner in a release step; `graph setup` once.
 - **Secrets:** root-only env file (TRD §10) for broker, LLM, TypeSafe, VAPID, HMAC; never in images or logs.
 - **Monitoring:** external uptime monitor on `/health` (heartbeat-aware) paging the phone (TRD §9 known gap); alerts via Web Push.

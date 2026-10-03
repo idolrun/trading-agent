@@ -250,8 +250,8 @@ def map_answers(
 
     link = choice("links_to")
     target: Any = link.choice
-    if target not in ("new_position", "ambiguous"):
-        target = next(b.id for b in ctx.link_candidates if str(b.id) == target)
+    if target not in ("new_position", "ambiguous"):  # an id outside the candidates: no link
+        target = next((b.id for b in ctx.link_candidates if str(b.id) == target), "ambiguous")
     if _d(link.confidence) < t_link:
         target = "ambiguous"  # C31: a weak link is a review, never a guess
 

@@ -205,6 +205,7 @@ cd frontend && pnpm dev                  # after F052
 | [F073](F073-context-packet-parity.md) | One context packet and window for live, replay, labeling; recent lane signal events | F017, F048, F068, F069 | C71, FR-8, PRD §17 |
 | [F074](F074-laya-latency.md) | Laya latency: never queue behind the GPU (busy skip), own stage timing | F035, F066, F068 | C38, PRD §12 |
 | [F075](F075-ambiguity-resolution-persists.md) | A chosen position on an ambiguous card writes the link + ledger change (re-link path) | F036, F037, F069 | FR-3, C31 |
+| [F076](F076-concurrency-replay-scenario.md) | Approval race fix (account entry gate), single-instance guard, replay link metrics, end-to-end multichannel scenario | F036, F048, F068–F075 | FR-18, FR-20, PRD §17, C94 |
 
 ---
 

@@ -6,6 +6,7 @@ PAPER mode over the `SimulatedBroker` (marketable orders fill at the quote) and 
 data: the same code paths as Alpaca paper, with no network. The opt-in live suite
 (`tests/live/test_paper_app_flow.py`) runs the same path against the Alpaca paper account."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
@@ -355,6 +356,23 @@ async def test_a_working_order_counts_against_the_exposure_limit(resting: Paper)
     assert (await p.card(second.card_id)).state == CardState.INVALIDATED
     assert (await p.events(second.card_id))[-1].detail["reason"] == "max exposure"
     assert len(await p.w.orders()) == 1  # not a second order
+
+
+async def test_two_simultaneous_approvals_cannot_both_pass_the_exposure_limit(
+    resting: Paper,
+) -> None:
+    """F076: approved at the same moment, each card's revalidation alone sees room for itself
+    (962 <= 1500); the final risk check before submission is serialized per account, so the
+    second sees the first's working order and is refused."""
+    p = resting
+    first = await p.signal(await p.processor(jev_client(p), p.laya), author=PROVIDER_A)
+    second = await p.signal(
+        await p.processor(jev_client(p), p.laya), author=PROVIDER_B, at=T0 + timedelta(seconds=1)
+    )
+    await asyncio.gather(p.w.decide(first.card_id), p.w.decide(second.card_id))
+    assert len(await p.w.orders()) == 1
+    states = sorted([(await p.card(first.card_id)).state, (await p.card(second.card_id)).state])
+    assert states == sorted([CardState.SUBMITTED, CardState.INVALIDATED])
 
 
 async def test_a_stale_quote_makes_a_review_card_and_never_an_order(

@@ -52,11 +52,11 @@
 ## 1. Design principles
 
 1. **Models interpret, code decides.** Jev and the LLM answer "what did the provider mean?". Code answers "what do we do, how much, at what price, and is it allowed?" (PRD §4, §9).
-2. **The fast path uses no generative model.** Code finds candidate values and Jev chooses among them. The LLM (any configured provider, §4.8) runs only when Jev is unsure, or for the advisory note.
+2. **The fast path uses no generative model.** Obvious whole messages are settled by code alone (F070). Otherwise code finds candidate values and Jev chooses among them. The LLM (any configured provider, §4.8) runs only when Jev is unsure, or for the advisory note.
 3. **Model confidence can only downgrade a card, never upgrade it** (C31). High confidence skips nothing that code would otherwise check.
 4. **Domain tables are the source of truth.** LangGraph checkpoints hold orchestration state (where a run paused). Ledgers, cards, orders and audit rows live in our own Postgres tables.
 5. **Every order goes through one function.** `submit_order()` runs the FR-20 invariants, writes the order intent, then calls the broker. Neither graph nodes nor models call the broker directly.
-6. **One process, one database.** A single Python asyncio service plus PostgreSQL.
+6. **One process, one database.** A single Python asyncio service plus PostgreSQL. Enforced since F076: the background services take a session-level Postgres advisory lock at startup (`app/system/singleton.py`) and refuse to start if another instance holds it. Run `uvicorn --workers 1`, one replica. The lane slots, the account entry gate and the bracket locks are in-process `asyncio.Lock`s that rely on it.
    - No Kafka and no Redis (§15.1, §15.2).
    - Postgres runs on its own highly available host, not beside the app (§9).
 7. **Transport, correlation and state are separate layers.**
@@ -75,38 +75,47 @@ Message API ──webhook──▶ inbox.accept()  (commit, then 200)           
 gap detector ──backfill (Discord history / history port)──▶ inbox.accept()
                               │ NOTIFY
                               ▼
-dispatcher: per-provider worker takes the next event in snowflake order
-            + staleness check                                          §2.4
-  ═══════════ provider slot HELD from here ═══════════
+dispatcher: per-LANE worker (lane = channel + author, F068) takes the next event in
+            snowflake order + staleness check                          §2.4
+  ═══════════ lane slot HELD from here ═══════════
 START
   │
   ▼
-load_context ── code: message, reply parent, author's recent msgs, @mentioned msgs,
-  │             provider book (author's open positions), provider profile (long-term store)
+load_context ── code (F068/F073): the lane's packet: message (+thread), reply parent (read-only),
+  │             the lane author's last N messages, the lane book (live + today's setups),
+  │             the lane's recent signal events, provider profile. No other channel/author,
+  │             never the user's lots, balances or P&L (FR-8).
+  ▼
+resolve_context ── code (F069): reply chain (≤3) → thread → stated contract → candidates
+  │                (UNIQUE | AMBIGUOUS | NONE); models may only pick among the candidates
   ▼
 find_candidates ── code: regex over-find tickers, numbers, expiry tokens, fraction words
   │
   ▼
-jev_interpret ── ONE Jev request, all Appendix A questions in parallel
+fast_interpret ── code (F070): a whole obvious message (entry / exit / trim / BE stop /
+  │               re-entry) → ParsedSignals with literal spans; follow-ups only on UNIQUE
+  ├── hit ─────────────────────────────────────────────▶ decide_apply
+  ▼ miss
+jev_interpret ── ONE Jev request, all Appendix A questions in parallel (primary interpreter)
   │
   ▼
 route (conditional edge, code thresholds)
-  ├── chatter (confident) ─────────────────────────────▶ feed_only ──▶ END
-  ├── confident & complete ──▶ assemble_signal
-  └── low confidence / multi-signal / missing candidate ──▶ llm_extract (create_agent subgraph, §4.8)
-                                                              │ (timebox; on failure → raw review card)
-                                                              ▼
-                                                        assemble_signal
+  ├── chatter (confident) ───────────────────────────────▶ feed only ──▶ decide_apply (no card)
+  ├── confident & complete ──▶ decide_apply
+  └── unsure / multi-signal / missing field / no answer ──▶ laya_interpret (local, strict gate,
+        skipped at once if busy, F074) ── settled ──▶ decide_apply
+                                       └── not settled ──▶ llm_extract (optional, timeboxed)
+                                                             └── none / exhausted ──▶ raw review card
   ▼
-validate ── code: chain + quote identity, scale normalization, adjacent-strike, date resolution
+decide_apply ── code: verify literal spans → validate → link (resolver verdict; a model pick
+  │             only if ≥ T_link, a candidate and consistent with the stated contract) →
+  │             provider-ledger transition (incl. setups, F072) → decide (pure) → apply:
   ▼
-decide ── code: pure function → proposed action, qty, tier, risk limits
-  ▼
-apply ── ONE Postgres transaction: signals + message_links + provider ledger + card
-  │       (card unique on (signal_id, action)); inbox status = done
+  │       ONE Postgres transaction: signals + message_links (+evidence) + provider ledger +
+  │       card (card unique on (signal_id, action)); lane book version check; inbox done
   ▼
 notify ── SSE + Web Push; spawns note_writer (async, off critical path)
-  ═══════════ provider slot RELEASED here (never held across interrupt) ═══════════
+  ═══════════ lane slot RELEASED here (never held across interrupt) ═══════════
   ▼
 END  (message graph; thread msg:<message_id>:<event_type>:<event_seq>:<attempt>)
 
@@ -118,7 +127,9 @@ revalidate ── code: hours, validity, quote + freshness (`quote_max_age_s`), 
   │          (later trim/stop/exit/correction, delete or edit of the card's message), broker account,
   │          working orders, positions and risk limits, exit lot qty + broker position (F066)
   ▼
-submit_order ── code: FR-20 invariants → broker (idempotent, see §5.6)
+submit_order ── code: entries/adds re-run the risk preflight and submit under one account gate
+  │            (F076: two approvals cannot pass on the same snapshot); FR-20 invariants →
+  │            broker (idempotent, see §5.6)
   ▼
 END  (fills, stops, reprice loops continue in the execution module)
 ```

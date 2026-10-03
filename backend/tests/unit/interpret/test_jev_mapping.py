@@ -274,3 +274,18 @@ def test_the_c52_soft_exit_rule_is_code() -> None:
     assert mapped.msg_type is MsgType.SOFT_EXIT and mapped.parsed is not None
     source = mapped.parsed.signals[0].field_sources["msg_type"]
     assert isinstance(source, ResolvedSource) and source.rule == "c52_soft_exit"
+
+
+def test_a_link_outside_the_candidates_is_ambiguous_not_a_crash() -> None:
+    result, _ = run(
+        "trim half",
+        book=[(P1, "SPY 765P")],
+        msg_type=c("trim"),
+        ticker=c("not_stated"),
+        right=c("not_stated"),
+        size_tier=c("not_stated"),
+        exit_fraction=c("half"),
+        links_to=c(str(uuid.uuid4()), 0.99),
+    )
+    assert result.parsed is not None
+    assert result.parsed.signals[0].link_hint.target == "ambiguous"
