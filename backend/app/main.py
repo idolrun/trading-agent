@@ -382,6 +382,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             approvals=app.state.approvals,
             relink=relink,
             corrections=CorrectionService(session_factory, planner=planner, marketdata=marketdata),
+            alerts=app.state.alerts,
         )
         processor = GraphProcessor(graph_deps, checkpointer)
         relink.recheck = processor.recheck

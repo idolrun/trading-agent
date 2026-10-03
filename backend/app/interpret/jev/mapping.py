@@ -2,13 +2,14 @@
 code-found candidate with confidence ≥ `t_field`; its value is parsed from the candidate's exact
 span. Anything Jev cannot settle is a slow-path reason, never a guess (C78, FR-10)."""
 
+import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Literal
 
-from typesafe_sdk import ChoiceAnswer, NoulAnswer, ScoreAnswer
+from typesafe_sdk import Choice, ChoiceAnswer, Noul, NoulAnswer, Question, Score, ScoreAnswer
 
 from app.interpret.candidates import Candidate, Candidates, fraction_value
 from app.interpret.context import ProviderContext
@@ -61,12 +62,53 @@ class JevResult:
     signal_count: str
     parsed: ParsedSignals | None  # None: Jev could not settle every field (see slow_reasons)
     slow_reasons: tuple[str, ...] = ()
+    # F078: doubts about which earlier position is meant (re-entry among several): review,
+    # never another model (F077)
+    review_reasons: tuple[str, ...] = ()
     hints: dict[str, Any] = field(default_factory=dict)  # compact answers for the slow path
     model_call_id: int | None = None
 
 
 def _d(p: float) -> Decimal:
     return Decimal(str(round(p, 4)))
+
+
+def _probability(p: object) -> bool:
+    return isinstance(p, int | float) and math.isfinite(p) and 0 <= p <= 1
+
+
+def validate_answers(
+    answers: Mapping[str, Answer], questions: Mapping[str, Question]
+) -> str | None:
+    """F078: the response fits the questions asked, else why not (`map_answers` may then index
+    freely). A Jev answer outside its options, a missing answer or a broken probability is a
+    model failure (fallbacks, then review), never an exception that poisons the event."""
+    for qid, q in questions.items():
+        a = answers.get(qid)
+        if a is None:
+            return f"{qid}: no answer"
+        if isinstance(q, Choice):
+            if not isinstance(a, ChoiceAnswer):
+                return f"{qid}: expected a choice answer"
+            options = set(q.criteria)
+            if a.choice not in options:
+                return f"{qid}: {a.choice!r} was not offered"
+            if not _probability(a.confidence):
+                return f"{qid}: confidence {a.confidence!r} is not a probability"
+            if any(k not in options or not _probability(v) for k, v in a.probabilities.items()):
+                return f"{qid}: probabilities do not match the options"
+        elif isinstance(q, Noul):
+            if not isinstance(a, NoulAnswer) or not _probability(a.noul):
+                return f"{qid}: expected a yes probability"
+        elif isinstance(q, Score):
+            if not isinstance(a, ScoreAnswer):
+                return f"{qid}: expected a score answer"
+            top = len(q.criteria) - 1
+            if not (isinstance(a.score, int | float) and math.isfinite(a.score)):
+                return f"{qid}: score {a.score!r} is not a number"
+            if not 0 <= a.score <= top or not _probability(a.confidence):
+                return f"{qid}: score {a.score!r} outside 0..{top}"
+    return None
 
 
 def compact(answers: Mapping[str, Answer]) -> dict[str, Any]:
@@ -242,11 +284,18 @@ def map_answers(
     if noul("is_correction").noul >= 0.5:
         reasons.append("is_correction: needs the slow path")
 
-    for name in REQUIRED.get(msg_type, ()):
-        if name == "underlying" and underlying_optional and msg_type in OPTION_ENTRY_TYPES:
-            continue  # validation makes the "confirm the underlying" review card (FR-14)
-        if name not in fields:
-            reasons.append(f"{name}: required for {msg_type} but not stated")
+    missing = [
+        name
+        for name in REQUIRED.get(msg_type, ())
+        if name not in fields
+        # validation makes the "confirm the underlying" review card (FR-14)
+        and not (name == "underlying" and underlying_optional and msg_type in OPTION_ENTRY_TYPES)
+    ]
+    reasons += [f"{name}: required for {msg_type} but not stated" for name in missing]
+    review: tuple[str, ...] = ()
+    if missing and ctx.reentry_candidates:  # F078: "back in" with no contract of its own
+        n = len(ctx.reentry_candidates)
+        review = (f"reentry: {n} earlier position(s) could be meant, the message names none",)
 
     link = choice("links_to")
     target: Any = link.choice
@@ -256,7 +305,7 @@ def map_answers(
         target = "ambiguous"  # C31: a weak link is a review, never a guess
 
     if reasons:
-        return replace(base, slow_reasons=tuple(reasons))
+        return replace(base, slow_reasons=tuple(reasons), review_reasons=review)
     instrument = fields.pop("instrument", None)
     signal = ParsedSignal.model_validate(
         {

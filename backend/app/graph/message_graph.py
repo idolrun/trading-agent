@@ -6,15 +6,21 @@
     -> fixture_interpret (dev/tests) -> decide_apply
     -> fast_interpret (F070: whole-message rules, no model) -> decide_apply
        else jev_interpret -> route: feed_only | assemble -> decide_apply
-                               slow_path (any reason) -> laya_interpret
-    laya_interpret (only when Jev did not settle it): feed_only | assemble -> decide_apply,
-                   else -> llm_extract (optional) -> decide_apply
+          slow_path, by why (F078):
+            model_failure (off, timeout, API error, invalid answer) -> laya_interpret
+            semantic (unsure, several signals, missing field, condition) -> llm_extract
+            link (which earlier position: re-entry among several) -> raw_review
+          scope violation (user data in the request) -> raw_review + urgent alert, no model
+    laya_interpret (only after a Jev model failure): feed_only | assemble -> decide_apply,
+                   link doubt -> raw_review, else -> llm_extract (optional)
     llm_extract (not configured / exhausted / rejected) | decide_apply (span mismatch) -> raw_review
     decide_apply | raw_review -> notify -> END
     recheck mode (F037): after interpretation -> END (no apply, no notify)
     replay mode (F048): as recheck, and additionally no stage_timings, no system flags, no user
     lots, the provider book from `GraphDeps.book` (evalkit's label ledger) and `now` = post time
 
+Every run ends with one `interpret_outcome` (`interpret_outcome()`), stored on the inbox row
+with the per-interpreter trace (F078).
 Models only choose among the resolver's candidates; `decide_apply` links with the resolver's
 verdict and cross-checks any model pick against the message's stated contract (F069).
 Nodes are thin adapters over the existing services. Side effects: only `decide_apply` /
@@ -37,6 +43,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col
 
+from app.alerts.models import AlertKind, Severity
+from app.alerts.service import AlertService
 from app.cards.approval_service import ApprovalService
 from app.cards.corrections import CorrectionService
 from app.cards.models import Card, CardAction, CardState
@@ -51,12 +59,13 @@ from app.interpret.candidates import Candidates, find_candidates
 from app.interpret.context import BookEntry, ProviderContext, load_context, summarize
 from app.interpret.fast import fast_parse
 from app.interpret.interpreter import Interpreter, InterpreterUnavailable
-from app.interpret.jev.client import JevInterpreter
+from app.interpret.jev.client import JevAnswered, JevFailed, JevInterpreter
 from app.interpret.laya.client import LayaInterpreter, gate
 from app.interpret.llm_extract.agent import LlmInterpreter
+from app.interpret.llm_extract.middleware import ScopeViolation
 from app.interpret.models import Interpreter as InterpreterKind
 from app.interpret.note import NoteWriter
-from app.interpret.route import route
+from app.interpret.route import InterpretOutcome, route
 from app.interpret.signal import ParsedSignals
 from app.interpret.spans import verify_literal_spans
 from app.ledger import repo as ledger
@@ -65,6 +74,7 @@ from app.ledger.relink import RelinkService
 from app.ledger.resolver import Resolution
 from app.llm.usage import CallRef
 from app.markettime import Clock, is_regular_hours, next_regular_open
+from app.observability.counters import bump
 from app.pipeline.apply import ApplyInput, apply_event, apply_raw_review, record_stage
 from app.pipeline.plan import Planner
 from app.runtime_config.models import Actor
@@ -94,6 +104,7 @@ class GraphDeps:
     relink: RelinkService | None = None  # F037: re-check later follow-ups after a late event
     corrections: CorrectionService | None = None  # F038; None: edits/deletes are feed-only
     book: Callable[[Envelope], list[BookEntry]] | None = None  # replay only: the label ledger
+    alerts: AlertService | None = None  # F078: a scope violation is an urgent alert
     background: set[asyncio.Task[Any]] = field(default_factory=set)
 
     def cfg(self) -> RuntimeConfig:
@@ -132,15 +143,15 @@ def build_message_graph(
         "fast_interpret",
         lambda s: _after_interpret(s) if s["route"] == "fast" else "jev_interpret",
     )
-    # Jev settles feed-only and complete signals; whatever it cannot settle (no answer, low
-    # confidence, several signals, missing fields) goes to the local fallback, never both.
-    g.add_conditional_edges(
-        "jev_interpret",
-        lambda s: "laya_interpret" if s["route"] == "slow_path" else _after_interpret(s),
-    )
+    # F078: what Jev cannot settle goes where its reason says (see module docstring)
+    g.add_conditional_edges("jev_interpret", _after_jev)
     g.add_conditional_edges(
         "laya_interpret",
-        lambda s: "llm_extract" if s["route"] == "slow_path" else _after_interpret(s),
+        lambda s: (
+            "llm_extract"
+            if s["route"] == "slow_path" and not s["raw_reason"]
+            else _after_interpret(s)
+        ),
     )
     g.add_conditional_edges("llm_extract", _after_interpret)
     g.add_conditional_edges("decide_apply", _raw_review_or("notify"))  # span mismatch
@@ -157,6 +168,36 @@ def _after_interpret(s: MessageState) -> str:
     if s["recheck"] or s["replay"]:
         return END
     return "raw_review" if s["raw_reason"] else "decide_apply"
+
+
+def _after_jev(s: MessageState) -> str:
+    if s["raw_reason"] or s["route"] != "slow_path":
+        return _after_interpret(s)
+    return "laya_interpret" if s["fallback"] == "model_failure" else "llm_extract"
+
+
+def interpret_outcome(s: MessageState) -> tuple[InterpretOutcome, dict[str, Any]]:
+    """F078: the run's one outcome and its trace (inbox.interpret_outcome / _reasons)."""
+    trace = {**s.get("trace", {}), "route": s.get("route") or None}
+    if s.get("route_reasons"):
+        trace["reasons"] = s["route_reasons"]
+    raw = s.get("raw_reason")
+    if raw:
+        trace["raw_reason"] = raw
+        if raw == "scope_violation":
+            return InterpretOutcome.SCOPE_VIOLATION, trace
+        if raw == "literal_span_mismatch":
+            return InterpretOutcome.VALIDATION_FAILURE, trace
+        return InterpretOutcome.REVIEW, trace
+    match s.get("interpreter"):
+        case "fast":
+            return InterpretOutcome.FAST_SUCCESS, trace
+        case "jev":
+            return InterpretOutcome.JEV_SUCCESS, trace
+        case "laya" | "llm":
+            return InterpretOutcome.FALLBACK_SUCCESS, trace
+        case _:
+            return InterpretOutcome.FIXTURE, trace
 
 
 class _Nodes:
@@ -218,7 +259,12 @@ class _Nodes:
         resolution = Resolution.model_validate(state["resolution"])
         allowed = set(resolution.candidates)
         narrowed = context.model_copy(
-            update={"link_candidates": [b for b in context.provider_book if b.id in allowed]}
+            update={
+                "link_candidates": [b for b in context.provider_book if b.id in allowed],
+                "reentry_candidates": [
+                    BookEntry(id=p.position_id, summary=p.summary) for p in resolution.reentry
+                ],
+            }
         )
         return {
             "resolution": resolution.model_dump(mode="json"),
@@ -260,10 +306,10 @@ class _Nodes:
 
     async def jev_interpret(self, state: MessageState) -> dict[str, Any]:
         ctx = _processing(state)
-        result = None
+        outcome: JevAnswered | JevFailed = JevFailed("disabled")
         if self.d.jev is not None:
-            result = await self.d.jev.interpret(
-                _context(state),
+            outcome = await self.d.jev.interpret(
+                _model_context(state),
                 _candidates(state),
                 ref=_ref(ctx),
                 lot_ids=frozenset(state["lot_ids"]),
@@ -272,66 +318,104 @@ class _Nodes:
                 # underlying (FR-14), instead of a blank review card.
                 underlying_optional=not self.d.llm.configured(),
             )
-            await self._stage(state, ctx, Stage.JEV)
+            if not (isinstance(outcome, JevFailed) and outcome.kind == "disabled"):
+                await self._stage(state, ctx, Stage.JEV)
+        if isinstance(outcome, JevFailed):
+            if outcome.kind == "scope_violation":
+                await self._scope_alert(ctx, "Jev", outcome.detail, outcome.model_call_id)
+                return {
+                    "raw_reason": "scope_violation",
+                    "trace": {"jev": "scope_violation"},
+                    "model_call_id": outcome.model_call_id,
+                }
+            status = "invalid" if outcome.kind == "invalid" else "model_failure"
+            return {
+                "route": "slow_path",
+                "fallback": "model_failure",
+                "route_reasons": [f"jev_{outcome.kind}"],
+                "trace": {"jev": status, "jev_detail": outcome.kind},
+                "interpreter": "jev",
+                "model_call_id": outcome.model_call_id,
+                "jev_answered": False,
+            }
+        result = outcome.result
         decision = route(result, self.d.cfg())
-        return {
+        update: dict[str, Any] = {
             "route": decision.path,
             "route_reasons": list(decision.reasons),
+            "fallback": decision.kind,
             "hints": decision.hints,
             "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
             "interpreter": "jev",
-            "model_call_id": result.model_call_id if result else None,
-            "jev_answered": result is not None,
+            "model_call_id": result.model_call_id,
+            "jev_answered": True,
+            "trace": {"jev": "ambiguous" if decision.path == "slow_path" else "success"},
         }
+        if decision.path == "slow_path":
+            bump("jev:ambiguous")
+            if decision.kind == "link":  # which earlier position: a person decides (F077)
+                update["raw_reason"] = f"needs_review: {'; '.join(decision.reasons)}"[:200]
+        return update
 
     async def laya_interpret(self, state: MessageState) -> dict[str, Any]:
-        """Jev did not settle the message (no answer, or low confidence / several signals /
-        missing fields): the local model gets one try, under its own strict thresholds.
-        Anything it cannot settle continues to the optional LLM, then to review."""
+        """Jev gave no usable answer (F078: off, timeout, API error, invalid answer): the local
+        model gets one try, under its own strict thresholds. What it cannot settle continues to
+        the optional LLM, then to review; a doubt about which position is meant is a review."""
         ctx = _processing(state)
         result = None
         asked = self.d.laya is not None and self.d.laya.available()
+        trace = dict(state["trace"])
         if self.d.laya is not None:
-            result = await self.d.laya.interpret(
-                _context(state),
-                _candidates(state),
-                ref=_ref(ctx),
-                lot_ids=frozenset(state["lot_ids"]),
-                underlying_optional=not self.d.llm.configured(),
-            )
+            try:
+                result = await self.d.laya.interpret(
+                    _model_context(state),
+                    _candidates(state),
+                    ref=_ref(ctx),
+                    lot_ids=frozenset(state["lot_ids"]),
+                    underlying_optional=not self.d.llm.configured(),
+                )
+            except ScopeViolation as exc:
+                await self._scope_alert(ctx, "Laya", str(exc), None)
+                return {"raw_reason": "scope_violation", "trace": trace | {"laya": "scope"}}
         if asked:  # F074: timed whether it answered, timed out or was busy
             await self._stage(state, ctx, Stage.LAYA)
         if result is None:
-            return {}
+            return {"trace": trace | {"laya": "no_answer" if asked else "off"}}
         decision = route(result, gate(self.d.cfg()))
+        settled = decision.path != "slow_path"
         reasons = (
             list(decision.reasons)
-            if decision.path != "slow_path"
-            else [
-                *state["route_reasons"],
-                *(f"laya: {r}" for r in decision.reasons),
-            ]
+            if settled
+            else [*state["route_reasons"], *(f"laya: {r}" for r in decision.reasons)]
         )
-        return {
+        update: dict[str, Any] = {
             "route": decision.path,
             "route_reasons": reasons,
+            "fallback": decision.kind,
             "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
             "interpreter": "laya",
             "model_call_id": result.model_call_id,
+            "trace": trace | {"laya": "success" if settled else "unsure"},
         }
+        if decision.kind == "link":
+            update["raw_reason"] = f"needs_review: {'; '.join(reasons)}"[:200]
+        return update
 
     async def llm_extract(self, state: MessageState) -> dict[str, Any]:
         if not self.d.llm.configured():
             # The LLM is optional (4-8 s per call): without one the human decides, and the
             # card says why the local models did not. No degraded-parser flag: nothing failed.
             reasons = "; ".join(state["route_reasons"])
-            return {"raw_reason": f"needs_review: {reasons}"[:200]}
+            return {
+                "raw_reason": f"needs_review: {reasons}"[:200],
+                "trace": state["trace"] | {"llm": "not_configured"},
+            }
         ctx = _processing(state)
         deadline = self.d.cfg().llm.roles.extract.deadline_ms
         try:
             async with asyncio.timeout(None if deadline is None else deadline / 1000):
                 result = await self.d.llm.extract(
-                    _context(state),
+                    _model_context(state),
                     _candidates(state),
                     ref=_ref(ctx),
                     hints=state["hints"],
@@ -348,9 +432,12 @@ class _Nodes:
                     "LLM chain exhausted or timed out: messages become raw review cards",
                     Actor.SYSTEM,
                 )
-            return {"raw_reason": "parser_degraded"}
+            return {"raw_reason": "parser_degraded", "trace": state["trace"] | {"llm": "exhausted"}}
         if result.status == "content_rejected":  # no answer shopping (TRD §4.8 rule 3)
-            return {"raw_reason": f"llm_content_rejected:{result.reason or ''}"[:200]}
+            return {
+                "raw_reason": f"llm_content_rejected:{result.reason or ''}"[:200],
+                "trace": state["trace"] | {"llm": "rejected"},
+            }
         if not state["replay"]:
             await self.d.flags.set(
                 FlagName.PARSER_DEGRADED, False, "LLM answered again", Actor.SYSTEM
@@ -358,6 +445,7 @@ class _Nodes:
         assert result.value is not None  # noqa: S101 — status ok
         return {
             "parsed": result.value.model_dump(mode="json"),
+            "trace": state["trace"] | {"llm": "success"},
             "interpreter": "llm",
             "model_call_id": result.last.model_call_id if result.last else None,
         }
@@ -388,6 +476,7 @@ class _Nodes:
             else self.d.planner
         )  # F038: edits and `correction` signals correct the original's position
         now = self.d.clock.now()
+        outcome, trace = interpret_outcome(state)
         outcomes = await planner.plan(ctx, parsed, cfg, book, resolution, now)
         await self._stage(state, ctx, Stage.VALIDATED)
         async with in_transaction(self.d.sessions, None) as db:
@@ -400,6 +489,8 @@ class _Nodes:
                     outcomes,
                     model_call_id=state["model_call_id"],
                     hold_until=None if is_regular_hours(now) else next_regular_open(now),
+                    outcome=outcome,
+                    trace=trace,
                 ),
             )
         return {
@@ -409,9 +500,15 @@ class _Nodes:
 
     async def raw_review(self, state: MessageState) -> dict[str, Any]:
         ctx = _processing(state)
+        outcome, trace = interpret_outcome(state)
         async with in_transaction(self.d.sessions, None) as db:
             card_id = await apply_raw_review(
-                db, ctx, state["raw_reason"] or "raw_review", mark=InboxStatus.DONE
+                db,
+                ctx,
+                state["raw_reason"] or "raw_review",
+                mark=InboxStatus.DONE,
+                interpreted=outcome,
+                trace=trace,
             )
         return {"card_ids": [str(card_id)] if card_id else []}
 
@@ -468,6 +565,20 @@ class _Nodes:
                 profile[key] = [str(v) for v in item.value["items"]]
         return profile
 
+    async def _scope_alert(
+        self, ctx: ProcessingContext, model: str, reason: str, call_id: int | None
+    ) -> None:
+        """F078: user-portfolio data reached a model request: nothing was sent; urgent."""
+        if self.d.alerts is None:
+            return
+        await self.d.alerts.raise_(
+            AlertKind.INVARIANT_BLOCK,
+            Severity.URGENT,
+            f"{model} request blocked: it contained user-portfolio data (FR-8)",
+            details={"reason": reason, "model_call_id": call_id},
+            message_id=ctx.envelope.key.message_id,
+        )
+
     async def _stage(self, state: MessageState, ctx: ProcessingContext, stage: Stage) -> None:
         if state["replay"]:
             return
@@ -481,6 +592,13 @@ def _processing(state: MessageState) -> ProcessingContext:
 
 def _context(state: MessageState) -> ProviderContext:
     return ProviderContext.model_validate(state["context"])
+
+
+def _model_context(state: MessageState) -> ProviderContext:
+    """What a model sees (F078): the resolver-narrowed positions as the book, never the whole
+    lane book (fewer tokens, nothing to confuse the pick with)."""
+    ctx = _context(state)
+    return ctx.model_copy(update={"provider_book": ctx.link_candidates})
 
 
 def _candidates(state: MessageState) -> Candidates:

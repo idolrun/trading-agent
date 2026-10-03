@@ -133,7 +133,7 @@ class LayaInterpreter:
         self.start()
         if not self.available():
             return None
-        if len(ctx.provider_book) > MAX_BOOK:
+        if len(ctx.link_candidates) > MAX_BOOK:  # F078: the resolver-narrowed candidates
             logger.info("laya skipped: book too large for its window")
             return None
         cfg = self._config()

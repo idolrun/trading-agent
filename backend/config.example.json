@@ -35,7 +35,9 @@
   "t_link": "0.8",
   "jev": {
     "model": "jev-latest",
-    "timeout_ms": 300,
+    "timeout_ms": 700,
+    "queue_timeout_ms": 250,
+    "budget_ms": 1200,
     "enabled": true
   },
   "laya": {

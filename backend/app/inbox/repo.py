@@ -3,6 +3,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import ColumnElement, and_, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -179,6 +180,8 @@ async def mark(
     error: str | None = None,
     skip_reason: SkipReason | None = None,
     late: bool | None = None,
+    interpret_outcome: str | None = None,
+    interpret_reasons: dict[str, Any] | None = None,
 ) -> bool:
     """False = nothing changed: a retry or failure mark (`received`/`failed`) never rewinds an
     applied (`done`/`stale`) event; its cards and ledger changes are committed."""
@@ -189,6 +192,9 @@ async def mark(
         values["skip_reason"] = skip_reason
     if late is not None:
         values["late"] = late
+    if interpret_outcome is not None:
+        values["interpret_outcome"] = interpret_outcome
+        values["interpret_reasons"] = interpret_reasons
     if status in _TERMINAL:
         values["finished_at"] = func.now()
     where = _key_filter(InboxItem, key)

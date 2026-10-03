@@ -15,6 +15,10 @@ class MessageState(TypedDict, total=False):
     lot_ids: list[str]  # the user's open lot ids: scope-guard input only, never sent to a model
     route: str  # fast | feed_only | assemble | slow_path | fixture
     route_reasons: list[str]  # why the fast path did not settle the message
+    # F078: why the last interpreter did not settle it: model_failure (another model may
+    # answer) | semantic (the optional LLM, else review) | link (review)
+    fallback: str | None
+    trace: dict[str, Any]  # F078: per-interpreter status, persisted as inbox.interpret_reasons
     jev_answered: bool  # Jev returned an answer (False: down, timed out, disabled)
     hints: dict[str, Any] | None  # Jev answers for the slow path
     parsed: dict[str, Any] | None  # ParsedSignals
@@ -40,6 +44,8 @@ def initial_state(
         lot_ids=[],
         route="",
         route_reasons=[],
+        fallback=None,
+        trace={},
         jev_answered=False,
         hints=None,
         parsed=None,

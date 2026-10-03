@@ -150,6 +150,21 @@ async def test_a_book_too_large_for_its_window_is_skipped(
     assert (await db_session.scalars(select(ModelCall))).all() == []
 
 
+async def test_a_large_book_narrowed_by_the_resolver_still_fits(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """F078: the window limit counts the resolver's candidates, not the whole lane book."""
+    import uuid
+
+    fake = FakeLaya(example_answers())
+    laya = laya_for(sessions, fake)
+    await laya.warm()
+    big = ctx(EXAMPLE, book=[(uuid.uuid4(), f"SPY {i}C") for i in range(6)])
+    narrowed = big.model_copy(update={"link_candidates": big.provider_book[:1]})
+    assert await laya.interpret(narrowed, find_candidates(EXAMPLE), ref=REF) is not None
+    assert fake.calls == 1
+
+
 async def test_strict_gate_leaves_a_doubtful_answer_to_the_router(
     sessions: async_sessionmaker[AsyncSession],
 ) -> None:

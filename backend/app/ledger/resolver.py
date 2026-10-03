@@ -66,6 +66,17 @@ class Prior(BaseModel):
     opened_message_id: int | None = None  # the message that opened it (the card cites it)
 
     @property
+    def summary(self) -> str:
+        """One line for a model's context (F078): "closed SPY 765P exp 2026-10-02"."""
+        named = [self.status, self.underlying]
+        if self.strike is not None:
+            right = "" if self.right is None else ("C" if self.right == "call" else "P")
+            named.append(f"{format(self.strike.normalize(), 'f')}{right}")
+        if self.expiry is not None:
+            named.append(f"exp {self.expiry}")
+        return " ".join(named)
+
+    @property
     def complete(self) -> bool:
         if self.instrument == "stock":
             return True

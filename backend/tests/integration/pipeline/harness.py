@@ -149,6 +149,7 @@ class Harness:
             approvals=approvals,
             relink=approvals.relink if approvals else None,
             corrections=CorrectionService(self.factory, planner=planner, marketdata=self.md),
+            alerts=self.alerts,
         )
         processor = GraphProcessor(deps, checkpointer)
         if deps.relink is not None:

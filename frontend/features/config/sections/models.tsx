@@ -20,9 +20,19 @@ export function ModelsSection() {
           <ConfigField name="jev_model" label="Jev model">
             {(control) => <Input {...control} value={jev.model} onChange={(event) => setJev({ model: event.target.value })} />}
           </ConfigField>
-          <ConfigField name="jev_timeout_ms" label="Jev timeout (ms)">
+          <ConfigField name="jev_timeout_ms" label="Jev request timeout (ms)">
             {(control) => (
               <Input {...control} type="number" step={1} value={jev.timeout_ms} onChange={(event) => setJev({ timeout_ms: event.target.value })} />
+            )}
+          </ConfigField>
+          <ConfigField name="jev_queue_timeout_ms" label="Jev queue wait (ms)">
+            {(control) => (
+              <Input {...control} type="number" step={1} value={jev.queue_timeout_ms} onChange={(event) => setJev({ queue_timeout_ms: event.target.value })} />
+            )}
+          </ConfigField>
+          <ConfigField name="jev_budget_ms" label="Jev step budget (ms)">
+            {(control) => (
+              <Input {...control} type="number" step={1} value={jev.budget_ms} onChange={(event) => setJev({ budget_ms: event.target.value })} />
             )}
           </ConfigField>
         </div>
@@ -30,7 +40,7 @@ export function ModelsSection() {
         <FieldErrors name="jev" />
       </div>
       <div className="flex flex-col gap-2 sm:col-span-2">
-        <h3 className="text-sm font-medium">Laya (local fallback when Jev gives no answer)</h3>
+        <h3 className="text-sm font-medium">Laya (local fallback when Jev gives no usable answer)</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <ConfigField name="laya_timeout_ms" label="Laya timeout (ms)">
             {(control) => (

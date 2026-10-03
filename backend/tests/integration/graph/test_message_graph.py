@@ -14,13 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 from sqlmodel import col
 
+from app.alerts.models import Alert
 from app.cards.models import Card
 from app.config import get_settings
 from app.db import create_session_factory
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.inbox.envelope import Envelope
 from app.inbox.models import InboxItem, StageTiming
-from app.interpret.jev.client import JevInterpreter
+from app.interpret.jev.client import JevFailed, JevInterpreter, JevOutcome
 from app.interpret.laya.client import LayaInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.models import Signal
@@ -231,7 +232,7 @@ async def test_llm_is_optional_jev_unavailable_is_a_review_card(
     env = await example(no_llm)
     await no_llm.process(env, processor=no_llm.processor(fixture=False))
     [card] = await cards(db_session)
-    assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]
+    assert card.proposal["review_reasons"] == ["needs_review: jev_disabled"]
     assert await db_session.scalar(select(func.count()).select_from(ModelCall.__table__)) == 0
 
 
@@ -359,17 +360,43 @@ async def test_laya_answers_when_jev_is_down(
     assert "laya" in stages  # F074: timed as itself, not as Jev
 
 
-async def test_laya_is_asked_when_jev_is_unsure(
+async def test_laya_is_not_asked_when_jev_is_unsure(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
+    """F078: an unsure Jev is a semantic doubt (the LLM's job, else review), not a model
+    failure: asking a weaker model for another answer would not make it safer."""
     h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
     fake = FakeLaya(example_answers())
     env = await example(h)
     unsure = jev(h, msg_type=c("entry", 0.6))
     await h.process(env, processor=h.processor(fixture=False, jev=unsure, laya=await laya(h, fake)))
-    assert fake.calls == 1  # Jev answered but did not settle it: the fallback gets one try
+    assert fake.calls == 0
+    [card] = await cards(db_session)
+    assert card.card_type == "review"
+    assert card.proposal["review_reasons"][0].startswith("needs_review: msg_type: below t_type")
+    inbox_row = await db_session.get(InboxItem, (env.key.message_id, "create", 0))
+    assert inbox_row is not None and inbox_row.interpret_outcome == "review"
+    assert inbox_row.interpret_reasons is not None
+    assert inbox_row.interpret_reasons["jev"] == "ambiguous"
+    assert inbox_row.interpret_reasons["llm"] == "not_configured"
+    assert "laya" not in inbox_row.interpret_reasons
+
+
+async def test_unsure_jev_with_an_llm_goes_to_the_llm_not_laya(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LLM, jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers())
+    env = await example(h)
+    unsure = jev(h, msg_type=c("entry", 0.6))
+    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
+    processor = h.processor(fixture=False, jev=unsure, laya=await laya(h, fake), llm=extractor)
+    await h.process(env, processor=processor)
+    assert fake.calls == 0
     [signal] = await signals(db_session)
-    assert (signal.msg_type, signal.interpreter) == ("entry", "laya")
+    assert signal.interpreter == "llm"
+    inbox_row = await db_session.get(InboxItem, (env.key.message_id, "create", 0))
+    assert inbox_row is not None and inbox_row.interpret_outcome == "fallback_success"
 
 
 async def test_laya_is_not_asked_when_jev_settles_the_message(
@@ -384,18 +411,24 @@ async def test_laya_is_not_asked_when_jev_settles_the_message(
     assert (signal.msg_type, signal.interpreter) == ("entry", "jev")
 
 
-async def test_unsure_jev_and_unsure_laya_end_in_a_review_card_without_orders(
+async def test_jev_down_and_unsure_laya_end_in_a_review_card_without_orders(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
     h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
     fake = FakeLaya(example_answers(msg_type=c("entry", 0.5)))
     env = await example(h)
-    unsure = jev(h, msg_type=c("entry", 0.6))
-    await h.process(env, processor=h.processor(fixture=False, jev=unsure, laya=await laya(h, fake)))
+    await h.process(
+        env, processor=h.processor(fixture=False, jev=jev_down(h), laya=await laya(h, fake))
+    )
     assert fake.calls == 1
     [card] = await cards(db_session)
     assert card.card_type == "review"
-    assert card.proposal["review_reasons"][0].startswith("needs_review: msg_type")
+    [reason] = card.proposal["review_reasons"]
+    assert reason.startswith("needs_review: jev_rate_limited") and "laya: msg_type" in reason
+    inbox_row = await db_session.get(InboxItem, (env.key.message_id, "create", 0))
+    assert inbox_row is not None and inbox_row.interpret_reasons is not None
+    assert inbox_row.interpret_reasons["jev"] == "model_failure"
+    assert inbox_row.interpret_reasons["laya"] == "unsure"
 
 
 async def test_a_doubtful_laya_answer_continues_to_the_llm(
@@ -432,4 +465,105 @@ async def test_laya_that_cannot_load_leaves_the_outage_to_the_review_card(
     env = await example(h)
     await h.process(env, processor=h.processor(fixture=False, jev=jev_down(h), laya=dead))
     [card] = await cards(db_session)
-    assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]
+    assert card.proposal["review_reasons"] == ["needs_review: jev_rate_limited"]
+
+
+# --- F078: why Jev did not settle a message decides where it goes ------------------------------
+
+
+def jev_slow(h: Harness) -> JevInterpreter:
+    """Every request outlives `timeout_ms` (50 ms here): a model failure, never a hang."""
+    client = ScriptedJev(response(example_answers()), delay=0.3)
+    cfg = lambda: (h.config.get() or RuntimeConfig()).model_copy(  # noqa: E731
+        update={"jev": JevConfig(model="jev-test", enabled=True, timeout_ms=50)}
+    )
+    return JevInterpreter(h.factory, get_settings(), cfg, h.clock, client=client)  # type: ignore[arg-type]
+
+
+class ScopeBlockedJev(JevInterpreter):
+    async def interpret(self, *args: Any, **kwargs: Any) -> JevOutcome:
+        return JevFailed("scope_violation", "lot id in model request")
+
+
+async def outcome_of(db: AsyncSession, env: Envelope) -> InboxItem:
+    row = await db.get(InboxItem, (env.key.message_id, env.key.event_type, env.key.event_seq))
+    assert row is not None
+    await db.refresh(row)
+    return row
+
+
+async def test_a_jev_timeout_goes_to_laya(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers())
+    env = await example(h)
+    await h.process(
+        env, processor=h.processor(fixture=False, jev=jev_slow(h), laya=await laya(h, fake))
+    )
+    assert fake.calls == 1
+    [signal] = await signals(db_session)
+    assert signal.interpreter == "laya"
+    row = await outcome_of(db_session, env)
+    assert row.interpret_outcome == "fallback_success"
+    assert row.interpret_reasons is not None
+    assert (row.interpret_reasons["jev"], row.interpret_reasons["jev_detail"]) == (
+        "model_failure",
+        "timeout",
+    )
+
+
+async def test_an_invalid_jev_answer_never_poisons_the_event(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    """An option Jev was never offered: audited as schema_invalid, then the fallbacks; with
+    none configured, a review card on the first attempt."""
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
+    env = await example(h)
+    await h.process(env, processor=h.processor(fixture=False, jev=jev(h, ticker=c("t9"))))
+    [card] = await cards(db_session)
+    assert card.proposal["review_reasons"] == ["needs_review: jev_invalid"]
+    row = await outcome_of(db_session, env)
+    assert (row.status, row.last_error, row.interpret_outcome) == ("done", None, "review")
+    assert row.interpret_reasons is not None and row.interpret_reasons["jev"] == "invalid"
+
+
+async def test_jev_down_without_laya_goes_to_the_configured_llm(
+    h: Harness, db_session: AsyncSession
+) -> None:
+    env = await example(h)
+    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
+    await h.process(env, processor=h.processor(fixture=False, jev=jev_down(h), llm=extractor))
+    [signal] = await signals(db_session)
+    assert signal.interpreter == "llm"
+    row = await outcome_of(db_session, env)
+    assert row.interpret_outcome == "fallback_success"
+    assert row.interpret_reasons is not None and row.interpret_reasons["laya"] == "off"
+
+
+async def test_a_scope_violation_is_a_review_and_an_urgent_alert_with_no_other_model(
+    h: Harness, db_session: AsyncSession
+) -> None:
+    fake = FakeLaya(example_answers())
+    blocked = ScopeBlockedJev(h.factory, get_settings(), lambda: RuntimeConfig(), h.clock)
+    env = await example(h)
+    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
+    processor = h.processor(fixture=False, jev=blocked, laya=await laya(h, fake), llm=extractor)
+    await h.process(env, processor=processor)
+    assert fake.calls == 0  # no other model was asked
+    assert [s.interpreter for s in await signals(db_session)] == ["none"]  # the raw review
+    [card] = await cards(db_session)
+    assert card.proposal["review_reasons"] == ["scope_violation"]
+    [alert] = (await db_session.scalars(select(Alert))).all()
+    assert (alert.kind, alert.severity) == ("invariant_block", "urgent")
+    row = await outcome_of(db_session, env)
+    assert row.interpret_outcome == "scope_violation"
+    assert await db_session.scalar(select(func.count()).select_from(ModelCall.__table__)) == 0
+
+
+async def test_settled_messages_record_their_outcome(h: Harness, db_session: AsyncSession) -> None:
+    env = await example(h)
+    await h.process(env, processor=h.processor(fixture=False, jev=jev(h)))
+    row = await outcome_of(db_session, env)
+    assert row.interpret_outcome == "jev_success"
+    assert row.interpret_reasons == {"jev": "success", "route": "assemble"}

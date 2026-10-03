@@ -242,11 +242,12 @@ async def test_laya_answers_when_jev_is_down_and_the_card_is_the_same(p: Paper) 
     assert card.proposal["qty"] == 13
 
 
-async def test_laya_answers_when_jev_is_unsure(p: Paper) -> None:
+async def test_an_unsure_jev_is_a_review_not_a_laya_question(p: Paper) -> None:
+    """F078: Jev answered but was unsure: a semantic doubt, so no LLM -> review; never Laya."""
     unsure = jev_client(p, msg_type=c("entry", 0.6))
     card = await p.signal(await p.processor(unsure, p.laya))
-    assert p.laya.calls == 1
-    assert (card.action, card.state) == (CardAction.ENTRY, CardState.PENDING)
+    assert p.laya.calls == 0
+    assert card.card_type == CardType.REVIEW
 
 
 async def test_neither_model_settling_it_gives_a_review_card_and_no_order(p: Paper) -> None:

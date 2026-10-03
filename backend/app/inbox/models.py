@@ -45,6 +45,19 @@ class SkipReason(StrEnum):
     CHANNEL_NOT_CONFIGURED = "channel_not_configured"
 
 
+class InterpretOutcome(StrEnum):
+    """How interpretation of one event ended (F078). Why each interpreter did not settle it is
+    in `interpret_reasons` (e.g. {"jev": "model_failure", "jev_detail": "timeout", "laya": ...})."""
+
+    FAST_SUCCESS = "fast_success"  # code only
+    JEV_SUCCESS = "jev_success"  # feed-only or assembled by Jev
+    FALLBACK_SUCCESS = "fallback_success"  # Laya or the LLM settled it
+    REVIEW = "review"  # a person decides (raw review card)
+    VALIDATION_FAILURE = "validation_failure"  # interpreted, then refused by code (span check)
+    SCOPE_VIOLATION = "scope_violation"  # user data in a model request: nothing was sent
+    FIXTURE = "fixture"  # dev/tests: recorded interpretation
+
+
 class Stage(StrEnum):
     RECEIVED = "received"
     DEQUEUED = "dequeued"
@@ -107,6 +120,7 @@ class InboxItem(SQLModel, table=True):
         ForeignKeyConstraint(MESSAGE_KEY, MESSAGE_EVENT_KEY),
         check_in("status", InboxStatus),
         check_in("skip_reason", SkipReason),
+        check_in("interpret_outcome", InterpretOutcome),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         Index(
             "ix_inbox_next_for_lane",
@@ -138,6 +152,9 @@ class InboxItem(SQLModel, table=True):
     late: bool = flag()
     backfilled: bool = flag()
     skip_reason: SkipReason | None = choice(default=None, nullable=True)
+    # F078: how interpretation ended (InterpretOutcome) and the per-interpreter trace
+    interpret_outcome: InterpretOutcome | None = choice(default=None, nullable=True)
+    interpret_reasons: dict[str, Any] | None = jsonb(nullable=True)
     claimed_at: datetime | None = timestamptz(nullable=True)
     finished_at: datetime | None = timestamptz(nullable=True)
     updated_at: datetime = now_default()

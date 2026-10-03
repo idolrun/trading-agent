@@ -54,7 +54,7 @@ export type Draft = Record<ScalarKey, string> &
   Record<RowsKey, Row[]> &
   Record<ListKey, string[]> & {
     trading_mode: string
-    jev: { model: string; timeout_ms: string; enabled: boolean }
+    jev: { model: string; timeout_ms: string; queue_timeout_ms: string; budget_ms: string; enabled: boolean }
     laya: { enabled: boolean; timeout_ms: string; t_chat: string; t_field: string; t_type: string; t_link: string }
     llm: string // JSON text
     note_guard_enabled: boolean
@@ -80,7 +80,7 @@ export function defaultDocument(): ConfigDoc {
     option_tiers: null,
     stock_tiers: null,
     symbol_map: { SPX: "SPXW" },
-    jev: { model: "jev-latest", timeout_ms: 300, enabled: true },
+    jev: { model: "jev-latest", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
     laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
     llm: {
       roles: {
@@ -107,7 +107,13 @@ const toRows = (record: unknown, fallback: string[] = []): Row[] =>
     : fallback.map((name) => ({ name, value: "" }))
 
 export function toDraft(doc: ConfigDoc): Draft {
-  const jev = (doc.jev ?? {}) as { model?: string | null; timeout_ms?: number | null; enabled?: boolean }
+  const jev = (doc.jev ?? {}) as {
+    model?: string | null
+    timeout_ms?: number | null
+    queue_timeout_ms?: number | null
+    budget_ms?: number | null
+    enabled?: boolean
+  }
   const laya = (doc.laya ?? {}) as Record<string, unknown>
   const text = (value: unknown, fallback: string) => (value == null ? fallback : String(value))
   const scalars = Object.fromEntries(SCALARS.map((key) => [key, doc[key] == null ? "" : String(doc[key])]))
@@ -119,7 +125,13 @@ export function toDraft(doc: ConfigDoc): Draft {
     option_tiers: toRows(doc.option_tiers, OPTION_TIER_NAMES),
     stock_tiers: toRows(doc.stock_tiers),
     symbol_map: toRows(doc.symbol_map),
-    jev: { model: jev.model ?? "", timeout_ms: jev.timeout_ms == null ? "" : String(jev.timeout_ms), enabled: !!jev.enabled },
+    jev: {
+      model: jev.model ?? "",
+      timeout_ms: jev.timeout_ms == null ? "" : String(jev.timeout_ms),
+      queue_timeout_ms: text(jev.queue_timeout_ms, "250"),
+      budget_ms: text(jev.budget_ms, "1200"),
+      enabled: !!jev.enabled,
+    },
     laya: {
       enabled: !!laya.enabled,
       timeout_ms: text(laya.timeout_ms, "10000"),
@@ -167,7 +179,13 @@ export function toDoc(draft: Draft): ConfigDoc {
     option_tiers: fromRows(draft.option_tiers, true),
     stock_tiers: fromRows(draft.stock_tiers, true),
     symbol_map: fromRows(draft.symbol_map, false),
-    jev: { model: orNull(draft.jev.model), timeout_ms: toNumber(draft.jev.timeout_ms), enabled: draft.jev.enabled },
+    jev: {
+      model: orNull(draft.jev.model),
+      timeout_ms: toNumber(draft.jev.timeout_ms),
+      queue_timeout_ms: toNumber(draft.jev.queue_timeout_ms),
+      budget_ms: toNumber(draft.jev.budget_ms),
+      enabled: draft.jev.enabled,
+    },
     laya: {
       enabled: draft.laya.enabled,
       timeout_ms: toNumber(draft.laya.timeout_ms),

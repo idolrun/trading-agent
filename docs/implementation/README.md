@@ -207,6 +207,7 @@ cd frontend && pnpm dev                  # after F052
 | [F075](F075-ambiguity-resolution-persists.md) | A chosen position on an ambiguous card writes the link + ledger change (re-link path) | F036, F037, F069 | FR-3, C31 |
 | [F076](F076-concurrency-replay-scenario.md) | Approval race fix (account entry gate), single-instance guard, replay link metrics, end-to-end multichannel scenario | F036, F048, F068–F075 | FR-18, FR-20, PRD §17, C94 |
 | [F077](F077-link-acceptance.md) | Link acceptance: sole candidate resolves by code; a model pick is a recorded proposal, never a link | F069, F070, F076 | FR-3, C31 |
+| [F078](F078-interpretation-outcomes.md) | Interpretation outcomes: Jev time budget (700/250/1200 ms), failures by reason, Laya only on model failure, invalid answers and scope violations never poison | F033, F035, F074, F077 | C38, FR-8, FR-9 |
 
 ---
 

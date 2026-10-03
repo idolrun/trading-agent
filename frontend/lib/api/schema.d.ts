@@ -1447,8 +1447,20 @@ export interface components {
             /** Accepted */
             accepted: boolean;
         };
-        /** JevConfig */
+        /**
+         * JevConfig
+         * @description Time budget (F078, from 510 real calls on 2026-10-03: p50 353 ms, p95 450 ms; an earlier
+         *     run p95 688 ms): `queue_timeout_ms` caps the wait for a `typesafe` limiter slot, then
+         *     `timeout_ms` caps one request; `budget_ms` caps the whole Jev step (wait + attempts), so a
+         *     429 retry happens only when a full request still fits. A miss is a model failure: the
+         *     message goes to the fallbacks, never waits longer.
+         */
         JevConfig: {
+            /**
+             * Budget Ms
+             * @default 1200
+             */
+            budget_ms: number;
             /**
              * Enabled
              * @default true
@@ -1460,8 +1472,13 @@ export interface components {
              */
             model: string | null;
             /**
+             * Queue Timeout Ms
+             * @default 250
+             */
+            queue_timeout_ms: number;
+            /**
              * Timeout Ms
-             * @default 300
+             * @default 700
              */
             timeout_ms: number;
         };
@@ -2445,9 +2462,11 @@ export interface components {
             identity_price_tolerance_pct?: number | string | null;
             /**
              * @default {
+             *       "budget_ms": 1200,
              *       "enabled": true,
              *       "model": "jev-latest",
-             *       "timeout_ms": 300
+             *       "queue_timeout_ms": 250,
+             *       "timeout_ms": 700
              *     }
              */
             jev: components["schemas"]["JevConfig"];

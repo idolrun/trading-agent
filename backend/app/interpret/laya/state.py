@@ -11,7 +11,7 @@ from app.interpret.llm_extract.middleware import ScopeViolation, scope_violation
 RECENT = 3  # earlier messages of the provider that correction_target may point at
 RECENT_CHARS = 120
 PARENT_CHARS = 160
-MAX_BOOK = 5  # links_to gets one option per open position; more cannot fit, so Laya abstains
+MAX_BOOK = 5  # links_to gets one option per candidate position; more cannot fit: Laya abstains
 
 
 def trim_context(ctx: ProviderContext) -> ProviderContext:
@@ -27,10 +27,12 @@ def build_laya_state(ctx: ProviderContext, lot_ids: frozenset[str] = frozenset()
         state["recent_author_messages"] = [
             {"id": r.id, "text": r.text[:RECENT_CHARS]} for r in ctx.recent_author_messages
         ]
-    if ctx.provider_book:
+    if ctx.provider_book:  # the resolver-narrowed book (F078)
         state["provider_book"] = [
             {"id": str(b.id), "summary": b.summary} for b in ctx.provider_book
         ]
+    if ctx.reentry_candidates:
+        state["reentry_candidates"] = [b.summary for b in ctx.reentry_candidates]
     if reason := scope_violation(json.dumps(state), lot_ids):
         raise ScopeViolation(reason)
     return state

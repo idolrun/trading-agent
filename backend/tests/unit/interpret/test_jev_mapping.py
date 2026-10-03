@@ -6,6 +6,7 @@ from decimal import Decimal
 from typesafe_sdk import Choice
 
 from app.interpret.candidates import find_candidates
+from app.interpret.context import BookEntry
 from app.interpret.jev.mapping import map_answers
 from app.interpret.jev.questions import NUMBER_ROLES, build_questions
 from app.interpret.jev.state import build_jev_state
@@ -289,3 +290,51 @@ def test_a_link_outside_the_candidates_is_ambiguous_not_a_crash() -> None:
     )
     assert result.parsed is not None
     assert result.parsed.signals[0].link_hint.target == "ambiguous"
+
+
+# --- F078: why a message is not settled -------------------------------------------------------
+
+
+def test_unsure_type_is_a_semantic_doubt() -> None:
+    _, decision = run(msg_type=c("entry", 0.6))
+    assert (decision.path, decision.kind) == ("slow_path", "semantic")
+
+
+def test_no_answer_is_a_model_failure() -> None:
+    assert route(None, CFG).kind == "model_failure"
+
+
+def test_back_in_with_several_earlier_positions_is_a_review_not_a_model_question() -> None:
+    """F078: "back in" names no contract and two closed positions could be meant: which one is
+    a person's call (F077), so no other model is asked."""
+    text = "back in here"
+    context = ctx(text).model_copy(
+        update={
+            "reentry_candidates": [
+                BookEntry(id=uuid.uuid4(), summary="closed SPY 765P exp 2026-10-02"),
+                BookEntry(id=uuid.uuid4(), summary="closed QQQ 745P exp 2026-10-02"),
+            ]
+        }
+    )
+    answers = example_answers(
+        msg_type=c("entry", 0.92),
+        ticker=c("not_stated"),
+        right=c("not_stated"),
+        size_tier=c("not_stated"),
+        expiry=c("not_stated"),
+    )
+    answers = {k: v for k, v in answers.items() if not k.startswith("role_")}
+    result = map_answers(answers, context, find_candidates(text), CFG)
+    decision = route(result, CFG)
+    assert (decision.path, decision.kind) == ("slow_path", "link")
+    assert decision.reasons[0].startswith("reentry: 2 earlier position(s)")
+    state = build_jev_state(context, find_candidates(text))
+    assert [r["summary"] for r in state["reentry_candidates"]] == [
+        "closed SPY 765P exp 2026-10-02",
+        "closed QQQ 745P exp 2026-10-02",
+    ]
+
+
+def test_a_missing_contract_without_reentry_candidates_stays_semantic() -> None:
+    _, decision = run(ticker=c("not_stated"), role_n1=c("other"))
+    assert (decision.path, decision.kind) == ("slow_path", "semantic")

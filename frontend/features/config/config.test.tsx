@@ -91,7 +91,7 @@ describe("ConfigScreen", () => {
       channels: ["999888777666555444"],
       stock_tiers: null,
       feed_silence_s: 60,
-      jev: { model: "jev-latest", timeout_ms: 300, enabled: true },
+      jev: { model: "jev-latest", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
     })
     // dirty state reset: reason cleared, nothing to save
     expect(screen.getByLabelText("Reason for this change")).toHaveValue("")

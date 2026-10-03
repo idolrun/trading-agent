@@ -44,7 +44,9 @@ class Settings(BaseSettings):
     )
     # APCA_* are Alpaca's own variable names (ALPACA_* still work); one key pair per process:
     # never paper and live together
-    alpaca_api_key: str | None = Field(None, validation_alias=AliasChoices("APCA_API_KEY", "ALPACA_API_KEY"))
+    alpaca_api_key: str | None = Field(
+        None, validation_alias=AliasChoices("APCA_API_KEY", "ALPACA_API_KEY")
+    )
     alpaca_secret_key: SecretStr | None = Field(
         None, validation_alias=AliasChoices("APCA_SECRET_KEY", "ALPACA_SECRET_KEY")
     )

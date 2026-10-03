@@ -28,11 +28,25 @@ class _Strict(BaseModel):
 
 
 class JevConfig(_Strict):
+    """Time budget (F078, from 510 real calls on 2026-10-03: p50 353 ms, p95 450 ms; an earlier
+    run p95 688 ms): `queue_timeout_ms` caps the wait for a `typesafe` limiter slot, then
+    `timeout_ms` caps one request; `budget_ms` caps the whole Jev step (wait + attempts), so a
+    429 retry happens only when a full request still fits. A miss is a model failure: the
+    message goes to the fallbacks, never waits longer."""
+
     model: str | None = "jev-latest"  # TRD §4.3: pin to a dated version once chosen
-    timeout_ms: PositiveInt = 300
+    timeout_ms: PositiveInt = 700
+    queue_timeout_ms: PositiveInt = 250
+    budget_ms: PositiveInt = 1200
     enabled: bool = (
         True  # primary interpreter; needs TYPESAFE_API_KEY, else every message falls back
     )
+
+    @model_validator(mode="after")
+    def _budget_fits_one_request(self) -> Self:
+        if self.budget_ms < self.queue_timeout_ms + self.timeout_ms:
+            raise ValueError("jev budget_ms must cover queue_timeout_ms + timeout_ms")
+        return self
 
 
 class LayaConfig(_Strict):

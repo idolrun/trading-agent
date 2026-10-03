@@ -31,7 +31,11 @@ def build_jev_state(
         "recent_author_messages": [
             {"id": r.id, "at": r.at_et, "text": r.text} for r in ctx.recent_author_messages
         ],
+        # F078: the resolver-narrowed book only (the caller passes link candidates as the book)
         "provider_book": [{"id": str(b.id), "summary": b.summary} for b in ctx.provider_book],
+        "reentry_candidates": [
+            {"id": str(b.id), "summary": b.summary} for b in ctx.reentry_candidates
+        ],
         "recent_signal_events": [
             {"position": str(e.position_id), "at": e.at_et, "what": e.summary}
             for e in ctx.recent_signal_events

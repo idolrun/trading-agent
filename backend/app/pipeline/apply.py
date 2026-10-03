@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -94,6 +95,9 @@ class ApplyInput:
     outcomes: list[SignalOutcome]
     model_call_id: int | None = None  # the Jev call / LLM attempt that produced the signals
     hold_until: datetime | None = None  # off-hours (7.7): cards wait for this open (F039)
+    # F078: how interpretation ended and why (inbox.interpret_outcome / interpret_reasons)
+    outcome: str | None = None
+    trace: dict[str, Any] | None = None
 
 
 @dataclass
@@ -126,7 +130,12 @@ async def apply_event(db: AsyncSession, inp: ApplyInput) -> ApplyOutcome:
         o.parsed.msg_type in (MsgType.ENTRY, MsgType.STOCK_ENTRY, MsgType.ADD) for o in inp.outcomes
     )
     await inbox.mark(
-        db, env.key, InboxStatus.STALE if stale else InboxStatus.DONE, late=inp.ctx.late
+        db,
+        env.key,
+        InboxStatus.STALE if stale else InboxStatus.DONE,
+        late=inp.ctx.late,
+        interpret_outcome=inp.outcome,
+        interpret_reasons=inp.trace,
     )
     if result.created and result.card_ids:
         await record_stage(db, env.key, inp.ctx.attempt, Stage.CARD)
@@ -414,7 +423,13 @@ def _event(kind: str, card_id: uuid.UUID) -> str:
 
 
 async def apply_raw_review(
-    db: AsyncSession, ctx: ProcessingContext, reason: str, *, mark: InboxStatus | None
+    db: AsyncSession,
+    ctx: ProcessingContext,
+    reason: str,
+    *,
+    mark: InboxStatus | None,
+    interpreted: str | None = None,
+    trace: dict[str, Any] | None = None,
 ) -> uuid.UUID | None:
     """FR-1e / FR-9: an `unparsed` signal + a blank review card showing the raw text.
     `mark=None` keeps the inbox status (poison: already `failed`). Returns the new card id."""
@@ -445,5 +460,12 @@ async def apply_raw_review(
             card_id = card.card_id
             await notify(db, "cards", _event("card.created", card.card_id))
     if mark is not None:
-        await inbox.mark(db, env.key, mark, late=ctx.late)
+        await inbox.mark(
+            db,
+            env.key,
+            mark,
+            late=ctx.late,
+            interpret_outcome=interpreted,
+            interpret_reasons=trace,
+        )
     return card_id

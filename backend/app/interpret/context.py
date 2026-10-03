@@ -71,6 +71,9 @@ class ProviderContext(_Strict):
     link_candidates: list[BookEntry] = []
     # F073: the lane's latest position events (newest first), e.g. which signal was trimmed last
     recent_signal_events: list[SignalEvent] = []
+    # F078: what "back in" can re-enter, as the resolver found it (today's closed positions and
+    # setups in the lane, only when the text says "back in" & co.). Context, never a link option
+    reentry_candidates: list[BookEntry] = []
 
     @model_validator(mode="before")
     @classmethod

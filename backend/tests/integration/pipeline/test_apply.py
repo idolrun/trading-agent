@@ -234,7 +234,7 @@ async def test_no_interpreter_configured_gives_a_review_card_not_a_degraded_pars
     env = await h.message("Bought GOOGL 357.5C 10/2 @ 0.71 here", None, author=PROVIDER_A)
     await h.process(env, processor=h.processor(fixture=False))
     card = (await db_session.scalars(select(Card))).one()
-    assert card.proposal["review_reasons"] == ["needs_review: jev_unavailable"]
+    assert card.proposal["review_reasons"] == ["needs_review: jev_disabled"]
     flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
     assert flag is None or not flag.active
     assert (await db_session.scalars(select(Alert))).all() == []
