@@ -281,6 +281,7 @@ class _Nodes:
         Anything it cannot settle continues to the optional LLM, then to review."""
         ctx = _processing(state)
         result = None
+        asked = self.d.laya is not None and self.d.laya.available()
         if self.d.laya is not None:
             result = await self.d.laya.interpret(
                 _context(state),
@@ -289,9 +290,10 @@ class _Nodes:
                 lot_ids=frozenset(state["lot_ids"]),
                 underlying_optional=not self.d.llm.configured(),
             )
+        if asked:  # F074: timed whether it answered, timed out or was busy
+            await self._stage(state, ctx, Stage.LAYA)
         if result is None:
             return {}
-        await self._stage(state, ctx, Stage.JEV)
         decision = route(result, gate(self.d.cfg()))
         reasons = (
             list(decision.reasons)

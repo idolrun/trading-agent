@@ -109,13 +109,31 @@ async def test_a_timeout_is_audited_and_the_model_slot_stays_busy_until_it_finis
     laya = laya_for(sessions, fake, cfg)
     await laya.warm()
     assert await interpret(laya) is None
-    assert await interpret(laya) is None  # the first call still holds the only slot
+    assert await interpret(laya) is None  # the first call still holds the only slot: busy
     assert fake.calls == 1  # the second never reached the model
     await asyncio.sleep(0.5)  # the abandoned call finishes and frees the slot
     assert await interpret(laya) is None  # (100 ms timeout again, but it did reach the model)
     assert fake.calls == 2
-    outcomes = (await db_session.scalars(select(ModelCall.outcome))).all()
-    assert set(outcomes) == {CallOutcome.TIMEOUT}
+    outcomes = (await db_session.scalars(select(ModelCall.outcome).order_by(ModelCall.id))).all()
+    assert outcomes == [CallOutcome.TIMEOUT, CallOutcome.BUSY, CallOutcome.TIMEOUT]
+
+
+async def test_a_second_lane_never_waits_for_the_model(
+    sessions: async_sessionmaker[AsyncSession], db_session: AsyncSession
+) -> None:
+    """F074: two lanes at once: one gets the model, the other is skipped at once (busy), so a
+    slow local call never stretches another lane's queue."""
+    fake = FakeLaya(example_answers(), delay_s=0.3)
+    laya = laya_for(sessions, fake)
+    await laya.warm()
+    first = asyncio.create_task(interpret(laya))
+    await asyncio.sleep(0.05)  # the first call holds the slot
+    t0 = asyncio.get_running_loop().time()
+    assert await interpret(laya) is None
+    assert asyncio.get_running_loop().time() - t0 < 0.1  # not 0.3 s behind the first
+    assert (await first) is not None
+    outcomes = sorted((await db_session.scalars(select(ModelCall.outcome))).all())
+    assert outcomes == sorted([CallOutcome.OK, CallOutcome.BUSY])
 
 
 async def test_a_book_too_large_for_its_window_is_skipped(

@@ -42,6 +42,7 @@ class CallOutcome(StrEnum):
     SCOPE_BLOCKED = "scope_blocked"
     SPAN_REJECTED = "span_rejected"
     CIRCUIT_OPEN = "circuit_open"
+    BUSY = "busy"  # F074: the local model was already running another lane's call: not waited on
 
 
 class ModelCall(SQLModel, table=True):

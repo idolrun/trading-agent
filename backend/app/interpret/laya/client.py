@@ -142,6 +142,13 @@ class LayaInterpreter:
         questions = jev_questions.build_questions(small, candidates, sorted(cfg.option_tiers or {}))
         request = {"questions": VERSION, "question_ids": sorted(questions), "state": state}
         started, t0 = self._clock.now(), time.monotonic()
+        if self._slot.locked():
+            # F074: one GPU slot for every lane. Waiting for another lane's 3-10 s call would
+            # stretch this lane's queue for nothing: skip now, the message goes on to the LLM or
+            # review, and the skip is audited.
+            logger.info("laya busy: skipped")
+            await self._record(ref, request, {"error": "busy"}, CallOutcome.BUSY, t0, started)
+            return None
         try:
             async with asyncio.timeout(cfg.laya.timeout_ms / 1000):
                 raw = await self._run(

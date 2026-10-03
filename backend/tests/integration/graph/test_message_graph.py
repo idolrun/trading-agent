@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.db import create_session_factory
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.inbox.envelope import Envelope
-from app.inbox.models import InboxItem
+from app.inbox.models import InboxItem, StageTiming
 from app.interpret.jev.client import JevInterpreter
 from app.interpret.laya.client import LayaInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
@@ -355,6 +355,8 @@ async def test_laya_answers_when_jev_is_down(
     assert providers == ["typesafe", "typesafe", "laya"]
     flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
     assert flag is None or not flag.active
+    stages = set((await db_session.scalars(select(StageTiming.stage))).all())
+    assert "laya" in stages  # F074: timed as itself, not as Jev
 
 
 async def test_laya_is_asked_when_jev_is_unsure(

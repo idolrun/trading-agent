@@ -50,6 +50,7 @@ class Stage(StrEnum):
     DEQUEUED = "dequeued"
     CONTEXT = "context"
     FAST = "fast"  # F070: settled by the deterministic fast path
+    LAYA = "laya"  # F074: the local fallback answered (or timed out / was busy)
     JEV = "jev"
     LLM = "llm"
     VALIDATED = "validated"
