@@ -200,7 +200,7 @@ def _trim_or_exit(
     hint = _unique(r)
     if hint is None:
         return None
-    if (m := EXIT.match(text)) is not None and not _ticker_is_a_word(m):
+    if (m := EXIT.match(text)) is not None and _ticker_names_a_position(m, r):
         return ParsedSignal(
             msg_type="full_exit",
             fields=SignalFields(
@@ -210,7 +210,7 @@ def _trim_or_exit(
             field_sources={"msg_type": _rule("exit"), "exit_fraction": _rule("exit")},
         )
     m = TRIM.match(text)
-    if m is None or _ticker_is_a_word(m):
+    if m is None or not _ticker_names_a_position(m, r):
         return None
     raw_fraction = m.group("fraction")
     if raw_fraction is None and _TRIM_VERB_ONLY.match(text):
@@ -248,9 +248,18 @@ def _stop_breakeven(
     )
 
 
-def _ticker_is_a_word(m: re.Match[str]) -> bool:
+def _ticker_names_a_position(m: re.Match[str], r: Resolution | None) -> bool:
+    """A follow-up's trailing ticker-shaped word counts only when the resolver matched it to a
+    lane position ("out SPY" with SPY held). Anything else ("all out HAGW", "LFG", a ticker the
+    lane does not hold) is a word the rule cannot explain: Jev decides, never a literal
+    underlying read off prose."""
     ticker = m.group("ticker")
-    return ticker is not None and ticker.lstrip("$").lower() in STOP_WORDS
+    if ticker is None:
+        return True
+    word = ticker.lstrip("$").upper()
+    if word.lower() in STOP_WORDS or r is None:
+        return False
+    return word in {str(t).upper() for t in r.evidence.get("tickers", [])}
 
 
 def _rule(name: str) -> ResolvedSource:

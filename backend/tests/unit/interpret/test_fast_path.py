@@ -12,6 +12,8 @@ from app.ledger.resolver import Resolution
 
 P = uuid.uuid4()
 UNIQUE = Resolution(outcome="unique", position_id=P, candidates=(P,), method="reply")
+# the resolver matched "SPY" in the text to the lane's position (reply / contract evidence)
+SPY_NAMED = UNIQUE.model_copy(update={"evidence": {"rule": "reply", "tickers": ["SPY"]}})
 AMBIGUOUS = Resolution(outcome="ambiguous", candidates=(P, uuid.uuid4()))
 TIERS = ["default", "lotto", "small"]
 
@@ -94,7 +96,7 @@ def test_follow_ups_need_a_unique_resolution() -> None:
 
 def test_follow_up_rules() -> None:
     assert parse("out runners", UNIQUE) == {"type": "full_exit", "fraction": "all", "target": P}
-    assert parse("out SPY", UNIQUE) == {
+    assert parse("out SPY", SPY_NAMED) == {
         "type": "full_exit",
         "underlying": "spy",
         "fraction": "all",
@@ -149,10 +151,19 @@ def test_real_message_shapes() -> None:
         "target": P,
     }
     assert parse("1.63 trim @everyone", UNIQUE) is not None
-    assert parse("all out HAGW <@123456>", UNIQUE) == {
-        "type": "full_exit",
-        "underlying": "hagw",
-        "fraction": "all",
+    # F082 corpus: "HAGW" (have a good weekend) was read as the underlying; a word the
+    # resolver did not match to a lane position is never a ticker: Jev decides
+    assert parse("all out HAGW <@123456>", UNIQUE) is None
+    assert parse("all out HAGW <@123456>", SPY_NAMED) is None
+
+
+def test_a_follow_up_ticker_must_name_a_lane_position() -> None:
+    assert parse("out SPY", UNIQUE) is None  # nothing says the lane holds SPY
+    assert parse("out QQQ", SPY_NAMED) is None  # the lane's SPY, the text QQQ
+    assert parse("trim half $spy", SPY_NAMED) == {
+        "type": "trim",
+        "underlying": "spy",
+        "fraction": "half",
         "target": P,
     }
 
@@ -167,3 +178,51 @@ def test_real_message_shapes() -> None:
 )
 def test_real_prose_is_not_fast(text: str) -> None:
     assert parse(text, UNIQUE) is None
+
+
+def test_ticker_check_uses_the_resolvers_evidence() -> None:
+    """Through the real resolver: a reply to the SPY entry; SPY and QQQ held in the lane."""
+    from datetime import date
+
+    from app.interpret.candidates import find_candidates
+    from app.ledger.positions import PositionState
+    from app.ledger.resolver import Evidence, ParentLink, resolve_context
+
+    spy, qqq = uuid.uuid4(), uuid.uuid4()
+    book = {
+        spy: PositionState(
+            instrument="option",
+            underlying="SPY",
+            expiry=date(2026, 10, 2),
+            strike=Decimal(765),
+            option_right="put",
+        ),
+        qqq: PositionState(
+            instrument="option",
+            underlying="QQQ",
+            expiry=date(2026, 10, 2),
+            strike=Decimal(745),
+            option_right="put",
+        ),
+    }
+
+    def resolve(text: str) -> Resolution:
+        return resolve_context(
+            provider_id=7,
+            book=book,
+            reply_hops=[[ParentLink(7, spy)]],
+            thread_positions=frozenset(),
+            evidence=Evidence.of(text, find_candidates(text)),
+        )
+
+    out_spy = resolve("out SPY @everyone")
+    assert out_spy.evidence["tickers"] == ["SPY"]
+    assert parse("out SPY @everyone", out_spy) == {
+        "type": "full_exit",
+        "underlying": "spy",
+        "fraction": "all",
+        "target": spy,
+    }
+    hagw = resolve("all out HAGW @everyone")
+    assert (hagw.outcome, hagw.position_id) == ("unique", spy)  # the reply still decides
+    assert parse("all out HAGW @everyone", hagw) is None  # but "HAGW" is not read as a ticker

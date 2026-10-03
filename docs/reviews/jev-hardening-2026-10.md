@@ -23,7 +23,7 @@
 | Actionable recall (settled correctly without a person) | 9.1% | 16.1% |
 
 - **The 2 silenced instructions (before):** "taking 35% loss in those U leftover" and "unfortunately MSFT … sold off during final hour, hit SL". Jev called both commentary at 0.98 and 0.91. After, the F079 guard sends them to review.
-- **The 1 wrong contract (after):** "all out HAGW @everyone". The fast-path exit rule read "HAGW" (have a good weekend) as a ticker. The follow-up still went to review, because the correlation cross-check found HAGW contradicts the replied-to IWM position. It fails safe, but the rule should not treat a trailing all-caps word as a ticker (open item).
+- **The 1 wrong contract (after):** "all out HAGW @everyone". The fast-path exit rule read "HAGW" (have a good weekend) as a ticker. It failed safe: correlation found HAGW contradicts the replied-to IWM position and sent it to review. **Fixed after this run:** a follow-up's ticker-shaped word now counts only when the resolver matched it to a lane position (`fast._ticker_names_a_position`). A re-run gave 0 wrong contracts, with "all out HAGW" going to Jev and then review; no other message changed path.
 - **Wrong links are 0 before and after, but this corpus barely tests them.** Before, Jev never produced an assemblable follow-up (msg-type confidence too low), so no hint was ever accepted. The "two positions, no evidence" case F077 fixes is covered by tests (`test_correlation.py`, `test_multichannel_scenario.py`), not by this corpus.
 
 ## Path shares (519 messages)
@@ -66,6 +66,5 @@ Before (10 s timeout): message p50 380 ms, p95 510 ms.
 
 ## Open
 - The user spot-checks the labels (`spot_check` list), then re-run: `uv run python -m app.evalkit replay --split dev|test`, against a DB with the labels imported.
-- Fast-path follow-up rules: do not take a trailing all-caps word as a ticker ("HAGW").
 - Review rate: configure the LLM slow path, then re-measure.
 - Wrong-link rate on real data needs follow-ups that Jev settles. Revisit after the slow path is configured, and watch the live `wrong_link_rate` on the health page (F081).

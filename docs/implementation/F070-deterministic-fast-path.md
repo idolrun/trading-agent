@@ -32,3 +32,9 @@ Conditions ("if SPY holds 770 then calls"), watch, "out most", "out 2" (count or
 ## Limits
 - An expiry-less entry ("SPY 765P .54") is parsed but validation still makes it a review (`contract_incomplete`): no default expiry is ever assumed.
 - No stock-entry rule (stock entries need sizing by % of equity, C76, still open).
+
+## Fix (2026-10-03, after the F082 corpus run)
+- A follow-up rule's trailing ticker-shaped word ("out SPY") counts only when the resolver matched it to a lane position, i.e. it is in `Resolution.evidence.tickers`.
+- Reply and thread picks now keep the contract words they were checked against, so a reply "out SPY" still takes the fast path.
+- Anything else ("all out HAGW", "LFG", a ticker the lane does not hold) is a word the rule cannot explain, so Jev decides.
+- Before the fix: "all out HAGW @everyone" became `full_exit` with underlying `hagw`. It failed safe, because the correlation conflict sent it to review.

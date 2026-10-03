@@ -175,14 +175,15 @@ def resolve_context(
             )
         )
         if len(linked) == 1:
-            return _strong(linked[0], LinkMethod.REPLY, {"rule": "reply", "depth": depth}, narrowed)
+            reply = {"rule": "reply", "depth": depth}
+            return _strong(linked[0], LinkMethod.REPLY, reply, narrowed, contract)
         if linked:
             narrowed = tuple(p for p in narrowed if p in linked) or tuple(linked)
             break  # the nearest linked ancestor decides; farther ones are older context
 
     in_thread = [p for p in book if p in thread_positions]
     if len(in_thread) == 1:
-        return _strong(in_thread[0], LinkMethod.THREAD, {"rule": "thread"}, narrowed)
+        return _strong(in_thread[0], LinkMethod.THREAD, {"rule": "thread"}, narrowed, contract)
     if in_thread:
         narrowed = tuple(p for p in narrowed if p in in_thread) or tuple(in_thread)
 
@@ -219,15 +220,18 @@ def _strong(
     method: LinkMethod,
     evidence: dict[str, Any],
     narrowed: tuple[uuid.UUID, ...],
+    contract: dict[str, Any],
 ) -> Resolution:
-    """A reply / thread pick, unless the message's own contract words point elsewhere."""
+    """A reply / thread pick, unless the message's own contract words point elsewhere. The
+    contract words it was checked against are kept: they say which tickers named a lane position
+    (the fast path reads only those as a ticker)."""
     if position_id in narrowed:
         return Resolution(
             outcome="unique",
             position_id=position_id,
             candidates=(position_id,),
             method=method,
-            evidence=evidence,
+            evidence={**evidence, **contract},
         )
     return Resolution(
         outcome="ambiguous",
