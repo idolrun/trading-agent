@@ -182,7 +182,7 @@ class _Nodes:
             context = await load_context(
                 db,
                 env,
-                recent_n=cfg.context_recent_messages or 0,
+                recent_n=cfg.context_recent_messages,
                 now=env.posted_at if replay else self.d.clock.now(),
                 profile=profile,
                 book=self.d.book(env) if replay and self.d.book else None,

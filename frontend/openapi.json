@@ -5077,16 +5077,10 @@
             "type": "array"
           },
           "context_recent_messages": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Context Recent Messages"
+            "default": 5,
+            "exclusiveMinimum": 0.0,
+            "title": "Context Recent Messages",
+            "type": "integer"
           },
           "cutoff_1_min_before_close": {
             "anyOf": [

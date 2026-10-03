@@ -2413,8 +2413,11 @@ export interface components {
              * @default []
              */
             channels: number[];
-            /** Context Recent Messages */
-            context_recent_messages?: number | null;
+            /**
+             * Context Recent Messages
+             * @default 5
+             */
+            context_recent_messages: number;
             /** Cutoff 1 Min Before Close */
             cutoff_1_min_before_close?: number | null;
             /** Cutoff 2 Min Before Close */

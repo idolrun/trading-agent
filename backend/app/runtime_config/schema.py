@@ -110,7 +110,9 @@ class RuntimeConfig(_Strict):
     catch_up_backlog_n: PositiveInt | None = None  # OD-15
     poison_retry_limit: PositiveInt = 3
     # Context
-    context_recent_messages: PositiveInt | None = None
+    # F073: one explicit window for production, replay, labeling and prelabel alike (was
+    # None -> 0 messages live but 5 in evalkit). The lane author's own messages only (F068).
+    context_recent_messages: PositiveInt = 5
     # Sizing: tier name -> dollars (options: default/small/lotto, extensible)
     option_tiers: Tiers | None = None
     stock_tiers: Tiers | None = None

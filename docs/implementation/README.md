@@ -202,6 +202,7 @@ cd frontend && pnpm dev                  # after F052
 | [F070](F070-deterministic-fast-path.md) | Deterministic fast path: obvious whole messages settled by code, no model | F015, F016, F035, F069 | FR-7, C38 |
 | [F071](F071-provenance-holes.md) | Provenance for every field: `model` source, `field_sources` for plain fields, no model answer labelled as code | F015, F033, F070 | PRD §6, C31, FR-7 |
 | [F072](F072-signal-state-setups-reentry.md) | Signal state: watch / conditional setups and re-entries on provider positions | F020, F021, F069, F070 | FR-5, FR-16, C30, C32, C72 |
+| [F073](F073-context-packet-parity.md) | One context packet and window for live, replay, labeling; recent lane signal events | F017, F048, F068, F069 | C71, FR-8, PRD §17 |
 
 ---
 

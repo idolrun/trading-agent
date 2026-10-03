@@ -25,12 +25,17 @@ def build_jev_state(
             "channel": m.channel_id,
             "text": m.text,
             "reply_to": m.reply_to,
+            "thread": m.thread_id,
         },
         "reply_parent": None if ctx.reply_parent is None else ctx.reply_parent.model_dump(),
         "recent_author_messages": [
             {"id": r.id, "at": r.at_et, "text": r.text} for r in ctx.recent_author_messages
         ],
         "provider_book": [{"id": str(b.id), "summary": b.summary} for b in ctx.provider_book],
+        "recent_signal_events": [
+            {"position": str(e.position_id), "at": e.at_et, "what": e.summary}
+            for e in ctx.recent_signal_events
+        ],
         "provider_profile": ctx.provider_profile,
         "candidates": {
             "tickers": [_candidate(c) for c in candidates.tickers],

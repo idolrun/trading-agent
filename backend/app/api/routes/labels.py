@@ -16,10 +16,10 @@ from app.evalkit.metrics import is_actionable
 from app.evalkit.models import LabelSource
 from app.inbox.envelope import EventKey
 from app.inbox.models import MessageEvent
+from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 
 router = APIRouter(tags=["labels"])
-RECENT_DEFAULT = 5  # context messages when the config sets none
 
 
 def _key(raw: str) -> EventKey:
@@ -31,7 +31,7 @@ def _key(raw: str) -> EventKey:
 
 def _recent_n(config: ConfigService) -> int:
     cfg = config.get()
-    return (cfg.context_recent_messages if cfg else None) or RECENT_DEFAULT
+    return (cfg or RuntimeConfig()).context_recent_messages  # F073: the live window
 
 
 @router.get("/labels/queue")

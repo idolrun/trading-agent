@@ -13,7 +13,6 @@ EXAMPLE = Path(__file__).parents[3] / "config.example.json"
 NO_DEFAULT = {
     "feed_silence_s",
     "catch_up_backlog_n",
-    "context_recent_messages",
     "option_tiers",
     "stock_tiers",
     "entry_chase_pct",
@@ -122,3 +121,10 @@ def test_example_file_is_valid_and_complete_in_shape() -> None:
     example = json.loads(EXAMPLE.read_text())
     assert RuntimeConfig.model_validate(example) == RuntimeConfig()
     assert example.keys() == RuntimeConfig.model_fields.keys()
+
+
+def test_one_context_window_everywhere() -> None:
+    """F073: an explicit default; no `None` that one caller reads as 0 and another as 5."""
+    assert RuntimeConfig().context_recent_messages == 5
+    with pytest.raises(ValidationError):
+        RuntimeConfig.model_validate({"context_recent_messages": None})

@@ -6,7 +6,7 @@
   "stale_entry_s": 30,
   "catch_up_backlog_n": null,
   "poison_retry_limit": 3,
-  "context_recent_messages": null,
+  "context_recent_messages": 5,
   "option_tiers": null,
   "stock_tiers": null,
   "entry_chase_pct": null,

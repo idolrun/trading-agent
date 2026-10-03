@@ -88,7 +88,7 @@ async def run(args: argparse.Namespace, payloads: list[object] | None) -> int:
                 result = await import_history(deps.sessions, payloads, deps.clock.now())
                 print(result)
             case "prelabel":
-                recent_n = deps.cfg().context_recent_messages or 5
+                recent_n = deps.cfg().context_recent_messages
                 answered = await prelabel_batch(
                     deps.sessions, chain, limit=args.limit, recent_n=recent_n
                 )

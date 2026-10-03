@@ -10,7 +10,8 @@ from sqlmodel import col
 
 from app.inbox.envelope import Lane
 from app.inbox.models import EventType, MessageEvent
-from app.ledger.models import ProviderPosition
+from app.interpret.models import Signal
+from app.ledger.models import ProviderPosition, ProviderPositionEvent
 from app.ledger.positions import LIVE, SETUPS
 from app.markettime import et_day_start
 
@@ -112,3 +113,38 @@ async def open_book(db: AsyncSession, lane: Lane, as_of: datetime) -> list[Provi
         .order_by(col(ProviderPosition.opened_at), col(ProviderPosition.provider_position_id))
     )
     return list(rows.all())
+
+
+async def recent_signal_events(
+    db: AsyncSession, lane: Lane, before: datetime, limit: int
+) -> list[tuple[ProviderPositionEvent, ProviderPosition, datetime]]:
+    """F073: the lane's latest provider-position events caused by messages posted before
+    `before` (newest first): what this provider recently did to which signal."""
+    if limit <= 0:
+        return []
+    channel_id, provider_id = lane
+    rows = await db.execute(
+        select(ProviderPositionEvent, ProviderPosition, col(MessageEvent.posted_at))
+        .join(
+            ProviderPosition,
+            col(ProviderPosition.provider_position_id)
+            == col(ProviderPositionEvent.provider_position_id),
+        )
+        .join(Signal, col(Signal.signal_id) == col(ProviderPositionEvent.signal_id))
+        .join(
+            MessageEvent,
+            and_(
+                col(MessageEvent.message_id) == col(Signal.message_id),
+                col(MessageEvent.event_type) == col(Signal.event_type),
+                col(MessageEvent.event_seq) == col(Signal.event_seq),
+            ),
+        )
+        .where(
+            col(ProviderPosition.provider_id) == provider_id,
+            col(ProviderPosition.opened_channel_id) == channel_id,
+            col(MessageEvent.posted_at) < before,
+        )
+        .order_by(col(MessageEvent.posted_at).desc(), col(ProviderPositionEvent.id).desc())
+        .limit(limit)
+    )
+    return [(e, p, at) for e, p, at in rows.tuples().all()]

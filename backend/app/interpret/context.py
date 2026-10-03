@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.inbox.envelope import Envelope
 from app.inbox.models import MessageEvent
 from app.interpret import context_repo
-from app.ledger.models import Instrument, PositionStatus, ProviderPosition
+from app.ledger.models import Instrument, PositionStatus, ProviderPosition, ProviderPositionEvent
 from app.markettime import to_et
 
 # Checked against the JSON schema by a unit test and by the LLM scope guard (F032).
@@ -44,11 +44,20 @@ class CurrentMessage(_Strict):
     event_type: str
     channel_id: str
     reply_to: str | None
+    thread_id: str | None = None  # F067: posted in this thread of the channel
 
 
 class BookEntry(_Strict):
     id: uuid.UUID
     summary: str
+
+
+class SignalEvent(_Strict):
+    """F073: one thing the provider recently did to one of the lane's signals."""
+
+    position_id: uuid.UUID
+    at_et: str
+    summary: str  # "trim SPY 765P" / "watch SPY" / "open QQQ 745P"
 
 
 class ProviderContext(_Strict):
@@ -60,6 +69,8 @@ class ProviderContext(_Strict):
     # the positions the message may act on, narrowed by the context resolver (F069); the only
     # `links_to` options a model is offered. Not given: the whole book (nothing narrowed yet).
     link_candidates: list[BookEntry] = []
+    # F073: the lane's latest position events (newest first), e.g. which signal was trimmed last
+    recent_signal_events: list[SignalEvent] = []
 
     @model_validator(mode="before")
     @classmethod
@@ -80,7 +91,7 @@ async def load_context(
     profile: dict[str, list[str]] | None = None,
     book: list[BookEntry] | None = None,
 ) -> ProviderContext:
-    """`recent_n` = config.context_recent_messages (caller decides the fallback). `book`
+    """`recent_n` = config.context_recent_messages, the same window everywhere (F073). `book`
     replaces the provider's stored book (evalkit replay: the label ledger, F048)."""
     cutoff = env.posted_at  # post time, never arrival order: replay-deterministic
     parent = None
@@ -93,6 +104,10 @@ async def load_context(
             BookEntry(id=p.provider_position_id, summary=summarize(p))
             for p in await context_repo.open_book(db, env.lane, env.posted_at)
         ]
+    events = [
+        SignalEvent(position_id=p.provider_position_id, at_et=_et(at), summary=_event(e, p))
+        for e, p, at in await context_repo.recent_signal_events(db, env.lane, cutoff, recent_n)
+    ]
     return ProviderContext(
         now_et=_et(now),
         message=CurrentMessage(
@@ -103,10 +118,12 @@ async def load_context(
             event_type=env.key.event_type,
             channel_id=str(env.channel_id),
             reply_to=None if env.reply_to_id is None else str(env.reply_to_id),
+            thread_id=None if env.thread_id is None else str(env.thread_id),
         ),
         reply_parent=parent,
         recent_author_messages=[_message(*row) for row in recent],
         provider_book=book,
+        recent_signal_events=events,
         provider_profile=profile or {},
     )
 
@@ -138,6 +155,14 @@ def summarize(p: ProviderPosition) -> str:
     if p.tp_levels:
         parts.append("TPs " + "/".join(_plain(t) for t in p.tp_levels))
     return ", ".join(parts)
+
+
+def _event(e: ProviderPositionEvent, p: ProviderPosition) -> str:
+    named = [p.underlying]
+    if p.strike is not None:
+        right = "" if p.option_right is None else ("C" if p.option_right == "call" else "P")
+        named.append(f"{_plain(p.strike)}{right}")
+    return f"{e.change} {' '.join(named)}"
 
 
 def _message(row: MessageEvent, text: str) -> ContextMessage:
