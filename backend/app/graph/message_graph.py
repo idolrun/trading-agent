@@ -58,8 +58,10 @@ from app.interpret import context_repo
 from app.interpret.candidates import Candidates, find_candidates
 from app.interpret.context import BookEntry, ProviderContext, load_context, summarize
 from app.interpret.fast import fast_parse
+from app.interpret.feed_guard import feed_block
 from app.interpret.interpreter import Interpreter, InterpreterUnavailable
 from app.interpret.jev.client import JevAnswered, JevFailed, JevInterpreter
+from app.interpret.jev.mapping import FEED_TYPES
 from app.interpret.laya.client import LayaInterpreter, gate
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.llm_extract.middleware import ScopeViolation
@@ -339,7 +341,7 @@ class _Nodes:
                 "jev_answered": False,
             }
         result = outcome.result
-        decision = route(result, self.d.cfg())
+        decision = route(result, self.d.cfg(), self._feed_block(state))
         update: dict[str, Any] = {
             "route": decision.path,
             "route_reasons": list(decision.reasons),
@@ -381,7 +383,7 @@ class _Nodes:
             await self._stage(state, ctx, Stage.LAYA)
         if result is None:
             return {"trace": trace | {"laya": "no_answer" if asked else "off"}}
-        decision = route(result, gate(self.d.cfg()))
+        decision = route(result, gate(self.d.cfg()), self._feed_block(state))
         settled = decision.path != "slow_path"
         reasons = (
             list(decision.reasons)
@@ -443,6 +445,13 @@ class _Nodes:
                 FlagName.PARSER_DEGRADED, False, "LLM answered again", Actor.SYSTEM
             )
         assert result.value is not None  # noqa: S101 — status ok
+        feed = all(sig.msg_type in FEED_TYPES for sig in result.value.signals)
+        if feed and (block := self._feed_block(state)) is not None:  # F079: the last model too
+            return {
+                "raw_reason": f"needs_review: feed_guard: {block} with a position open"[:200],
+                "trace": state["trace"] | {"llm": "feed_guard"},
+                "model_call_id": result.last.model_call_id if result.last else None,
+            }
         return {
             "parsed": result.value.model_dump(mode="json"),
             "trace": state["trace"] | {"llm": "success"},
@@ -564,6 +573,11 @@ class _Nodes:
             if item is not None and isinstance(item.value.get("items"), list):
                 profile[key] = [str(v) for v in item.value["items"]]
         return profile
+
+    def _feed_block(self, state: MessageState) -> str | None:
+        """F079: the whole lane book (live positions and today's setups), not the narrowed one."""
+        text = _processing(state).envelope.text or ""
+        return feed_block(text, _context(state), _candidates(state))
 
     async def _scope_alert(
         self, ctx: ProcessingContext, model: str, reason: str, call_id: int | None

@@ -338,3 +338,69 @@ def test_back_in_with_several_earlier_positions_is_a_review_not_a_model_question
 def test_a_missing_contract_without_reentry_candidates_stays_semantic() -> None:
     _, decision = run(ticker=c("not_stated"), role_n1=c("other"))
     assert (decision.path, decision.kind) == ("slow_path", "semantic")
+
+
+# --- F079: the condition gate, explicit ------------------------------------------------------
+
+
+def fitted(text: str, **answers: object) -> dict[str, object]:
+    """Example answers fitted to `text`: one role answer per number candidate found in it."""
+    base = example_answers(**answers)  # type: ignore[arg-type]
+    base = {k: v for k, v in base.items() if not k.startswith("role_")}
+    for cand in find_candidates(text).numbers:
+        base.setdefault(f"role_{cand.id}", c("underlying_level"))
+    return {**base, **{k: v for k, v in answers.items() if k.startswith("role_")}}
+
+
+def gate(text: str, **answers: object):  # type: ignore[no-untyped-def]
+    result = map_answers(fitted(text, **answers), ctx(text), find_candidates(text), CFG)  # type: ignore[arg-type]
+    return result, route(result, CFG)
+
+
+NO_CONTRACT = {"ticker": c("not_stated"), "right": c("not_stated"), "size_tier": c("not_stated")}
+
+
+def test_if_spy_holds_770_then_calls_is_a_conditional_setup() -> None:
+    result, decision = gate(
+        "if SPY holds 770 then calls",
+        msg_type=c("conditional", 0.9),
+        has_prose_condition=n(0.95),
+        ticker=c("t1", 0.95),
+        right=c("call", 0.9),
+        size_tier=c("not_stated"),
+    )
+    assert decision.path == "assemble" and result.slow_reasons == ()
+    assert result.parsed is not None and result.parsed.signals[0].msg_type == "conditional"
+
+
+def test_watching_spy_around_770_is_a_watch() -> None:
+    result, decision = gate(
+        "watching SPY around 770", msg_type=c("watch", 0.95), ticker=c("t1", 0.95)
+    )
+    assert decision.path == "feed_only"
+    assert result.parsed is not None and result.parsed.signals[0].fields.underlying is not None
+
+
+def test_spy_looks_strong_is_commentary() -> None:
+    _, decision = gate("SPY looks strong", msg_type=c("chatter", 0.95), ticker=c("t1"))
+    assert decision.path == "feed_only"
+
+
+def test_if_this_breaks_im_out_is_a_conditional_instruction_for_a_person() -> None:
+    result, decision = gate(
+        "if this breaks I'm out",
+        msg_type=c("full_exit", 0.9),
+        exit_fraction=c("all", 0.9),
+        has_prose_condition=n(0.9),
+        **NO_CONTRACT,
+    )
+    assert (decision.path, decision.kind) == ("slow_path", "semantic")
+    assert result.slow_reasons[0].startswith("conditional_instruction")
+
+
+def test_a_doubtful_condition_on_an_entry_is_not_assembled() -> None:
+    result, decision = run(has_prose_condition=n(0.3))
+    assert decision.path == "slow_path"
+    assert any(r.startswith("condition_doubt") for r in result.slow_reasons)
+    _, sure = run(has_prose_condition=n(0.1))
+    assert sure.path == "assemble"

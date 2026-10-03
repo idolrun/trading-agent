@@ -3,6 +3,7 @@
 import asyncio
 import uuid
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -567,3 +568,26 @@ async def test_settled_messages_record_their_outcome(h: Harness, db_session: Asy
     row = await outcome_of(db_session, env)
     assert row.interpret_outcome == "jev_success"
     assert row.interpret_reasons == {"jev": "success", "route": "assemble"}
+
+
+async def test_confident_chatter_with_a_position_open_is_a_review_not_feed_only(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    """F079: "gotta go here" read as chatter at 0.95 while the provider holds SPY: a person
+    sees it (no LLM configured); without a position the same answer stays feed-only."""
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
+    entry = await h.message("SPY 9/28 580P 2.32", None, at=T0, author=PROVIDER_A)
+    await h.process(entry, processor=h.processor(fixture=False))
+    chatter = {"msg_type": c("chatter", 0.95), "ticker": c("not_stated")}
+    leave = await h.message("gotta go here", None, at=T0 + timedelta(seconds=5), author=PROVIDER_A)
+    jev_says_chatter = jev(h, **chatter)
+    await h.process(leave, processor=h.processor(fixture=False, jev=jev_says_chatter))
+    review = (await db_session.scalars(select(Card).where(Card.card_type == "review"))).one()
+    [reason] = review.proposal["review_reasons"]
+    assert reason.startswith("needs_review: feed_guard: chatter but leaving 'gotta go here'")
+    row = await outcome_of(db_session, leave)
+    assert (row.interpret_outcome, row.interpret_reasons["jev"]) == ("review", "ambiguous")  # type: ignore[index]
+
+    other = await h.message("gotta go here", None, at=T0 + timedelta(seconds=9), author=PROVIDER_B)
+    await h.process(other, processor=h.processor(fixture=False, jev=jev(h, **chatter)))
+    assert (await outcome_of(db_session, other)).interpret_outcome == "jev_success"  # feed only

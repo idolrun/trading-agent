@@ -52,6 +52,7 @@ EXIT_TYPES = frozenset({MsgType.TRIM, MsgType.FULL_EXIT, MsgType.SOFT_EXIT, MsgT
 # Flags that change what an order does only when the message carries a stop; `is_add` changes
 # nothing downstream (the link decides add vs new).
 STOP_FLAGS = frozenset({"candle_close", "breakeven_stop", "stop_removed"})
+CONDITION_YES = Decimal("0.5")  # F079: has_prose_condition at or above: a conditional instruction
 _RIGHT_WORD = re.compile(r"\b(?:calls?|puts?)\b", re.IGNORECASE)
 
 
@@ -274,13 +275,18 @@ def map_answers(
             sources[name] = model(name, max(p, 1 - p))
         elif name in STOP_FLAGS and has_stop:
             reasons.append(f"{name}: yes/no uncertain ({p:.2f})")
-    # A worded condition changes the trade, so any real chance of one goes to the LLM; a
-    # possible correction only when Jev leans yes (its 0.2-0.3 is background noise).
-    p = noul("has_prose_condition").noul
-    if msg_type == MsgType.CONDITIONAL:  # F072: the condition IS the message: a setup, no card
-        pass
-    elif _d(max(p, 1 - p)) < t_field or p >= 0.5:
-        reasons.append(f"has_prose_condition: needs the slow path ({p:.2f})")
+    # Condition gate (F079, C30). `conditional` / `watch` messages are setups (no card). On an
+    # instruction, a worded condition changes the trade: a missed one turns "if it breaks 770,
+    # calls" into an unconditional order, so a likely condition (p >= 0.5) and a doubtful one
+    # (p in [1 - t_field, 0.5)) both go to the semantic fallback (LLM, else a person). Below
+    # 1 - t_field Jev is sure there is none. Corrections need no doubt band: they also arrive as
+    # edits (F038) and the user sees the card they would change.
+    condition = _d(noul("has_prose_condition").noul)
+    if msg_type != MsgType.CONDITIONAL:
+        if condition >= CONDITION_YES:
+            reasons.append(f"conditional_instruction: a worded condition ({condition:.2f})")
+        elif condition >= 1 - t_field:
+            reasons.append(f"condition_doubt: maybe a worded condition ({condition:.2f})")
     if noul("is_correction").noul >= 0.5:
         reasons.append("is_correction: needs the slow path")
 

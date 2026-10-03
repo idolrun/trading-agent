@@ -33,13 +33,20 @@ class RouteDecision:
     kind: Kind | None = None  # slow_path only: why it was not settled
 
 
-def route(result: JevResult | None, cfg: RuntimeConfig) -> RouteDecision:
+def route(
+    result: JevResult | None, cfg: RuntimeConfig, feed_block: str | None = None
+) -> RouteDecision:
+    """`feed_block` (F079, `feed_guard.feed_block`): why a feed-only verdict may not stand
+    (the lane holds a position and the text could act on it): a semantic doubt instead."""
     if result is None:  # no usable answer
         return RouteDecision("slow_path", ("jev_unavailable",), kind="model_failure")
     hints = result.hints
     if result.review_reasons:
         return RouteDecision("slow_path", result.review_reasons, hints=hints, kind="link")
     if result.msg_type in FEED_TYPES:
+        if feed_block is not None:
+            reason = f"feed_guard: {result.msg_type} but {feed_block} with a position open"
+            return RouteDecision("slow_path", (reason,), hints=hints, kind="semantic")
         if result.msg_type_confidence >= cfg.t_chat:
             return RouteDecision("feed_only", parsed=result.parsed)
         return RouteDecision("slow_path", ("msg_type: below t_chat",), hints=hints, kind="semantic")

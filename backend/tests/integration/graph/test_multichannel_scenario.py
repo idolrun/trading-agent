@@ -1,22 +1,27 @@
-"""F076 end-to-end: an interleaved stream from two channels and three authors, through the real
-message graph (fast path for every message: each follow-up acts on its lane's sole position, F077).
-No context crosses a channel, an author or a signal.
+"""F076/F077/F079 end-to-end: an interleaved stream from two channels and three authors,
+through the real message graph. Code settles every obvious message and every follow-up that has
+one position to act on; Jev is asked only where code cannot decide, and its pick between two
+positions is a proposal, never a link. No context crosses a channel, an author or a signal.
 
     Channel A                          Channel B
     X: SPY 580P 2.32 (entry)
     Y: META 710C 5.30 (entry)
                                        X: QQQ 495P .99 (entry)
-    X: trim half
+    X: trim half          -> SPY (X's only position in A: code)
                                        Z: TSLA 400C 3.10 (entry)
-    Y: stop breakeven
-    X: out runners
+    Y: stop breakeven     -> META (Y's only position: code)
+                                       X: out runners  -> QQQ (X's only position in B: code)
+    X: META 710C 5.40 (entry)
+    X: trim half          -> SPY or META? review (Jev's pick recorded, nothing changes)
+    X: actually 580C      -> a correction: review (no LLM configured)
 
-(Tickers, strikes and prices fit the market fixtures, so validation passes; Z's NVDA is TSLA.)
+(Tickers, strikes and prices fit the market fixtures, so validation passes.)
 """
 
 import uuid
 from collections.abc import AsyncIterator
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.cards.models import Card, CardType
 from app.config import get_settings
 from app.db import create_session_factory
 from app.inbox.models import MessageEvent
@@ -36,6 +42,7 @@ from app.ledger.models import (
     ProviderPosition,
     ProviderPositionEvent,
 )
+from app.pipeline.apply import signal_id_for
 from app.runtime_config.schema import JevConfig, RuntimeConfig
 from tests.integration.conftest import _url
 from tests.integration.interpret.test_jev_client import ScriptedJev, response
@@ -86,21 +93,36 @@ async def test_interleaved_channels_and_authors_never_mix(
         ("trim half", X, A),
         ("TSLA 10/2 400C 3.10 @everyone", Z, B),
         ("stop breakeven", Y, A),
-        ("out runners", X, A),
+        ("out runners", X, B),
+        ("META 10/2 710C 5.40", X, A),
+        ("trim half", X, A),
+        ("actually 580C", X, A),
     ]
     envs = [
         await h.message(text, None, at=T0 + i * S, author=author, channel=channel)
         for i, (text, author, channel) in enumerate(stream)
     ]
-    spy, meta, qqq, _trim, tsla, _stop, _out = envs
+    spy, meta_y, qqq, _trim, tsla, _stop, _out, meta_x, ambiguous, correction = envs
     p = {
         name: opened_position(e)
-        for name, e in zip(("spy", "meta", "qqq", "tsla"), (spy, meta, qqq, tsla), strict=True)
+        for name, e in zip(
+            ("spy", "meta_y", "qqq", "tsla", "meta_x"),
+            (spy, meta_y, qqq, tsla, meta_x),
+            strict=True,
+        )
     }
     jev = ScriptedJev(
         follow_up("trim", p["spy"], exit_fraction=c("half")),
-        follow_up("stop_move", p["meta"], stop_basis=c("premium", 0.9), breakeven_stop=n(0.95)),
-        follow_up("full_exit", p["spy"], exit_fraction=c("all")),
+        response(
+            example_answers(
+                msg_type=c("correction", 0.9),
+                is_correction=n(0.95),
+                ticker=c("not_stated"),
+                right=c("call", 0.9),
+                size_tier=c("not_stated"),
+                role_n1=c("strike", 0.95),
+            )
+        ),
     )
     processor = h.processor(
         fixture=False,
@@ -115,14 +137,11 @@ async def test_interleaved_channels_and_authors_never_mix(
     for env in envs:  # one at a time, in the interleaved order they were posted
         await h.process(env, processor=processor)
 
-    # F077: every follow-up acts on its lane's sole position, so code settles all seven
-    assert jev.calls == 0
+    assert jev.calls == 2  # only where code could not decide
     interpreters = {
         s.message_id: s.interpreter for s in (await db_session.scalars(select(Signal))).all()
     }
-    assert [interpreters[e.key.message_id] for e in envs] == [
-        "fast",
-    ] * 7
+    assert [interpreters[e.key.message_id] for e in envs] == ["fast"] * 8 + ["jev", "none"]
 
     async def history(position_id: uuid.UUID) -> list[str]:
         rows = await db_session.scalars(
@@ -132,24 +151,42 @@ async def test_interleaved_channels_and_authors_never_mix(
         )
         return list(rows.all())
 
-    assert await history(p["spy"]) == [
-        PositionChange.OPEN,
-        PositionChange.TRIM,
-        PositionChange.EXIT,
-    ]
-    assert await history(p["meta"]) == [PositionChange.OPEN, PositionChange.STOP_MOVE]
-    assert await history(p["qqq"]) == [PositionChange.OPEN]
+    assert await history(p["spy"]) == [PositionChange.OPEN, PositionChange.TRIM]
+    assert await history(p["meta_y"]) == [PositionChange.OPEN, PositionChange.STOP_MOVE]
+    assert await history(p["qqq"]) == [PositionChange.OPEN, PositionChange.EXIT]
     assert await history(p["tsla"]) == [PositionChange.OPEN]
+    assert await history(p["meta_x"]) == [PositionChange.OPEN]  # the ambiguous trim: untouched
 
     rows = {
         r.provider_position_id: r
         for r in (await db_session.scalars(select(ProviderPosition))).all()
     }
-    assert set(rows) == set(p.values())  # four signals, no stray positions
-    assert rows[p["spy"]].status == PositionStatus.CLOSED
-    assert rows[p["meta"]].stop_level == rows[p["meta"]].provider_entry_price  # breakeven
+    assert set(rows) == set(p.values())  # five signals, no stray positions
+    assert rows[p["spy"]].remaining_fraction == Decimal("0.5")
+    assert rows[p["meta_y"]].stop_level == rows[p["meta_y"]].provider_entry_price  # breakeven
+    assert rows[p["qqq"]].status == PositionStatus.CLOSED
     assert (rows[p["qqq"]].provider_id, rows[p["qqq"]].opened_channel_id) == (X, B)
-    assert (rows[p["tsla"]].provider_id, rows[p["tsla"]].opened_channel_id) == (Z, B)
+    assert (rows[p["meta_x"]].provider_id, rows[p["meta_x"]].opened_channel_id) == (X, A)
+
+    # the ambiguous trim: a review listing X's two positions in A, Jev's pick only a proposal
+    link = await db_session.scalar(
+        select(MessageLink).where(MessageLink.signal_id == signal_id_for(ambiguous.key, 0))
+    )
+    assert link is not None and (link.outcome, link.provider_position_id) == ("ambiguous", None)
+    assert set(link.candidate_position_ids) == {p["spy"], p["meta_x"]}
+    assert link.evidence is not None and link.evidence["rule"] == "model_proposed"
+    assert link.evidence["proposal"]["target"] == str(p["spy"])
+    review = await db_session.scalar(
+        select(Card).where(Card.signal_id == signal_id_for(ambiguous.key, 0))
+    )
+    assert review is not None and review.card_type == CardType.REVIEW
+
+    # the correction: a person decides
+    fix = await db_session.scalar(
+        select(Card).where(Card.signal_id == signal_id_for(correction.key, 0))
+    )
+    assert fix is not None and fix.card_type == CardType.REVIEW
+    assert fix.proposal["review_reasons"][0].startswith("needs_review: is_correction")
 
     # every link stays inside its message's lane
     links = (
@@ -167,7 +204,7 @@ async def test_interleaved_channels_and_authors_never_mix(
             )
         )
     ).all()
-    assert len(links) == 7
+    assert len(links) == 8  # 5 entries + trim + stop + exit
     for _link, sig, event, position in links:
         assert (position.provider_id, position.opened_channel_id) == (
             event.provider_id,
