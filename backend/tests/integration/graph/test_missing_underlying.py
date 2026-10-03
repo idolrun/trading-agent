@@ -11,8 +11,10 @@ from sqlmodel import col
 from app.cards.approval_service import DecisionInvalid
 from app.cards.models import Card, CardAction, CardState, CardType
 from app.decide.types import ProposedAction
+from app.interpret.models import MessageLink
 from app.interpret.signal import ParsedSignal, SignalFields
 from app.ledger.models import ProviderPosition
+from app.pipeline.apply import signal_id_for
 from tests.integration.graph.conftest import World
 from tests.integration.pipeline.harness import (
     T0,
@@ -106,7 +108,9 @@ async def test_confirmed_underlying_makes_the_review_card_tradable(w: World) -> 
     assert (await w.card(review.card_id)).state == CardState.SUBMITTED
     await w.consume()
 
-    # the provider's follow-up now finds the position the confirmation opened
+    # the provider's follow-up: two MU 118C positions are live (the rejected first entry still
+    # opened the provider's), so "trim half" names neither: review, the model's pick is a
+    # proposal only (F077)
     trim = await w.h.message(
         "trim half",
         [follow_up("trim", position_id, exit_fraction="half")],
@@ -116,4 +120,11 @@ async def test_confirmed_underlying_makes_the_review_card_tradable(w: World) -> 
     await w.h.process(trim, processor=w.processor)
     async with w.h.factory() as db:
         position = await db.get(ProviderPosition, position_id)
-    assert position is not None and position.remaining_fraction == Decimal("0.5")
+        link = await db.scalar(
+            select(MessageLink).where(col(MessageLink.signal_id) == signal_id_for(trim.key, 0))
+        )
+    assert position is not None and position.remaining_fraction == 1
+    assert link is not None and (link.outcome, link.provider_position_id) == ("ambiguous", None)
+    assert position_id in link.candidate_position_ids and len(link.candidate_position_ids) == 2
+    assert link.evidence is not None and link.evidence["rule"] == "model_proposed"
+    assert link.evidence["proposal"]["target"] == str(position_id)

@@ -8,10 +8,14 @@ Order (strongest evidence first; a model never overrides it):
 2. thread: the live lane positions this provider's earlier messages in the same thread opened
    or acted on; exactly one wins;
 3. contract: tickers / strikes / call-put stated in the message narrow the lane's book;
-   exactly one left wins.
-Otherwise AMBIGUOUS with the narrowed candidates (even a single one: one open position is not
-evidence, PRD §10), or NONE when the lane's book is empty. Evidence that contradicts a reply or
-thread pick (the message names another of the lane's underlyings) makes it AMBIGUOUS.
+   exactly one left wins;
+4. sole candidate (F077): one live position left after the rungs above (the lane holds only
+   one, or "the calls" narrowed it to one) is UNIQUE too: the weakest code evidence, decided
+   by code, never by a model's confidence. `correlation.resolve_link` still cross-checks it
+   against every contract field the message states.
+Otherwise AMBIGUOUS with the narrowed candidates, or NONE when the lane's book is empty. A
+model may rank AMBIGUOUS candidates, never resolve them (F077). Evidence that contradicts a
+reply or thread pick (the message names another of the lane's underlyings) makes it AMBIGUOUS.
 """
 
 import re
@@ -93,7 +97,9 @@ class Resolution(BaseModel):
 
     @classmethod
     def unresolved(cls, book: Mapping[uuid.UUID, Any]) -> "Resolution":
-        """No evidence looked at (replay, corrections re-planning an opening)."""
+        """No evidence looked at (replay): every position a candidate; one is the sole one."""
+        if len(book) == 1:
+            return _sole(tuple(book), {})
         return cls(outcome="ambiguous" if book else "none", candidates=tuple(book))
 
 
@@ -169,7 +175,7 @@ def resolve_context(
     if in_thread:
         narrowed = tuple(p for p in narrowed if p in in_thread) or tuple(in_thread)
 
-    named = "tickers" in contract or "strikes" in contract  # "calls" alone only narrows
+    named = "tickers" in contract or "strikes" in contract
     if named and len(narrowed) == 1:
         return Resolution(
             outcome="unique",
@@ -178,10 +184,22 @@ def resolve_context(
             method=LinkMethod.CONTRACT,
             evidence={"rule": "contract", **contract},
         )
+    if len(narrowed) == 1:  # F077: one live position left ("calls" alone, or one held)
+        return _sole(narrowed, contract)
     return Resolution(
         outcome="ambiguous",
         candidates=narrowed,
         evidence={"rule": "candidates", **contract},
+    )
+
+
+def _sole(narrowed: tuple[uuid.UUID, ...], contract: dict[str, Any]) -> Resolution:
+    return Resolution(
+        outcome="unique",
+        position_id=narrowed[0],
+        candidates=narrowed,
+        method=LinkMethod.CODE,
+        evidence={"rule": "sole_candidate", **contract},
     )
 
 

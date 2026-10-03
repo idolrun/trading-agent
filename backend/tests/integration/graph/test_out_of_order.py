@@ -109,8 +109,48 @@ async def test_relink_approval_runs_the_normal_flow_for_the_users_lot(w: World) 
     assert await w.thread_next(trim.card_id) == ("await_approval",)
 
 
+async def test_sole_position_relink_is_proposed_whatever_the_model_hinted(w: World) -> None:
+    """F077: after the late entry the lane holds one position, so the recheck links by code even
+    though the model's hint pointed nowhere; still only a proposal until approved."""
+    a1, a3 = await a3_then_late_a1(w, target=uuid.uuid4())
+    await w.h.process(a1, late=True, processor=w.processor)
+    [card] = await relink_cards(w)
+    assert card.provider_position_id == opened_position(a1)
+    assert len(await links(w, a3)) == 1
+
+
 async def test_unchanged_recheck_creates_nothing(w: World) -> None:
-    a1, a3 = await a3_then_late_a1(w, target=uuid.uuid4())  # hint points nowhere
+    """Two positions were open when A3 came; the late A1 makes three: still ambiguous."""
+    a1 = await w.h.message(
+        "Bought GOOGL 357.5C 10/2 @ 0.71",
+        [option_entry("GOOGL", "357.5", "357.5C", "10/2", "0.71")],
+        author=PROVIDER_A,
+    )
+    others = [
+        await w.h.message(
+            text,
+            [option_entry(*fields)],
+            at=T0 + timedelta(seconds=n),
+            author=PROVIDER_A,
+        )
+        for n, (text, fields) in enumerate(
+            [
+                ("SPY 580p 9/28 2.30", ("SPY", "580", "580p", "9/28", "2.30")),
+                ("QQQ 495p 9/28 .98", ("QQQ", "495", "495p", "9/28", ".98")),
+            ],
+            start=1,
+        )
+    ]
+    for env in others:
+        await w.h.process(env, processor=w.processor)
+    a3 = await w.h.message(
+        "take half",
+        [follow_up("trim", uuid.uuid4(), exit_fraction="half")],
+        at=T0 + timedelta(seconds=10),
+        author=PROVIDER_A,
+    )
+    await w.h.process(a3, processor=w.processor)
+    assert [lk.outcome for lk in await links(w, a3)] == [LinkOutcome.AMBIGUOUS]
     await w.h.process(a1, late=True, processor=w.processor)
     assert await relink_cards(w) == []
     assert len(await links(w, a3)) == 1

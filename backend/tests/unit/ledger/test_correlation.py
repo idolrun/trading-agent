@@ -1,5 +1,5 @@
-"""F021/F069: correlation decision table, the deterministic cross-check of model hints, and
-TRD §12 sequencing rows (AC-18 linking clause)."""
+"""F021/F069/F077: correlation decision table, model hints as proposals only (never a
+resolution), and TRD §12 sequencing rows (AC-18 linking clause)."""
 
 import uuid
 from datetime import date
@@ -48,26 +48,43 @@ def resolve(
     )
 
 
-def test_take_half_off_linked_by_hint() -> None:
-    d = resolve("trim", {P_GOOGL: GOOGL}, LinkHint(target=P_GOOGL, confidence=Decimal("0.93")))
-    assert d == LinkDecision(LinkOutcome.LINKED, LinkMethod.JEV, Decimal("0.93"), P_GOOGL)
+def test_take_half_off_the_sole_position_is_linked_by_code() -> None:
+    """F077: one live position is the resolver's sole candidate; the hint is not needed."""
+    d = resolve("trim", {P_GOOGL: GOOGL}, LinkHint(target=P_GOOGL, confidence=Decimal("0.6")))
+    assert d == LinkDecision(LinkOutcome.LINKED, LinkMethod.CODE, Decimal(1), P_GOOGL)
+    assert d.evidence is not None and d.evidence["resolver"]["rule"] == "sole_candidate"
 
 
 def test_ambiguous_hint_lists_whole_book() -> None:
     d = resolve("trim", {P_GOOGL: GOOGL, P_META: META}, LinkHint(target="ambiguous"))
     assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
     assert d.candidate_position_ids == (P_GOOGL, P_META) and d.position_id is None
+    assert d.evidence is not None and d.evidence["rule"] == "unresolved"
 
 
-def test_low_confidence_is_ambiguous_even_with_one_position() -> None:
-    d = resolve("trim", {P_GOOGL: GOOGL}, LinkHint(target=P_GOOGL, confidence=Decimal("0.6")))
+def test_a_confident_pick_between_two_positions_is_only_a_proposal() -> None:
+    """F077: SPY and QQQ open, "trim half", Jev picks one at 0.95: review, never a link."""
+    d = resolve(
+        "trim", {P_GOOGL: GOOGL, P_META: META}, LinkHint(target=P_META, confidence=Decimal("0.95"))
+    )
+    assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS and d.position_id is None
+    assert d.evidence is not None and d.evidence["rule"] == "model_proposed"
+    assert d.evidence["proposal"] == {"target": str(P_META), "confidence": "0.95", "by": "jev"}
+
+
+def test_hint_outside_book_is_refused() -> None:
+    d = resolve(
+        "full_exit",
+        {P_GOOGL: GOOGL, P_META: META},
+        LinkHint(target=P_B, confidence=Decimal("0.99")),
+    )
     assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
-    assert d.candidate_position_ids == (P_GOOGL,)
+    assert d.evidence is not None and d.evidence["proposal"]["refused"] == "not in the lane's book"
 
 
-def test_hint_outside_book_is_ambiguous() -> None:
+def test_hint_outside_the_sole_candidate_does_not_move_the_link() -> None:
     d = resolve("full_exit", {P_GOOGL: GOOGL}, LinkHint(target=P_B, confidence=Decimal("0.99")))
-    assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
+    assert d is not None and (d.outcome, d.position_id) == (LinkOutcome.LINKED, P_GOOGL)
 
 
 def test_empty_book_is_none() -> None:
@@ -111,37 +128,63 @@ def test_hint_contradicting_the_stated_ticker_is_refused() -> None:
         underlying="META",
     )
     assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
-    assert d.evidence is not None and d.evidence["hint_rejected"].startswith("underlying META")
+    assert d.evidence is not None and d.evidence["rule"] == "unresolved"
+    assert d.evidence["proposal"]["refused"].startswith("underlying META")
 
 
 def test_hint_outside_the_resolver_candidates_is_refused() -> None:
-    narrowed = Resolution(outcome="ambiguous", candidates=(P_META,))
+    narrowed = Resolution(outcome="ambiguous", candidates=(P_META, P_GOOGL))
     d = resolve(
         "trim",
-        {P_GOOGL: GOOGL, P_META: META},
-        LinkHint(target=P_GOOGL, confidence=Decimal("0.99")),
+        {P_GOOGL: GOOGL, P_META: META, P_B: GOOGL},
+        LinkHint(target=P_B, confidence=Decimal("0.99")),
         resolution=narrowed,
     )
     assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
-    assert d.candidate_position_ids == (P_META,)
+    assert d.candidate_position_ids == (P_META, P_GOOGL)
+    assert (
+        d.evidence is not None and d.evidence["proposal"]["refused"] == "not a resolver candidate"
+    )
 
 
-def test_hint_with_wrong_strike_or_right_is_refused() -> None:
+def test_low_confidence_proposal_is_marked_refused() -> None:
+    d = resolve(
+        "trim", {P_GOOGL: GOOGL, P_META: META}, LinkHint(target=P_GOOGL, confidence=Decimal("0.6"))
+    )
+    assert d is not None and d.evidence is not None
+    assert d.evidence["proposal"]["refused"] == "below t_link"
+
+
+def test_sole_candidate_contradicted_by_a_stated_field_is_ambiguous() -> None:
     hint = LinkHint(target=P_GOOGL, confidence=Decimal("0.99"))
     assert resolve("trim", {P_GOOGL: GOOGL}, hint, strike=Decimal(360)).outcome == "ambiguous"  # type: ignore[union-attr]
     assert resolve("trim", {P_GOOGL: GOOGL}, hint, right="put").outcome == "ambiguous"  # type: ignore[union-attr]
+    assert resolve("trim", {P_GOOGL: GOOGL}, underlying="QQQ").outcome == "ambiguous"  # type: ignore[union-attr]
     stock = resolve("stock_exit", {P_GOOGL: GOOGL}, hint, instrument=None)
     assert stock is not None and stock.outcome == LinkOutcome.AMBIGUOUS
 
 
-def test_consistent_hint_is_linked() -> None:
+def test_consistent_hint_without_code_evidence_is_still_a_proposal() -> None:
     d = resolve(
         "trim",
         {P_GOOGL: GOOGL, P_META: META},
         LinkHint(target=P_GOOGL, confidence=Decimal("0.9")),
         underlying="GOOGL",
     )
-    assert d == LinkDecision(LinkOutcome.LINKED, LinkMethod.JEV, Decimal("0.9"), P_GOOGL)
+    assert d is not None and d.outcome == LinkOutcome.AMBIGUOUS
+    assert d.evidence is not None and d.evidence["rule"] == "model_proposed"
+
+
+def test_stated_contract_resolved_by_the_resolver_is_linked() -> None:
+    contract = Resolution(
+        outcome="unique",
+        position_id=P_GOOGL,
+        candidates=(P_GOOGL,),
+        method=LinkMethod.CONTRACT,
+        evidence={"rule": "contract", "tickers": ["GOOGL"]},
+    )
+    d = resolve("trim", {P_GOOGL: GOOGL, P_META: META}, resolution=contract, underlying="GOOGL")
+    assert d == LinkDecision(LinkOutcome.LINKED, LinkMethod.CONTRACT, Decimal(1), P_GOOGL)
 
 
 def test_user_choice_overrules_a_misread_field() -> None:

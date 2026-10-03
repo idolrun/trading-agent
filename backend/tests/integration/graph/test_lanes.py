@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.cards.models import Card, CardType
 from app.db import create_session_factory
 from app.inbox.envelope import Envelope
 from app.interpret.models import LinkOutcome, MessageLink
@@ -89,10 +88,11 @@ async def test_follow_up_resolves_inside_its_channel(h: Harness, db_session: Asy
     assert (qqq_row.opened_channel_id, qqq_row.remaining_fraction) == (CHANNEL_B, Decimal("0.5"))
 
 
-async def test_a_hint_at_another_channels_position_is_ambiguous(
+async def test_a_hint_at_another_channels_position_is_refused(
     h: Harness, db_session: AsyncSession
 ) -> None:
-    """The interpreter names the SPY position of channel A for a channel-B trim: refused."""
+    """The interpreter names the SPY position of channel A for a channel-B trim: the proposal is
+    refused and the trim goes to channel B's sole position by code (F077)."""
     spy_a = await h.message("SPY 580p 9/28 2.30", [spy()], at=T0, author=PROVIDER_A)
     qqq_b = await h.message(
         "QQQ 495p 9/28 .98",
@@ -113,15 +113,12 @@ async def test_a_hint_at_another_channels_position_is_ambiguous(
         await h.process(env)
 
     link = await link_of(db_session, trim_b)
-    assert (link.outcome, link.provider_position_id) == (LinkOutcome.AMBIGUOUS, None)
-    assert link.candidate_position_ids == [p_qqq]  # the lane's book only
+    assert (link.outcome, link.provider_position_id) == (LinkOutcome.LINKED, p_qqq)
+    assert link.evidence is not None and link.evidence["resolver"]["rule"] == "sole_candidate"
+    assert link.evidence["candidates"] == [str(p_qqq)]  # the lane's book only
+    assert link.evidence["rule"] == "code"
     spy_row = await db_session.get(ProviderPosition, p_spy)
     assert spy_row is not None and spy_row.remaining_fraction == 1
-    review = await db_session.scalar(
-        select(Card).where(Card.signal_id == signal_id_for(trim_b.key, 0))
-    )
-    assert review is not None and review.card_type == CardType.REVIEW
-    assert review.proposal["candidate_position_ids"] == [str(p_qqq)]
 
 
 async def test_same_channel_other_author_is_never_a_target(

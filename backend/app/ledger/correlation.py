@@ -1,12 +1,12 @@
 """Signal -> provider position correlation (FR-3, 7.3 step 1, TRD §8.1, §4.4, F069): pure.
 
 Entries match by contract in the lane's book (C62). Follow-ups take the resolver's
-deterministic pick (reply chain, thread, stated contract) when it has one; otherwise the
-interpreter's hint is accepted only if it is above `t_link`, one of the resolver's candidates
-AND consistent with every contract field the message states. Model confidence never overrides
-the lane, the candidates or a contract mismatch. Anything else is an explicit AMBIGUOUS / NONE
-that becomes a review card. Nothing upgrades ambiguity, not even a single open position
-(PRD §10).
+deterministic pick (reply chain, thread, stated contract, sole candidate) when it has one and
+the message's stated contract does not contradict it. Otherwise the follow-up is AMBIGUOUS: a
+review card. The interpreter's `LinkHint` is a proposal, never a resolution (F077): when it
+names a candidate it is recorded as `evidence.proposal` (rule `model_proposed`, with why it
+would have been refused: not a candidate, below `t_link`, or a contract conflict) so the card
+can show it, but model confidence never turns ambiguity into a link.
 """
 
 import uuid
@@ -109,19 +109,41 @@ def resolve_link(
             return LinkDecision(LinkOutcome.LINKED, r.method, _ONE, picked, evidence=evidence)
         return _ambiguous(hint_method, hint, candidates, base | {"conflict": conflict})
 
+    return _ambiguous(
+        hint_method,
+        hint,
+        candidates,
+        base | _proposal(hint, hint_method, ctx, candidates, signal, t_link),
+    )
+
+
+def _proposal(
+    hint: LinkHint,
+    method: LinkMethod,
+    ctx: LinkInputs,
+    candidates: tuple[uuid.UUID, ...],
+    signal: NormalizedSignal,
+    t_link: Decimal,
+) -> dict[str, Any]:
+    """What the interpreter proposed, kept for the review card and the audit (F077)."""
     target = hint.target
     if not isinstance(target, uuid.UUID):
-        return _ambiguous(hint_method, hint, candidates, base | {"hint": str(target)})
+        return {"rule": "unresolved", "hint": str(target)}
+    proposal: dict[str, Any] = {
+        "target": str(target),
+        "confidence": None if hint.confidence is None else str(hint.confidence),
+        "by": str(method),
+    }
     if target not in candidates:
-        why = "not in the lane's book" if target not in ctx.book else "not a resolver candidate"
-        return _ambiguous(hint_method, hint, candidates, base | {"hint_rejected": why})
-    if hint.confidence is None or hint.confidence < t_link:
-        return _ambiguous(hint_method, hint, candidates, base | {"hint_rejected": "below t_link"})
-    if (conflict := inconsistency(ctx.book[target], signal)) is not None:
-        return _ambiguous(hint_method, hint, candidates, base | {"hint_rejected": conflict})
-    return LinkDecision(
-        LinkOutcome.LINKED, hint_method, hint.confidence, target, evidence=base | {"rule": "hint"}
-    )
+        proposal["refused"] = (
+            "not in the lane's book" if target not in ctx.book else "not a resolver candidate"
+        )
+    elif hint.confidence is None or hint.confidence < t_link:
+        proposal["refused"] = "below t_link"
+    elif (conflict := inconsistency(ctx.book[target], signal)) is not None:
+        proposal["refused"] = conflict
+    rule = "unresolved" if "refused" in proposal else "model_proposed"
+    return {"rule": rule, "proposal": proposal}
 
 
 def _ambiguous(

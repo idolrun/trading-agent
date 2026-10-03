@@ -1,5 +1,5 @@
 """F076 end-to-end: an interleaved stream from two channels and three authors, through the real
-message graph (fast path for the obvious messages, scripted Jev for the short follow-ups).
+message graph (fast path for every message: each follow-up acts on its lane's sole position, F077).
 No context crosses a channel, an author or a signal.
 
     Channel A                          Channel B
@@ -115,19 +115,14 @@ async def test_interleaved_channels_and_authors_never_mix(
     for env in envs:  # one at a time, in the interleaved order they were posted
         await h.process(env, processor=processor)
 
-    assert jev.calls == 3  # the four entries took the fast path; only the follow-ups asked Jev
+    # F077: every follow-up acts on its lane's sole position, so code settles all seven
+    assert jev.calls == 0
     interpreters = {
         s.message_id: s.interpreter for s in (await db_session.scalars(select(Signal))).all()
     }
     assert [interpreters[e.key.message_id] for e in envs] == [
         "fast",
-        "fast",
-        "fast",
-        "jev",
-        "fast",
-        "jev",
-        "jev",
-    ]
+    ] * 7
 
     async def history(position_id: uuid.UUID) -> list[str]:
         rows = await db_session.scalars(

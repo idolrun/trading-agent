@@ -57,10 +57,17 @@ def test_trim_half_with_two_positions_is_ambiguous() -> None:
     assert (r.outcome, r.candidates) == ("ambiguous", (P_SPY, P_QQQ))
 
 
-def test_one_position_without_evidence_is_still_ambiguous() -> None:
-    """PRD §10: a single open position is not evidence; a model must confirm it."""
+def test_one_position_is_the_sole_candidate() -> None:
+    """F077 (user decision 2026-10-03): the lane's only live position resolves by code."""
     r = resolve("trim half", {P_SPY: SPY})
-    assert (r.outcome, r.candidates) == ("ambiguous", (P_SPY,))
+    assert (r.outcome, r.position_id, r.method) == ("unique", P_SPY, LinkMethod.CODE)
+    assert r.evidence == {"rule": "sole_candidate"}
+
+
+def test_unresolved_book_of_one_is_the_sole_candidate() -> None:
+    r = Resolution.unresolved({P_SPY: SPY})
+    assert (r.outcome, r.position_id, r.evidence["rule"]) == ("unique", P_SPY, "sole_candidate")
+    assert Resolution.unresolved(BOOK).outcome == "ambiguous"
 
 
 def test_explicit_ticker_resolves() -> None:
@@ -90,9 +97,16 @@ def test_ticker_and_strike_split_two_positions_on_one_underlying() -> None:
     assert resolve("trim SPY 770", book).position_id == p_770
 
 
-def test_calls_alone_only_narrows() -> None:
+def test_calls_narrowing_to_one_is_the_sole_candidate() -> None:
     r = resolve("trim the calls", {P_SPY: SPY, P_META: META})
-    assert (r.outcome, r.candidates) == ("ambiguous", (P_META,))
+    assert (r.outcome, r.position_id) == ("unique", P_META)
+    assert r.evidence == {"rule": "sole_candidate", "rights": ["call"]}
+
+
+def test_calls_alone_only_narrows_between_two_calls() -> None:
+    meta_750 = option("META", "750", "call")
+    r = resolve("trim the calls", {P_SPY: SPY, P_META: META, P_OTHER: meta_750})
+    assert (r.outcome, r.candidates) == ("ambiguous", (P_META, P_OTHER))
 
 
 def test_overfound_words_are_not_evidence() -> None:

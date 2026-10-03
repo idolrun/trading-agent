@@ -653,11 +653,12 @@ channel_id ── with provider_id the lane: the context and book scope (C104, F
 - **Correlation order** (F069, `ledger/resolver.py` then `ledger/correlation.py`; the book is the lane's):
   1. **Reply chain** (deterministic): the nearest reply ancestor, up to 3 hops, whose signals of this provider link to exactly one live lane position (`method = reply`);
   2. **Thread** (deterministic): the only live lane position this provider opened or acted on in the same thread (`thread`);
-  3. **Stated contract** (deterministic): the message's own ticker / strike-shaped token / call-put narrows the lane's book to one position (`contract`). A word that matches no position is not evidence; "calls" alone only narrows;
-  4. **Model pick**: Jev / Laya / LLM `links_to` is offered **only the resolver's candidates**. Code accepts it only if it is ≥ T_link, one of those candidates, **and** consistent with every contract field the message states (underlying, expiry, strike, right, instrument). The LLM gives no link confidence, so its pick is never accepted;
-  5. otherwise a review card listing the candidates (lane only).
-  - A deterministic pick beats any model pick. A message that names another of the lane's contracts than its reply/thread pick is a review. One open position is never evidence by itself (PRD §10). A user's choice (review card, re-link, manual link) links even over a misread field; the conflict is recorded.
-  - Every link row stores `evidence` (resolver rule, candidates, a rejected hint and why).
+  3. **Stated contract** (deterministic): the message's own ticker / strike-shaped token / call-put narrows the lane's book to one position (`contract`). A word that matches no position is not evidence;
+  4. **Sole candidate** (deterministic, F077, user decision 2026-10-03): one live lane position left after the rungs above (the lane holds one, or "calls" narrowed it to one) is unique (`method = code`, rule `sole_candidate`), the weakest code evidence;
+  5. **Model proposal**: Jev / Laya / LLM `links_to` is offered **only the resolver's candidates**. Its pick is a proposal, **never a link** (F077): when it names a candidate it is stored as `evidence.proposal` (rule `model_proposed`, or `unresolved` with the reason it would be refused: not a candidate, below T_link, contract conflict) for the review card;
+  6. otherwise a review card listing the candidates (lane only).
+  - A deterministic pick beats any model pick and is still cross-checked against every contract field the message states (underlying, expiry, strike, right, instrument); a contradiction is a review. Model confidence never resolves two or more candidates. A user's choice (review card, re-link, manual link) links even over a misread field; the conflict is recorded.
+  - Every link row stores `evidence` (resolver rule, candidates, the model proposal and why it was not used).
 - `signal_id` and `provider_position_id` are **outputs of interpretation**, not transport keys. They cannot be used for partitioning or routing before interpretation.
 
 **LangGraph-managed:** checkpoint tables (`AsyncPostgresSaver`) and store tables (`PostgresStore`). These are not audit data.
