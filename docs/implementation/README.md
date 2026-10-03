@@ -209,6 +209,7 @@ cd frontend && pnpm dev                  # after F052
 | [F077](F077-link-acceptance.md) | Link acceptance: sole candidate resolves by code; a model pick is a recorded proposal, never a link | F069, F070, F076 | FR-3, C31 |
 | [F078](F078-interpretation-outcomes.md) | Interpretation outcomes: Jev time budget (700/250/1200 ms), failures by reason, Laya only on model failure, invalid answers and scope violations never poison | F033, F035, F074, F077 | C38, FR-8, FR-9 |
 | [F079](F079-feed-guard-condition-gate.md) | Feed-only guard (no "chatter" verdict silences a possible instruction while a position is open) + explicit condition gate; spec §34 scenario | F072, F077, F078 | FR-7, C30, C31 |
+| [F080](F080-version-pinning-catalog.md) | Jev pinned to jev-1.13.0 + `model_returned`; question-set version = catalog fingerprint; unused questions dropped; replayable audit row | F033, F078 | TRD §4.3, C44 |
 
 ---
 

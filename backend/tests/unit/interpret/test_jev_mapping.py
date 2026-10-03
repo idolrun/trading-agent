@@ -82,18 +82,17 @@ def test_questions_that_do_not_apply_do_not_block_a_plain_entry() -> None:
         candle_close=n(0.5),
         stop_removed=n(0.4),
         breakeven_stop=n(0.5),
-        is_add=n(0.45),
         is_correction=n(0.3),
     )
     assert decision.path == "assemble", decision.reasons
     assert decision.parsed is not None
     f = decision.parsed.signals[0].fields
-    assert f.stop_basis is None and f.exit_fraction is None and not f.is_add
+    assert f.stop_basis is None and f.exit_fraction is None
 
 
 def test_a_confident_flag_is_still_recorded_without_a_stop() -> None:
-    _, decision = run(PLAIN, is_add=n(0.95))
-    assert decision.parsed is not None and decision.parsed.signals[0].fields.is_add
+    _, decision = run(PLAIN, candle_close=n(0.95))
+    assert decision.parsed is not None and decision.parsed.signals[0].fields.candle_close
 
 
 def test_the_same_doubt_blocks_when_the_message_has_a_stop() -> None:
@@ -236,7 +235,7 @@ def test_plain_fields_say_a_model_judged_them() -> None:
     assert isinstance(src["msg_type"], ModelSource)
     assert (src["msg_type"].interpreter, src["msg_type"].question) == ("jev", "msg_type")
     assert src["msg_type"].confidence == Decimal("0.95")
-    for name in ("instrument", "stop_basis", "candle_close", "is_add"):
+    for name in ("instrument", "stop_basis", "candle_close"):
         assert isinstance(src[name], ModelSource), name
 
 
@@ -404,3 +403,22 @@ def test_a_doubtful_condition_on_an_entry_is_not_assembled() -> None:
     assert any(r.startswith("condition_doubt") for r in result.slow_reasons)
     _, sure = run(has_prose_condition=n(0.1))
     assert sure.path == "assemble"
+
+
+# --- F080: every question has a reader; the version follows the catalog ---------------------
+
+
+def test_every_catalog_question_has_a_consumer() -> None:
+    from app.interpret.jev.mapping import CONSUMED
+
+    q = build_questions(ctx(EXAMPLE), find_candidates(EXAMPLE), ["lotto"])
+    fixed = {k for k in q if not k.startswith("role_")}
+    assert fixed == set(CONSUMED)
+    assert "correction_target" not in q and "is_add" not in q  # no reader: dropped (F080)
+
+
+def test_the_question_set_version_is_the_catalog_fingerprint() -> None:
+    """A wording, option or routing change must move this on purpose (and replay first)."""
+    from app.interpret.jev.questions import VERSION
+
+    assert VERSION == "jev_questions@d71b0158e813"

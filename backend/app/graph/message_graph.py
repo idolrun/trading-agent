@@ -319,6 +319,7 @@ class _Nodes:
                 # becomes a card with its contract filled in and the user confirms the
                 # underlying (FR-14), instead of a blank review card.
                 underlying_optional=not self.d.llm.configured(),
+                resolution=state.get("resolution"),
             )
             if not (isinstance(outcome, JevFailed) and outcome.kind == "disabled"):
                 await self._stage(state, ctx, Stage.JEV)

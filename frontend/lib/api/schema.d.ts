@@ -1468,7 +1468,7 @@ export interface components {
             enabled: boolean;
             /**
              * Model
-             * @default jev-latest
+             * @default jev-1.13.0
              */
             model: string | null;
             /**
@@ -2464,7 +2464,7 @@ export interface components {
              * @default {
              *       "budget_ms": 1200,
              *       "enabled": true,
-             *       "model": "jev-latest",
+             *       "model": "jev-1.13.0",
              *       "queue_timeout_ms": 250,
              *       "timeout_ms": 700
              *     }

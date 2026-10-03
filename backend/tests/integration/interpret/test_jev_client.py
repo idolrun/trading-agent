@@ -20,6 +20,7 @@ from app.config import Settings
 from app.db import create_session_factory
 from app.interpret.candidates import find_candidates
 from app.interpret.jev.client import JevAnswered, JevFailed, JevInterpreter
+from app.interpret.jev.questions import VERSION
 from app.llm.models import CallOutcome, ModelCall
 from app.llm.usage import CallRef
 from app.markettime import FixedClock
@@ -115,7 +116,7 @@ async def test_retry_then_answer_is_mapped_and_probabilities_are_audited(
         ("typesafe", "interpret", CallOutcome.OK),
     ]
     ok = audit[1]
-    assert result.result.model_call_id == ok.id and ok.prompt_version == "jev_questions@v1"
+    assert result.result.model_call_id == ok.id and ok.prompt_version == VERSION
     assert ok.response is not None
     assert ok.response["role_n1"]["probabilities"] == {"strike": 0.97}  # A.3 rule 4
     assert ok.tokens_in == 900
@@ -227,3 +228,37 @@ async def test_a_scope_violation_sends_nothing(
     assert fake.calls == 0
     [row] = await rows(db_session)
     assert row.outcome == CallOutcome.SCOPE_BLOCKED and "state" not in row.request
+
+
+async def test_the_audit_row_holds_what_a_replay_needs(
+    sessions: async_sessionmaker[AsyncSession], settings: Settings, db_session: AsyncSession
+) -> None:
+    """F080: requested and returned model, question-set fingerprint, candidates, resolver
+    verdict, thresholds and time budget, next to the state and the answers."""
+    from app.observability.counters import counts
+
+    moved = response(example_answers())
+    moved = moved.model_copy(update={"model": "jev-1.14.0"})
+    before = counts["jev:model_mismatch"]
+    resolution = {"outcome": "ambiguous", "candidates": [], "evidence": {"rule": "candidates"}}
+    outcome = await jev(sessions, settings, ScriptedJev(moved)).interpret(
+        ctx(EXAMPLE), find_candidates(EXAMPLE), ref=CallRef(), resolution=resolution
+    )
+    assert isinstance(outcome, JevAnswered)
+    [row] = await rows(db_session)
+    assert (row.model, row.model_returned, row.prompt_version) == (
+        "jev-test",
+        "jev-1.14.0",
+        VERSION,
+    )
+    assert row.request["model_requested"] == "jev-test"
+    assert row.request["link_candidates"] == []
+    assert row.request["resolution"]["evidence"] == {"rule": "candidates"}
+    assert row.request["thresholds"] == {
+        "t_chat": "0.9",
+        "t_type": "0.8",
+        "t_field": "0.8",
+        "t_link": "0.8",
+    }
+    assert row.request["budget_ms"] == {"queue": 250, "request": 700, "step": 1200}
+    assert counts["jev:model_mismatch"] == before + 1  # the alias moved under us

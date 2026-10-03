@@ -106,6 +106,13 @@ class _QueueTimeout(Exception):
     pass
 
 
+def _resolution_summary(resolution: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not resolution:
+        return None
+    keys = ("outcome", "position_id", "candidates", "method", "evidence")
+    return {k: resolution.get(k) for k in keys}
+
+
 def _json_safe(value: Any) -> Any:
     """jsonb has no NaN / Infinity: an invalid answer is still audited, as text."""
     if isinstance(value, float) and not math.isfinite(value):
@@ -149,7 +156,10 @@ class JevInterpreter:
         ref: CallRef,
         lot_ids: frozenset[str] = frozenset(),
         underlying_optional: bool = False,
+        resolution: Mapping[str, Any] | None = None,
     ) -> JevOutcome:
+        """`resolution`: the context resolver's verdict, kept in the audit row (F080) so a
+        historical call shows which candidates code had narrowed to and why."""
         if not self.available():
             return JevFailed("disabled")
         cfg = self._config()
@@ -172,7 +182,23 @@ class JevInterpreter:
                 self._clock.now(),
             )
             return JevFailed("scope_violation", reason, call_id)
-        request = {"questions": VERSION, "question_ids": sorted(questions), "state": state}
+        request = {
+            "questions": VERSION,
+            "question_ids": sorted(questions),
+            "state": state,
+            # F080: what a replay of this call needs besides the state
+            "model_requested": cfg.jev.model,
+            "link_candidates": [str(b.id) for b in ctx.link_candidates],
+            "resolution": _resolution_summary(resolution),
+            "thresholds": {
+                k: str(getattr(cfg, k)) for k in ("t_chat", "t_type", "t_field", "t_link")
+            },
+            "budget_ms": {
+                "queue": cfg.jev.queue_timeout_ms,
+                "request": cfg.jev.timeout_ms,
+                "step": cfg.jev.budget_ms,
+            },
+        }
         asked = await self._ask(cfg, state, questions, request, ref)
         if isinstance(asked, JevFailed):
             bump(f"jev:{asked.kind}")
@@ -200,7 +226,14 @@ class JevInterpreter:
             t0,
             started,
             usage=response.usage,
+            model_returned=response.model,
         )
+        if response.model and response.model != cfg.jev.model:
+            bump("jev:model_mismatch")  # an alias moved, or the API substituted a model
+            logger.warning(
+                "jev answered with another model",
+                extra={"requested": cfg.jev.model, "returned": response.model},
+            )
         if result is None:
             bump("jev:invalid")
             logger.warning("jev answer invalid", extra={"problem": problem})
@@ -279,6 +312,7 @@ class JevInterpreter:
         t0: float,
         started: datetime,
         usage: Usage | None = None,
+        model_returned: str | None = None,
     ) -> int:
         tokens = None
         if usage is not None and usage.input_tokens is not None:
@@ -304,4 +338,5 @@ class JevInterpreter:
             started_at=started,
             usage=tokens,
             price=cfg.llm.prices.get(f"typesafe:{model}"),
+            model_returned=model_returned,
         )

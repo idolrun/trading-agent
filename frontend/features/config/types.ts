@@ -80,7 +80,7 @@ export function defaultDocument(): ConfigDoc {
     option_tiers: null,
     stock_tiers: null,
     symbol_map: { SPX: "SPXW" },
-    jev: { model: "jev-latest", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
+    jev: { model: "jev-1.13.0", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
     laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
     llm: {
       roles: {

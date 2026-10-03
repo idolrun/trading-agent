@@ -34,7 +34,7 @@
   "t_type": "0.8",
   "t_link": "0.8",
   "jev": {
-    "model": "jev-latest",
+    "model": "jev-1.13.0",
     "timeout_ms": 700,
     "queue_timeout_ms": 250,
     "budget_ms": 1200,

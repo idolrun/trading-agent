@@ -1,15 +1,23 @@
-"""TRD Appendix A as data (`jev_questions@v1`). Wording is tunable here without code changes;
-option labels are what `mapping.py` reads. Every Choice has a no-match option."""
+"""TRD Appendix A as data. Wording is tunable here without code changes; option labels are
+what `mapping.py` reads. Every Choice has a no-match option.
 
+`VERSION` (F080) is a fingerprint, not a hand-edited label: the sha256 of the whole catalog
+(ids, types, instructions, criteria; built over a fixed sample message so the per-message
+options have a stable shape) plus `mapping.ROUTING_VERSION`. Any wording, option or routing
+change gives a new version, stored with every Jev / Laya call (`model_calls.prompt_version`)."""
+
+import hashlib
+import json
+import uuid
 from typing import Any
 
 from typesafe_sdk import Choice, Noul, Question, Score
 
-from app.interpret.candidates import Candidates
-from app.interpret.context import ProviderContext
+from app.interpret.candidates import Candidates, find_candidates
+from app.interpret.context import BookEntry, CurrentMessage, ProviderContext
+from app.interpret.jev.mapping import ROUTING_VERSION
 from app.interpret.models import MsgType
 
-VERSION = "jev_questions@v1"
 MESSAGE = "`message.text`"
 
 MSG_TYPES: dict[str, str] = {
@@ -108,7 +116,6 @@ def build_questions(
             f"{MESSAGE} makes the trade depend on a condition in words (e.g. 'if it breaks 770')."
         ),
         "is_correction": _yes(f"{MESSAGE} corrects a mistake in an earlier message."),
-        "is_add": _yes(f"{MESSAGE} adds to a position the provider already holds."),
         "breakeven_stop": _yes(f"{MESSAGE} moves the stop to the entry price (breakeven)."),
         "stop_removed": _yes(f"{MESSAGE} removes the stop loss."),
         "exit_intent": Score(
@@ -132,13 +139,6 @@ def build_questions(
             "Use `provider_profile` for the provider's own words.",
             criteria={**{t: None for t in tiers}, "not_stated": "No size is stated."},
         ),
-        "correction_target": Choice(
-            instructions=f"Which earlier message in `recent_author_messages` does {MESSAGE} fix?",
-            criteria={
-                **{m.id: f"`{m.text}`" for m in ctx.recent_author_messages},
-                "none": "It corrects nothing.",
-            },
-        ),
         "links_to": Choice(
             instructions=f"Which position in `provider_book` does {MESSAGE} act on?",
             criteria={
@@ -160,3 +160,33 @@ def build_questions(
 def _pick(instructions: str, found: list[Any], path: str, no_match: dict[str, str]) -> Choice:
     options = {c.id: f"`{path}[{n}]` {c.text!r} at position {c.start}" for n, c in enumerate(found)}
     return Choice(instructions=instructions, criteria={**options, **no_match})
+
+
+def _fingerprint() -> str:
+    """The catalog over a fixed sample (one candidate of each kind, one position, one tier)."""
+    text = "spy 9/28 770c .95 half"
+    sample = ProviderContext(
+        now_et="2026-01-02 10:00:00 ET",
+        message=CurrentMessage(
+            id="1",
+            author_id="1",
+            at_et="2026-01-02 10:00:00 ET",
+            text=text,
+            event_type="create",
+            channel_id="1",
+            reply_to=None,
+        ),
+        reply_parent=None,
+        recent_author_messages=[],
+        provider_book=[BookEntry(id=uuid.UUID(int=1), summary="<position>")],
+    )
+    catalog = build_questions(sample, find_candidates(text), ["<tier>"])
+    doc = {
+        qid: q.model_dump(mode="json") if isinstance(q, Choice | Noul | Score) else dict(q)
+        for qid, q in sorted(catalog.items())
+    }
+    raw = json.dumps({"questions": doc, "routing": ROUTING_VERSION}, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()[:12]
+
+
+VERSION = f"jev_questions@{_fingerprint()}"

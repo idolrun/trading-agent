@@ -28,9 +28,9 @@ def test_choice_confidence_is_the_top_probability_not_laya_entropy_score() -> No
 
 
 def test_round_trip_of_every_answer_kind() -> None:
-    answers = example_answers(is_add=n(0.3), msg_type=c("trim", 0.7, soft_exit=0.2))
+    answers = example_answers(candle_close=n(0.3), msg_type=c("trim", 0.7, soft_exit=0.2))
     back = to_answers(raw_answers(answers))
-    assert back["is_add"].noul == 0.3  # type: ignore[union-attr]
+    assert back["candle_close"].noul == 0.3  # type: ignore[union-attr]
     assert back["msg_type"].choice == "trim"  # type: ignore[union-attr]
     assert back["exit_intent"].score == 0  # type: ignore[union-attr]  # int-keyed legend survives
 
@@ -40,7 +40,7 @@ def test_questions_become_plain_laya_dicts() -> None:
     questions = to_laya_questions(build_questions(context, find_candidates(EXAMPLE), ["default"]))
     assert questions["msg_type"]["type"] == "choice"
     assert isinstance(questions["msg_type"]["criteria"], dict)
-    assert questions["is_add"]["type"] == "noul"
+    assert questions["candle_close"]["type"] == "noul"
     assert questions["exit_intent"]["type"] == "score"
     assert isinstance(questions["exit_intent"]["criteria"], list)
 

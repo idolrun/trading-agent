@@ -72,7 +72,8 @@ class ModelCall(SQLModel, table=True):
     )
     eval_run_id: uuid.UUID | None = Field(default=None, foreign_key="eval_runs.eval_run_id")
     provider: ModelProvider = choice()
-    model: str
+    model: str  # as requested (config); an alias like `jev-latest` can move
+    model_returned: str | None = None  # F080: the concrete model that answered, if reported
     role: ModelRole = choice()
     attempt: int = smallint()
     prompt_version: str | None = None

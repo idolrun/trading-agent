@@ -25,6 +25,30 @@ from app.interpret.spans import parse_raw, verify_literal_spans
 from app.runtime_config.schema import RuntimeConfig
 
 Answer = ChoiceAnswer | NoulAnswer | ScoreAnswer
+# Part of the question-set version (F080): bump when this mapper's or `route.py`'s reading of
+# the answers changes (thresholds' meaning, routing rules), so a historical call can be replayed
+# with the semantics it was decided under.
+ROUTING_VERSION = 3
+# Every catalog question and the code that reads it (F080: a question with no reader is cost
+# without value). `role_<id>` questions are per number candidate, read by the role loop.
+CONSUMED = {
+    "msg_type": "map_answers (type, C52), route (t_chat / t_type)",
+    "signal_count": "route (multiple -> semantic doubt)",
+    "instrument": "map_answers -> ParsedSignal.instrument",
+    "right": "map_answers -> fields.right (literal span required)",
+    "exit_fraction": "map_answers -> fields.exit_fraction (exits)",
+    "stop_basis": "map_answers -> fields.stop_basis (with a stop)",
+    "candle_close": "map_answers -> fields.candle_close",
+    "breakeven_stop": "map_answers -> fields.breakeven_stop",
+    "stop_removed": "map_answers -> fields.stop_removed",
+    "has_prose_condition": "map_answers condition gate (F079)",
+    "is_correction": "map_answers -> semantic doubt (correction)",
+    "exit_intent": "map_answers C52 (trim vs soft exit)",
+    "ticker": "map_answers -> fields.underlying (candidate span)",
+    "expiry": "map_answers -> fields.expiry_token (candidate span)",
+    "size_tier": "map_answers -> fields.size_tier",
+    "links_to": "map_answers -> link_hint (a proposal only, F077)",
+}
 
 FEED_TYPES = frozenset({MsgType.CHATTER, MsgType.COMMENTARY_PNL, MsgType.WATCH})
 # Contract fields that must be literal before code may assemble (else slow path, A.3 rule 3).
@@ -43,15 +67,14 @@ SINGLE_ROLES = {
     "stop_level": "stop_level",
     "share_or_contract_qty": "qty_stated",
 }
-FLAGS = ("candle_close", "is_add", "breakeven_stop", "stop_removed")
+FLAGS = ("candle_close", "breakeven_stop", "stop_removed")
 # Number roles that no field is read from; the rest are read (SINGLE_ROLES, take_profit_level).
 IRRELEVANT_ROLES = ("underlying_level", "exit_fraction", "pnl_or_percent", "date_or_time", "other")
 OPTION_ENTRY_TYPES = frozenset({MsgType.ENTRY, MsgType.ADD})
 STOP_TYPES = frozenset({MsgType.STOP_SET, MsgType.STOP_MOVE, MsgType.STOP_CANCEL})
 EXIT_TYPES = frozenset({MsgType.TRIM, MsgType.FULL_EXIT, MsgType.SOFT_EXIT, MsgType.STOCK_EXIT})
-# Flags that change what an order does only when the message carries a stop; `is_add` changes
-# nothing downstream (the link decides add vs new).
-STOP_FLAGS = frozenset({"candle_close", "breakeven_stop", "stop_removed"})
+# Every flag changes what an order does only when the message carries a stop.
+STOP_FLAGS = frozenset(FLAGS)
 CONDITION_YES = Decimal("0.5")  # F079: has_prose_condition at or above: a conditional instruction
 _RIGHT_WORD = re.compile(r"\b(?:calls?|puts?)\b", re.IGNORECASE)
 

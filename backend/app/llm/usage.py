@@ -73,6 +73,7 @@ async def record_model_call(
     started_at: datetime,
     usage: UsageMetadata | None = None,
     price: Price | None = None,
+    model_returned: str | None = None,
 ) -> int:
     """One row per attempt, in its own short transaction (never inside `apply`)."""
     row = ModelCall(
@@ -83,6 +84,7 @@ async def record_model_call(
         eval_run_id=ref.eval_run_id,
         provider=provider,
         model=model,
+        model_returned=model_returned,
         role=role,
         attempt=attempt,
         prompt_version=prompt_version,

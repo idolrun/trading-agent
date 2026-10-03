@@ -58,7 +58,7 @@ def test_nothing_is_blocked_without_a_position() -> None:
 
 
 def test_pings_are_not_words() -> None:
-    """"@here" is a ping, so "nice @here" says nothing about leaving."""
+    """ "@here" is a ping, so "nice @here" says nothing about leaving."""
     assert block("nice move @here") is None
 
 

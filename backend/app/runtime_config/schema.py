@@ -34,7 +34,10 @@ class JevConfig(_Strict):
     429 retry happens only when a full request still fits. A miss is a model failure: the
     message goes to the fallbacks, never waits longer."""
 
-    model: str | None = "jev-latest"  # TRD §4.3: pin to a dated version once chosen
+    # F080: pinned (TypeSafe docs 2026-10-03: `jev-latest` and `jev-preview` both point to
+    # jev-1.13.0). Thresholds were measured on it; move on purpose, after a replay. An alias
+    # stays possible for development; `model_calls.model_returned` shows what really answered.
+    model: str | None = "jev-1.13.0"
     timeout_ms: PositiveInt = 700
     queue_timeout_ms: PositiveInt = 250
     budget_ms: PositiveInt = 1200
