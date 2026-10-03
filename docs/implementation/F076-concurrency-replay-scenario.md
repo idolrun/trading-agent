@@ -49,3 +49,19 @@ It asserts:
   - The failing number is one lane waiting behind a simulated LLM call. The fakes draw every model latency from one shared seeded RNG, so 9 entries no longer calling fake Jev shifts every later draw.
   - The context/resolver reads were merged into one transaction anyway; no measurable change.
   - Open: give the fakes a per-message seed so code changes do not reshuffle simulated latencies, then re-baseline.
+
+## Real-corpus measurement (2026-10-03)
+- **Setup:** 519 real messages (2 channels, 14 authors), scratch DB `trading_measure` (a copy of `trading_replay`). Real message graph in replay mode, so interpretation only: no ledger, cards or broker. Real Jev (`jev-latest`, timeout raised to 10 s for the measurement), Laya off, no LLM.
+
+| Path | Messages | p50 | p95 |
+|---|---:|---:|---:|
+| fast (code only) | 9 | 17 ms | 20 ms |
+| Jev assembled | 10 | 378 ms | 467 ms |
+| feed only (Jev) | 125 | 381 ms | 460 ms |
+| slow path → review (no Laya / LLM configured) | 375 | 384 ms | 485 ms |
+| all | 519 | 383 ms | 480 ms |
+
+- **Jev call latency:** p50 353 ms, p95 450 ms; **0 of 510 calls finished under the configured `jev.timeout_ms = 300`**. With the default, every Jev call times out and every message becomes a review card. This needs a config decision (≈ 600 ms covers p95 with margin). It is not changed here.
+- **Before (2026-09-30 replay, 518 messages):** 19 settled by Jev, 139 feed only, 360 to the slow path. **After:** 19 settled (9 by code at about 17 ms, 10 by Jev), 125 feed only, 375 to the slow path.
+- Slow-path reasons are dominated by Jev's message-type confidence (320 of 375 messages).
+- **Wrong-link rate:** not measurable on this corpus. It has no labels (no `eval_labels` anywhere), and replay mode opens no positions. The replay metric exists (F076 §4) and needs labelled follow-ups.
