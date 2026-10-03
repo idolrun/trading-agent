@@ -33,6 +33,7 @@ from app.cards.models import (
     CardReason,
     CardSource,
     CardState,
+    CardType,
     Decision,
 )
 from app.cards.preflight import Check, Preflight, Status
@@ -410,8 +411,6 @@ class ApprovalService:
                     )
                 card.provider_position_id = confirmed.position_id
         if edits.chosen_position_id is not None:
-            # ponytail: the chosen position is recorded on the card; the provider link row and
-            # ledger effect of a user relink are F037/F047 (relink approval path)
             position = await db.get(ProviderPosition, edits.chosen_position_id)
             offered = proposal.candidate_position_ids
             if (
@@ -425,6 +424,21 @@ class ApprovalService:
             lot = await ledger.open_lot_for_position(db, position.provider_position_id)
             card.provider_position_id = position.provider_position_id
             card.lot_id = lot.lot_id if lot else None
+            if card.signal_id is not None and "chosen_position_id" in proposal.missing_fields:
+                # F075: the person resolved the ambiguity. Approving this card writes it like a
+                # re-link (RelinkService.apply_approved: a user_correction link row, the
+                # provider-ledger change, then a fresh card for the action), so later messages
+                # see the corrected state. Approving places no order itself.
+                edited = edited.model_copy(
+                    update={
+                        "action": CardAction.REVIEW,
+                        "card_type": CardType.REVIEW,
+                        "relink_signal_id": card.signal_id,
+                        "candidate_position_ids": [position.provider_position_id],
+                        "missing_fields": [],
+                        "review_reasons": [*edited.review_reasons, "position_chosen"],
+                    }
+                )
         completed = bool(proposal.missing_fields) and not edited.missing_fields
         await cards.transition(
             db,
