@@ -164,7 +164,9 @@ class Ledger:
         for sig in label["signals"]:
             kind, fields = sig["msg_type"], sig.get("fields", {})
             target = self.target(env, label, sig)
-            opens = kind in OPENING or (kind in SETUP and fields.get("underlying"))
+            # an add with nothing to add to: the position opened before the corpus; the label
+            # says it exists, so later follow-ups can link to it (user review 2026-10-08)
+            opens = kind in OPENING or kind == "add" or (kind in SETUP and fields.get("underlying"))
             if opens and target is None:
                 position = _position(env, sig)
                 lane[position.provider_position_id] = position

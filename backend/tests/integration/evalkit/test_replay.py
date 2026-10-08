@@ -382,3 +382,31 @@ async def test_import_labels_expands_open_links_and_is_idempotent(
     assert linked.label["link"]["provider_position_id"] == expected
     again = await import_labels(h.factory, doc)
     assert (again.inserted, again.unchanged) == (0, 2)
+
+
+async def test_an_add_whose_entry_predates_the_corpus_opens_the_position(
+    h: Harness, corpus: Corpus
+) -> None:
+    """ "NOW 10/16 145 calls … added $3.80": the label is an add, its entry was never posted;
+    the later "cut NOW swing" links to it and is scored against it."""
+    from app.evalkit.replay import position_id_of
+    from tests.integration.pipeline.harness import follow_up
+
+    add = {
+        "msg_type": "add",
+        "instrument": "option",
+        "fields": {"underlying": "NOW", "strike": "145", "right": "call", "entry_price": "3.80"},
+    }
+    added = await corpus.add("added NOW 145c $3.80", [], [add], when=at(TEST_DAY, 0))
+    now_id = position_id_of(f"{added.key.message_id}.create.0")
+    await corpus.add(
+        "cut NOW swing",
+        [follow_up("full_exit", now_id, exit_fraction="all")],
+        [{"msg_type": "full_exit", "fields": {"exit_fraction": "all"}}],
+        when=at(TEST_DAY, 1),
+        link={"idx": 0, "provider_position_id": str(now_id)},
+    )
+    async with h.factory() as db:
+        events = await latest_labels(db)
+    metrics = await measure(replay_deps(h), events, Split.TEST)
+    assert (metrics["links_correct"], metrics["links_wrong"]) == (1, 0)  # the sole position

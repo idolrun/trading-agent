@@ -36,7 +36,7 @@ The replay decides links the way production does, and the 519-message real corpu
   - fields are only values the text states literally;
   - 112 follow-ups link to the message that opened their position;
   - 26 judgment calls are listed under `spot_check` for the user.
-- **The numbers below are provisional until the user spot-checks the labels.**
+- **User review (2026-10-08):** of the 26 spot-checks, 18 kept, 6 corrected (imported as source `manual`), 2 unsure (rows 371, 481). The replay ledger now opens a position for an add whose entry predates the corpus (row 16 → row 115). Re-run on the reviewed labels: wrong links 0/115, false feed-only 0/187 (`docs/reviews/jev-hardening-2026-10.md`).
 - Metric changes (`evalkit/metrics.py`):
   - `false_feed_only` and `false_feed_only_rate` (a labeled instruction that ended feed-only);
   - outcome counts (`interpret_outcome`);

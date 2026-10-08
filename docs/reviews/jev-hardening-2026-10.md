@@ -1,6 +1,32 @@
-# Jev hardening (F077–F082): real-corpus measurement, 2026-10-03
+# Jev hardening (F077–F082): real-corpus measurement, 2026-10-03 (re-run 2026-10-08)
 
-**Provisional.** The labels were written by Claude (`docs/data/labels-assistant-2026-10.json`, local and gitignored like the corpus; source `assistant`), with message types for rows 1–130 taken from the 2026-09-30 hand-made key. 26 judgment calls are listed under `spot_check`. The numbers stand once the user has reviewed them.
+**User-reviewed 2026-10-08.** Claude wrote the labels (`docs/data/labels-assistant-2026-10.json`, local and gitignored like the corpus; source `assistant`); message types for rows 1–130 come from the 2026-09-30 hand-made key. The user reviewed the 26 judgment calls (`label_review_completed.xlsx`):
+- 18 kept;
+- 6 changed (rows 16, 141, 178, 222, 385, 454; imported as source `manual`);
+- 2 still unsure: row 371 (does a10's "STS" mean a buy?) and row 481 (which a9 position: 449 or 473). Both are left as labelled.
+
+The other 493 labels were not reviewed one by one.
+
+## Re-measured on the reviewed labels (2026-10-08)
+
+| Metric | 2026-10-03 (assistant labels) | 2026-10-08 (reviewed) |
+|---|---:|---:|
+| Actionable messages / follow-up links scored | 185 / 112 | 187 / 115 |
+| **Wrong links** | 0 / 112 | **0 / 115** |
+| **False feed-only** | 0 / 185 | **0 / 187** |
+| Follow-ups linked correctly | 8–9 | 8 |
+| Wrong contracts on settled cards | 0 (after the HAGW fix) | 0 |
+| Actionable precision / recall | 1.0 / 16.1% | 1.0 / 14.9% |
+| Review rate | 73.0% | 73.0% |
+| Jev ok-call p50 / p95 / p99 (`jev-1.13.0`) | 375 / 498 / 574 ms | 404 / 514 / 593 ms |
+| Jev timeouts at 700 ms | 1–5% | 2.0% (10 / 502) |
+
+What the review changed:
+- **Rows 16 → 115:** row 16 is an add to a position opened before the corpus. The replay's label ledger now opens such a position, so row 115 ("cut NOW swing") links to it.
+- **Rows 141, 385, 454:** these became linked follow-ups, so 115 links are scored instead of 112.
+- **Recall:** dips slightly because the denominator grew. The safety conclusions are unchanged.
+
+The tables below are the 2026-10-03 run.
 
 ## Setup
 - **Corpus:** 519 real Discord message events from `trading_replay`, copied to the scratch DB `trading_measure`. 2 channels, 14 authors, 2026-09-24 to 2026-09-30.
@@ -65,6 +91,6 @@ Before (10 s timeout): message p50 380 ms, p95 510 ms.
 - **The timeout rate varied 5× between two runs an hour apart.** Watch `jev_failures.timeout` on the health page before moving the timeout.
 
 ## Open
-- The user spot-checks the labels (`spot_check` list), then re-run: `uv run python -m app.evalkit replay --split dev|test`, against a DB with the labels imported.
+- Two labels are still unsure (rows 371, 481). The other 493 labels were not reviewed one by one.
 - Review rate: configure the LLM slow path, then re-measure.
 - Wrong-link rate on real data needs follow-ups that Jev settles. Revisit after the slow path is configured, and watch the live `wrong_link_rate` on the health page (F081).
