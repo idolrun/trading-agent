@@ -1,0 +1,15 @@
+import type { Schemas } from "@/lib/api/types"
+
+export type Overview = Schemas["Overview"]
+export type SignalsReport = Schemas["SignalsReport"]
+export type OrdersReport = Schemas["OrdersReport"]
+export type PnlReport = Schemas["PnlReport"]
+export type InstrumentsReport = Schemas["InstrumentsReport"]
+export type TradesReport = Schemas["TradesReport"]
+export type TradeDetail = Schemas["TradeDetail"]
+export type TimeseriesReport = Schemas["TimeseriesReport"]
+export type Coverage = Schemas["Coverage"]
+export type TradeRow = Schemas["TradeRow"]
+export type InstrumentRow = Schemas["InstrumentRow"]
+export type SignalRow = Schemas["SignalRow"]
+export type OrderRow = Schemas["OrderRow"]
