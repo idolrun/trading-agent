@@ -690,6 +690,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/trading/instruments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Instruments */
+        get: operations["instruments_api_v1_reports_trading_instruments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/trading/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Orders */
+        get: operations["orders_api_v1_reports_trading_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/trading/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview */
+        get: operations["overview_api_v1_reports_trading_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/trading/pnl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pnl */
+        get: operations["pnl_api_v1_reports_trading_pnl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/trading/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Signals */
+        get: operations["signals_api_v1_reports_trading_signals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/trading/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Timeseries
+         * @description `metrics`: comma-separated names (see `TIMESERIES_METRICS`); none = all of them.
+         */
+        get: operations["timeseries_api_v1_reports_trading_timeseries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/trading/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trades */
+        get: operations["trades_api_v1_reports_trading_trades_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/trading/trades/{trade_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trade Detail */
+        get: operations["trade_detail_api_v1_reports_trading_trades__trade_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -932,6 +1071,15 @@ export interface components {
             /** Useravg */
             userAvg: string | null;
         };
+        /** BucketNotional */
+        BucketNotional: {
+            /** Bucket */
+            bucket: string;
+            /** Buy */
+            buy: string;
+            /** Sell */
+            sell: string;
+        };
         /** CardDetail */
         CardDetail: {
             /** Action */
@@ -1167,6 +1315,37 @@ export interface components {
             /** Underlying */
             underlying: string;
         };
+        /** CountCompare */
+        CountCompare: {
+            /** Current */
+            current: number;
+            /** Previous */
+            previous: number | null;
+        };
+        /**
+         * Coverage
+         * @description What a report is and is not made of.
+         */
+        Coverage: {
+            /**
+             * Asof
+             * Format: date-time
+             */
+            asOf: string;
+            /** Costsincluded */
+            costsIncluded: boolean;
+            /** Firsteventat */
+            firstEventAt: string | null;
+            /** Lotswithoutbasis */
+            lotsWithoutBasis: number;
+            /** Mode */
+            mode: string;
+            /** Reconcileadjustments */
+            reconcileAdjustments: number;
+            /** Unpricedlots */
+            unpricedLots: number;
+            window: components["schemas"]["WindowOut"];
+        };
         /** CreateUserRequest */
         CreateUserRequest: {
             /**
@@ -1375,6 +1554,17 @@ export interface components {
             /** State */
             state: string;
         };
+        /** FunnelStage */
+        FunnelStage: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Rateofprevious */
+            rateOfPrevious: string | null;
+        };
         /** HealthDetails */
         HealthDetails: {
             /** Backlogdepth */
@@ -1447,6 +1637,66 @@ export interface components {
         IngestResponse: {
             /** Accepted */
             accepted: boolean;
+        };
+        /**
+         * Instrument
+         * @enum {string}
+         */
+        Instrument: "option" | "stock";
+        /** InstrumentRow */
+        InstrumentRow: {
+            /** Acceptedsignals */
+            acceptedSignals: number;
+            /** Avgentryprice */
+            avgEntryPrice: string | null;
+            /** Avgexitprice */
+            avgExitPrice: string | null;
+            /** Buyorders */
+            buyOrders: number;
+            /** Buyqty */
+            buyQty: number;
+            /** Closedtrades */
+            closedTrades: number;
+            /** Fees */
+            fees: string | null;
+            /** Instrument */
+            instrument: string;
+            /** Lastactivity */
+            lastActivity: string | null;
+            /** Losses */
+            losses: number;
+            /** Lowsample */
+            lowSample: boolean;
+            /** Netpnl */
+            netPnl: string | null;
+            /** Openqty */
+            openQty: number;
+            /** Realizedpnl */
+            realizedPnl: string | null;
+            /** Rejectedsignals */
+            rejectedSignals: number;
+            /** Sellorders */
+            sellOrders: number;
+            /** Sellqty */
+            sellQty: number;
+            /** Signals */
+            signals: number;
+            /** Symbol */
+            symbol: string;
+            /** Unrealizedpnl */
+            unrealizedPnl: string | null;
+            /** Winrate */
+            winRate: string | null;
+            /** Wins */
+            wins: number;
+        };
+        /** InstrumentsReport */
+        InstrumentsReport: {
+            coverage: components["schemas"]["Coverage"];
+            /** Rows */
+            rows: components["schemas"]["InstrumentRow"][];
+            /** Totalrows */
+            totalRows: number;
         };
         /**
          * InterpretationStats
@@ -1531,6 +1781,15 @@ export interface components {
             link?: components["schemas"]["LabelLink"] | null;
             /** Signals */
             signals: components["schemas"]["LabelSignal"][];
+        };
+        /** LabelCount */
+        LabelCount: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
         };
         /** LabelDetail */
         LabelDetail: {
@@ -1947,6 +2206,26 @@ export interface components {
          * @enum {string}
          */
         LotStatus: "open" | "closed";
+        /** LotStep */
+        LotStep: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Avgafter */
+            avgAfter: string | null;
+            /** Avgbefore */
+            avgBefore: string | null;
+            /** Change */
+            change: string;
+            /** Fillid */
+            fillId: string | null;
+            /** Qtyafter */
+            qtyAfter: number;
+            /** Qtybefore */
+            qtyBefore: number | null;
+        };
         /** ManualResultOut */
         ManualResultOut: {
             /**
@@ -1973,6 +2252,13 @@ export interface components {
             stale: number;
             /** Total */
             total: number;
+        };
+        /** MoneyCompare */
+        MoneyCompare: {
+            /** Current */
+            current: string | null;
+            /** Previous */
+            previous: string | null;
         };
         /**
          * MsgType
@@ -2078,6 +2364,49 @@ export interface components {
             /** Stopprice */
             stopPrice: string | null;
         };
+        /** OrderRow */
+        OrderRow: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Avgfillprice */
+            avgFillPrice: string | null;
+            /** Broker */
+            broker: string;
+            /** Brokerorderid */
+            brokerOrderId: string | null;
+            /** Executednotional */
+            executedNotional: string | null;
+            /** Fees */
+            fees: string | null;
+            /** Filledqty */
+            filledQty: number;
+            /** Instrument */
+            instrument: string;
+            /** Kind */
+            kind: string;
+            /** Lotid */
+            lotId: string | null;
+            /** Mode */
+            mode: string;
+            /**
+             * Orderid
+             * Format: uuid
+             */
+            orderId: string;
+            /** Requestedqty */
+            requestedQty: number;
+            /** Side */
+            side: string;
+            /** Signalid */
+            signalId: string | null;
+            /** Status */
+            status: string;
+            /** Symbol */
+            symbol: string;
+        };
         /** OrderStats */
         OrderStats: {
             /** Bystatus */
@@ -2094,6 +2423,129 @@ export interface components {
          * @enum {string}
          */
         OrderStatus: "intent" | "submitted" | "working" | "partially_filled" | "filled" | "cancelled" | "rejected" | "unknown";
+        /** OrderStep */
+        OrderStep: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Brokerstatus */
+            brokerStatus: string | null;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+        };
+        /** OrdersReport */
+        OrdersReport: {
+            /** Brokerrejections */
+            brokerRejections: components["schemas"]["ReasonCount"][];
+            /** Buyqtyfilled */
+            buyQtyFilled: number;
+            /** Buyqtyrequested */
+            buyQtyRequested: number;
+            /** Bysymbol */
+            bySymbol: components["schemas"]["SymbolFills"][];
+            /** Cancelled */
+            cancelled: number;
+            coverage: components["schemas"]["Coverage"];
+            /** Executednotional */
+            executedNotional: string | null;
+            /** Fees */
+            fees: string | null;
+            /** Filled */
+            filled: number;
+            /** Notionalbybucket */
+            notionalByBucket: components["schemas"]["BucketNotional"][];
+            /** Ordertofillrate */
+            orderToFillRate: string | null;
+            /** Partiallyfilled */
+            partiallyFilled: number;
+            /** Pending */
+            pending: number;
+            /** Rejected */
+            rejected: number;
+            /** Rows */
+            rows: components["schemas"]["OrderRow"][];
+            /** Sellqtyfilled */
+            sellQtyFilled: number;
+            /** Sellqtyrequested */
+            sellQtyRequested: number;
+            /** Statusdistribution */
+            statusDistribution: components["schemas"]["LabelCount"][];
+            /** Submitted */
+            submitted: number;
+            /** Totalrows */
+            totalRows: number;
+        };
+        /** Overview */
+        Overview: {
+            /** Acceptancerate */
+            acceptanceRate: string | null;
+            acceptedSignals: components["schemas"]["CountCompare"];
+            actionableSignals: components["schemas"]["CountCompare"];
+            /** Approved */
+            approved: number;
+            /** Avgloss */
+            avgLoss: string | null;
+            /** Avgwin */
+            avgWin: string | null;
+            /** Breakeven */
+            breakeven: number;
+            /** Buyfills */
+            buyFills: number;
+            coverage: components["schemas"]["Coverage"];
+            /** Executednotional */
+            executedNotional: string | null;
+            executedTrades: components["schemas"]["CountCompare"];
+            /** Fees */
+            fees: string | null;
+            /** Largestloss */
+            largestLoss: string | null;
+            /** Largestwin */
+            largestWin: string | null;
+            /** Losses */
+            losses: number;
+            /** Netpnl */
+            netPnl: string | null;
+            /** Openpositions */
+            openPositions: number;
+            /** Ordersfilled */
+            ordersFilled: number;
+            /** Orderspending */
+            ordersPending: number;
+            /** Orderssubmitted */
+            ordersSubmitted: number;
+            /** Pendingcards */
+            pendingCards: number;
+            /** Profitfactor */
+            profitFactor: string | null;
+            realizedPnl: components["schemas"]["MoneyCompare"];
+            /** Rejectedbyuser */
+            rejectedByUser: number;
+            rejectedSignals: components["schemas"]["CountCompare"];
+            /** Rejectionrate */
+            rejectionRate: string | null;
+            /** Sellfills */
+            sellFills: number;
+            signals: components["schemas"]["CountCompare"];
+            /** Toprejectionreason */
+            topRejectionReason: string | null;
+            /** Unknownoutcomes */
+            unknownOutcomes: number;
+            /**
+             * Unrealizedasof
+             * Format: date-time
+             */
+            unrealizedAsOf: string;
+            /** Unrealizedpnl */
+            unrealizedPnl: string | null;
+            /** Winrate */
+            winRate: string | null;
+            /** Wins */
+            wins: number;
+        };
         /** Page[AlertOut] */
         Page_AlertOut_: {
             /** Items */
@@ -2168,6 +2620,64 @@ export interface components {
         PasswordRequest: {
             /** Password */
             password: string;
+        };
+        /**
+         * Period
+         * @enum {string}
+         */
+        Period: "1d" | "3d" | "7d" | "30d" | "all" | "custom";
+        /** PnlPoint */
+        PnlPoint: {
+            /** Bucket */
+            bucket: string;
+            /** Cumulative */
+            cumulative: string | null;
+            /** Hasactivity */
+            hasActivity: boolean;
+            /** Realized */
+            realized: string | null;
+        };
+        /** PnlReport */
+        PnlReport: {
+            /** Avgholdseconds */
+            avgHoldSeconds: string | null;
+            /** Avgloss */
+            avgLoss: string | null;
+            /** Avgwin */
+            avgWin: string | null;
+            /** Breakeven */
+            breakeven: number;
+            coverage: components["schemas"]["Coverage"];
+            /** Fees */
+            fees: string | null;
+            /** Grossloss */
+            grossLoss: string | null;
+            /** Grossprofit */
+            grossProfit: string | null;
+            /** Largestloss */
+            largestLoss: string | null;
+            /** Largestwin */
+            largestWin: string | null;
+            /** Losses */
+            losses: number;
+            /** Net */
+            net: string | null;
+            /** Netaftercosts */
+            netAfterCosts: string | null;
+            /** Profitfactor */
+            profitFactor: string | null;
+            /** Realized */
+            realized: string | null;
+            /** Series */
+            series: components["schemas"]["PnlPoint"][];
+            /** Unknownoutcomes */
+            unknownOutcomes: number;
+            /** Unrealized */
+            unrealized: string | null;
+            /** Winrate */
+            winRate: string | null;
+            /** Wins */
+            wins: number;
         };
         /** PositionDetail */
         PositionDetail: {
@@ -2389,6 +2899,19 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /** ProviderSignals */
+        ProviderSignals: {
+            /** Accepted */
+            accepted: number;
+            /** Name */
+            name: string | null;
+            /** Providerid */
+            providerId: string;
+            /** Rejected */
+            rejected: number;
+            /** Total */
+            total: number;
+        };
         /** PushKeys */
         PushKeys: {
             /** Auth */
@@ -2423,6 +2946,15 @@ export interface components {
             p95Ms: number;
             /** Providerid */
             providerId: string;
+        };
+        /** ReasonCount */
+        ReasonCount: {
+            /** Count */
+            count: number;
+            /** Reason */
+            reason: string;
+            /** Source */
+            source: string;
         };
         /** ReconciliationStats */
         ReconciliationStats: {
@@ -2643,6 +3175,17 @@ export interface components {
             /** @default shadow */
             trading_mode: components["schemas"]["TradingMode"];
         };
+        /** SeriesPoint */
+        SeriesPoint: {
+            /** Bucket */
+            bucket: string;
+            /** Hasactivity */
+            hasActivity: boolean;
+            /** Values */
+            values: {
+                [key: string]: string | null;
+            };
+        };
         /** SessionResponse */
         SessionResponse: {
             /** Email */
@@ -2665,6 +3208,89 @@ export interface components {
          * @enum {string}
          */
         Severity: "info" | "warning" | "urgent";
+        /**
+         * SignalOutcomes
+         * @description What happened to signals the decision engine accepted. Attribution is by signal -> card ->
+         *     entry order -> lot; a lot fed by several signals (or by a manual entry) is not attributed.
+         */
+        SignalOutcomes: {
+            /** Acceptedsignals */
+            acceptedSignals: number;
+            /** Attributionunavailable */
+            attributionUnavailable: number;
+            /** Avgrealizedperoutcome */
+            avgRealizedPerOutcome: string | null;
+            /** Breakeven */
+            breakeven: number;
+            /** Closedattributed */
+            closedAttributed: number;
+            /** Losing */
+            losing: number;
+            /** Profitable */
+            profitable: number;
+            /** Realizedpnl */
+            realizedPnl: string | null;
+            /** Stillopen */
+            stillOpen: number;
+            /** Winrate */
+            winRate: string | null;
+            /** Withfills */
+            withFills: number;
+            /** Withorders */
+            withOrders: number;
+        };
+        /** SignalRow */
+        SignalRow: {
+            /** Approvalstatus */
+            approvalStatus: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Enginestatus */
+            engineStatus: string;
+            /** Executionstatus */
+            executionStatus: string;
+            /** Msgtype */
+            msgType: string;
+            /** Providerid */
+            providerId: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Signalid
+             * Format: uuid
+             */
+            signalId: string;
+            /** Symbol */
+            symbol: string | null;
+        };
+        /** SignalsReport */
+        SignalsReport: {
+            /** Approvalstatus */
+            approvalStatus: components["schemas"]["LabelCount"][];
+            /** Byprovider */
+            byProvider: components["schemas"]["ProviderSignals"][];
+            /** Bysymbol */
+            bySymbol: components["schemas"]["SymbolSignals"][];
+            /** Conversiontoapproval */
+            conversionToApproval: string | null;
+            /** Conversiontoexecution */
+            conversionToExecution: string | null;
+            coverage: components["schemas"]["Coverage"];
+            /** Enginestatus */
+            engineStatus: components["schemas"]["LabelCount"][];
+            /** Funnel */
+            funnel: components["schemas"]["FunnelStage"][];
+            outcomes: components["schemas"]["SignalOutcomes"];
+            /** Reasons */
+            reasons: components["schemas"]["ReasonCount"][];
+            /** Rows */
+            rows: components["schemas"]["SignalRow"][];
+            /** Totalrows */
+            totalRows: number;
+        };
         /** SourceMessage */
         SourceMessage: {
             /** Authorid */
@@ -2792,12 +3418,293 @@ export interface components {
              */
             subscriptionId: string;
         };
+        /** SymbolFills */
+        SymbolFills: {
+            /** Avgbuyprice */
+            avgBuyPrice: string | null;
+            /** Avgsellprice */
+            avgSellPrice: string | null;
+            /** Buyqty */
+            buyQty: number;
+            /** Sellqty */
+            sellQty: number;
+            /** Symbol */
+            symbol: string;
+        };
+        /** SymbolSignals */
+        SymbolSignals: {
+            /** Accepted */
+            accepted: number;
+            /** Rejected */
+            rejected: number;
+            /** Symbol */
+            symbol: string | null;
+            /** Total */
+            total: number;
+        };
+        /** TimeseriesReport */
+        TimeseriesReport: {
+            coverage: components["schemas"]["Coverage"];
+            /** Granularity */
+            granularity: string;
+            /** Metrics */
+            metrics: string[];
+            /** Points */
+            points: components["schemas"]["SeriesPoint"][];
+        };
         /** TpLegOut */
         TpLegOut: {
             /** Level */
             level: string;
             /** Qty */
             qty: number;
+        };
+        /** TradeAuditEntry */
+        TradeAuditEntry: {
+            /** Action */
+            action: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Resourceid */
+            resourceId: string;
+            /** Resourcetype */
+            resourceType: string;
+            /** Useremail */
+            userEmail: string | null;
+        };
+        /** TradeDecision */
+        TradeDecision: {
+            /** Action */
+            action: string;
+            /** Approvedlimitprice */
+            approvedLimitPrice: string | null;
+            /** Approvedqty */
+            approvedQty: number | null;
+            /**
+             * Cardid
+             * Format: uuid
+             */
+            cardId: string;
+            /** Cardtype */
+            cardType: string;
+            /** Decided */
+            decided: string | null;
+            /** Decidedat */
+            decidedAt: string | null;
+            /** Disabledreason */
+            disabledReason: string | null;
+            /** Edited */
+            edited: boolean;
+            /** Events */
+            events: components["schemas"]["LabelCount"][];
+            /** Proposedqty */
+            proposedQty: number | null;
+            /** State */
+            state: string;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** TradeDetail */
+        TradeDetail: {
+            /** Audit */
+            audit: components["schemas"]["TradeAuditEntry"][];
+            coverage: components["schemas"]["Coverage"];
+            /** Decisions */
+            decisions: components["schemas"]["TradeDecision"][];
+            /** Fills */
+            fills: components["schemas"]["TradeFill"][];
+            /** Lothistory */
+            lotHistory: components["schemas"]["LotStep"][];
+            /** Orders */
+            orders: components["schemas"]["TradeOrder"][];
+            /** Outcomeexplanation */
+            outcomeExplanation: string;
+            /** Signals */
+            signals: components["schemas"]["TradeSignal"][];
+            /** Stops */
+            stops: components["schemas"]["TradeStop"][];
+            trade: components["schemas"]["TradeRow"];
+        };
+        /** TradeFill */
+        TradeFill: {
+            /** Fee */
+            fee: string | null;
+            /**
+             * Fillid
+             * Format: uuid
+             */
+            fillId: string;
+            /**
+             * Filledat
+             * Format: date-time
+             */
+            filledAt: string;
+            /**
+             * Orderid
+             * Format: uuid
+             */
+            orderId: string;
+            /** Price */
+            price: string;
+            /** Qty */
+            qty: number;
+            /** Side */
+            side: string;
+        };
+        /** TradeOrder */
+        TradeOrder: {
+            /** Autoreason */
+            autoReason: string | null;
+            /** Brokerorderid */
+            brokerOrderId: string | null;
+            /** Clientorderid */
+            clientOrderId: string;
+            /** Filledqty */
+            filledQty: number;
+            /** Kind */
+            kind: string;
+            /** Limitprice */
+            limitPrice: string | null;
+            /** Mode */
+            mode: string;
+            /**
+             * Orderid
+             * Format: uuid
+             */
+            orderId: string;
+            /** Ordertype */
+            orderType: string;
+            /** Remainingqty */
+            remainingQty: number;
+            /** Requestedqty */
+            requestedQty: number;
+            /** Side */
+            side: string;
+            /** Status */
+            status: string;
+            /** Steps */
+            steps: components["schemas"]["OrderStep"][];
+            /** Stopprice */
+            stopPrice: string | null;
+            /**
+             * Submittedat
+             * Format: date-time
+             */
+            submittedAt: string;
+        };
+        /** TradeRow */
+        TradeRow: {
+            /** Attribution */
+            attribution: string;
+            /** Avgentryprice */
+            avgEntryPrice: string | null;
+            /** Avgexitprice */
+            avgExitPrice: string | null;
+            /** Closedat */
+            closedAt: string | null;
+            /** Contract */
+            contract: string | null;
+            /** Entrycost */
+            entryCost: string | null;
+            /** Entryqty */
+            entryQty: number;
+            /** Exitqty */
+            exitQty: number;
+            /** Fees */
+            fees: string | null;
+            /** Holdseconds */
+            holdSeconds: number | null;
+            /** Instrument */
+            instrument: string;
+            /** Isforeign */
+            isForeign: boolean;
+            /**
+             * Lotid
+             * Format: uuid
+             */
+            lotId: string;
+            /** Mode */
+            mode: string | null;
+            /** Netpnl */
+            netPnl: string | null;
+            /** Openqty */
+            openQty: number;
+            /**
+             * Openedat
+             * Format: date-time
+             */
+            openedAt: string;
+            /** Outcome */
+            outcome: string;
+            /** Providerid */
+            providerId: string | null;
+            /** Providername */
+            providerName: string | null;
+            /** Realizedpnl */
+            realizedPnl: string | null;
+            /** Requestedqty */
+            requestedQty: number | null;
+            /** Signalid */
+            signalId: string | null;
+            /** Status */
+            status: string;
+            /** Symbol */
+            symbol: string;
+            /** Underlying */
+            underlying: string;
+            /** Unrealizedpnl */
+            unrealizedPnl: string | null;
+        };
+        /** TradeSignal */
+        TradeSignal: {
+            /** Interpreter */
+            interpreter: string;
+            /** Msgtype */
+            msgType: string;
+            /** Parsed */
+            parsed: {
+                [key: string]: unknown;
+            };
+            /**
+             * Postedat
+             * Format: date-time
+             */
+            postedAt: string;
+            /** Providerid */
+            providerId: string;
+            /** Providername */
+            providerName: string | null;
+            /**
+             * Signalid
+             * Format: uuid
+             */
+            signalId: string;
+            /** Text */
+            text: string | null;
+        };
+        /** TradeStop */
+        TradeStop: {
+            /** Heldby */
+            heldBy: string;
+            /** Kind */
+            kind: string;
+            /** Level */
+            level: string;
+            /** Qty */
+            qty: number;
+            /** Status */
+            status: string;
+        };
+        /** TradesReport */
+        TradesReport: {
+            coverage: components["schemas"]["Coverage"];
+            /** Rows */
+            rows: components["schemas"]["TradeRow"][];
+            /** Totalrows */
+            totalRows: number;
         };
         /**
          * TradingMode
@@ -2851,6 +3758,30 @@ export interface components {
         VapidKeyResponse: {
             /** Publickey */
             publicKey: string;
+        };
+        /** WindowOut */
+        WindowOut: {
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Granularity */
+            granularity: string;
+            /** Label */
+            label: string;
+            /** Period */
+            period: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * Timezone
+             * @default America/New_York
+             */
+            timezone: string;
         };
     };
     responses: never;
@@ -4265,6 +5196,322 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VapidKeyResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    instruments_api_v1_reports_trading_instruments_get: {
+        parameters: {
+            query?: {
+                sort?: string;
+                order?: "asc" | "desc";
+                page?: number;
+                pageSize?: number;
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstrumentsReport"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    orders_api_v1_reports_trading_orders_get: {
+        parameters: {
+            query?: {
+                side?: ("buy" | "sell") | null;
+                status?: ("intent" | "submitted" | "working" | "partially_filled" | "filled" | "cancelled" | "rejected" | "unknown") | null;
+                page?: number;
+                pageSize?: number;
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersReport"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    overview_api_v1_reports_trading_overview_get: {
+        parameters: {
+            query?: {
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Overview"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pnl_api_v1_reports_trading_pnl_get: {
+        parameters: {
+            query?: {
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PnlReport"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    signals_api_v1_reports_trading_signals_get: {
+        parameters: {
+            query?: {
+                engine?: ("accepted" | "rejected" | "no_card") | null;
+                page?: number;
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalsReport"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    timeseries_api_v1_reports_trading_timeseries_get: {
+        parameters: {
+            query?: {
+                metrics?: string | null;
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeseriesReport"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    trades_api_v1_reports_trading_trades_get: {
+        parameters: {
+            query?: {
+                state?: ("open" | "closed") | null;
+                outcome?: ("profit" | "loss" | "breakeven" | "open" | "unknown") | null;
+                search?: string | null;
+                sort?: "opened_at" | "closed_at" | "realized" | "cost" | "symbol";
+                order?: "asc" | "desc";
+                page?: number;
+                pageSize?: number;
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradesReport"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    trade_detail_api_v1_reports_trading_trades__trade_id__get: {
+        parameters: {
+            query?: {
+                period?: components["schemas"]["Period"];
+                startDate?: string | null;
+                endDate?: string | null;
+                mode?: ("shadow" | "paper" | "live" | "all") | null;
+                symbol?: string | null;
+                instrument?: components["schemas"]["Instrument"] | null;
+                providerId?: number | null;
+            };
+            header?: never;
+            path: {
+                trade_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeDetail"];
                 };
             };
             /** @description Client Error */

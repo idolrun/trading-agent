@@ -60,7 +60,7 @@ async def build_risk_snapshot(
         basis = cost_basis(lot.instrument, lot.qty, lot.avg_price)
         held = basis_by_symbol.get(lot.broker_symbol, Decimal(0))
         basis_by_symbol[lot.broker_symbol] = None if held is None or basis is None else held + basis
-        mark = await _mark(marketdata, lot, now, max_quote_age_s)
+        mark = await mark_lot(marketdata, lot, now, max_quote_age_s)
         if unrealized is None or mark is None or lot.avg_price is None:
             unrealized = None
         else:
@@ -139,7 +139,7 @@ async def _broker_state(
     return account, basis
 
 
-async def _mark(
+async def mark_lot(
     marketdata: MarketData, lot: Lot, now: datetime, max_age_s: int | None
 ) -> Decimal | None:
     try:

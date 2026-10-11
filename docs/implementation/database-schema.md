@@ -445,6 +445,8 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 | system-held stops | F044 | `stops (status) WHERE held_by='system' AND status='working'` |
 | per-stage p95 | F049 | `stage_timings (stage, at)` |
 | LLM spend today | F049 | `model_calls (started_at)` |
+| fills in a report window | F083 | `fills (filled_at)` |
+| trades closed in a report window | F083 | partial `lots (closed_at) WHERE closed_at IS NOT NULL` |
 
 ## 10. Retention and growth
 - 7-year retention for all audit tables (C63). Volume estimate: ≤ 2,500 message events/session × ~250 sessions/year ≈ 0.6 M events/year; `model_calls` is the largest (jsonb request/response). Partitioning is **not** planned now (YAGNI); add range partitioning by month on `model_calls`/`stage_timings` when a table exceeds ~50 GB or query p95 degrades (measure first).
@@ -465,6 +467,7 @@ CHECK `(held_by = 'system') = (basis = 'underlying')`; CHECK `kind <> 'tp' OR tp
 | `0010_alert_kind_order_failed` | F028 | `alerts.kind` gains `order_failed` |
 | `0014_alert_kind_llm_spend` | F049 | `alerts.kind` gains `llm_spend` (`0011`–`0013` added `entry_partial`, `underlying_stop`, `eod_forced_close`) |
 | `0015_password_auth` | F009 (revised) | `users`, `audit_log`; `auth_sessions.user_id`; drops `passkey_credentials`, `enrollment_tokens`, `logins` |
+| `0030_report_indexes` | F083 | indexes `ix_fills_filled_at`, `ix_lots_closed_at` (partial, `closed_at IS NOT NULL`); no new tables |
 | later | owning feature | only additive changes, each updating this document |
 
 ## 12. Implementation notes (decisions made while implementing F002–F005)

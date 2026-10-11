@@ -203,6 +203,9 @@ class Lot(SQLModel, table=True):
         Index("ix_lots_broker_symbol_status", "broker_symbol", "status"),
         Index("ix_lots_underlying_status", "underlying", "status"),
         Index("ix_lots_open_expiry", "expiry", postgresql_where=sa_text("status = 'open'")),
+        Index(  # reports: trades closed in a window (F083)
+            "ix_lots_closed_at", "closed_at", postgresql_where=sa_text("closed_at IS NOT NULL")
+        ),
     )
 
     lot_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

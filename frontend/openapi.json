@@ -366,6 +366,29 @@
         "title": "BreakevenOut",
         "type": "object"
       },
+      "BucketNotional": {
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "buy": {
+            "title": "Buy",
+            "type": "string"
+          },
+          "sell": {
+            "title": "Sell",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucket",
+          "buy",
+          "sell"
+        ],
+        "title": "BucketNotional",
+        "type": "object"
+      },
       "CardDetail": {
         "properties": {
           "action": {
@@ -1168,6 +1191,88 @@
         "title": "ContractOut",
         "type": "object"
       },
+      "CountCompare": {
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "integer"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "required": [
+          "current",
+          "previous"
+        ],
+        "title": "CountCompare",
+        "type": "object"
+      },
+      "Coverage": {
+        "description": "What a report is and is not made of.",
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "title": "Asof",
+            "type": "string"
+          },
+          "costsIncluded": {
+            "title": "Costsincluded",
+            "type": "boolean"
+          },
+          "firstEventAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firsteventat"
+          },
+          "lotsWithoutBasis": {
+            "title": "Lotswithoutbasis",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "reconcileAdjustments": {
+            "title": "Reconcileadjustments",
+            "type": "integer"
+          },
+          "unpricedLots": {
+            "title": "Unpricedlots",
+            "type": "integer"
+          },
+          "window": {
+            "$ref": "#/components/schemas/WindowOut"
+          }
+        },
+        "required": [
+          "window",
+          "mode",
+          "asOf",
+          "firstEventAt",
+          "costsIncluded",
+          "unpricedLots",
+          "lotsWithoutBasis",
+          "reconcileAdjustments"
+        ],
+        "title": "Coverage",
+        "type": "object"
+      },
       "CreateUserRequest": {
         "properties": {
           "email": {
@@ -1874,6 +1979,41 @@
         "title": "FlattenedLot",
         "type": "object"
       },
+      "FunnelStage": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "rateOfPrevious": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rateofprevious"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "count",
+          "rateOfPrevious"
+        ],
+        "title": "FunnelStage",
+        "type": "object"
+      },
       "HealthDetails": {
         "properties": {
           "backlogDepth": {
@@ -2100,6 +2240,214 @@
         "title": "IngestResponse",
         "type": "object"
       },
+      "Instrument": {
+        "enum": [
+          "option",
+          "stock"
+        ],
+        "title": "Instrument",
+        "type": "string"
+      },
+      "InstrumentRow": {
+        "properties": {
+          "acceptedSignals": {
+            "title": "Acceptedsignals",
+            "type": "integer"
+          },
+          "avgEntryPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgentryprice"
+          },
+          "avgExitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgexitprice"
+          },
+          "buyOrders": {
+            "title": "Buyorders",
+            "type": "integer"
+          },
+          "buyQty": {
+            "title": "Buyqty",
+            "type": "integer"
+          },
+          "closedTrades": {
+            "title": "Closedtrades",
+            "type": "integer"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
+          },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
+          "lastActivity": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastactivity"
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "integer"
+          },
+          "lowSample": {
+            "title": "Lowsample",
+            "type": "boolean"
+          },
+          "netPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netpnl"
+          },
+          "openQty": {
+            "title": "Openqty",
+            "type": "integer"
+          },
+          "realizedPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnl"
+          },
+          "rejectedSignals": {
+            "title": "Rejectedsignals",
+            "type": "integer"
+          },
+          "sellOrders": {
+            "title": "Sellorders",
+            "type": "integer"
+          },
+          "sellQty": {
+            "title": "Sellqty",
+            "type": "integer"
+          },
+          "signals": {
+            "title": "Signals",
+            "type": "integer"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "unrealizedPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unrealizedpnl"
+          },
+          "winRate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winrate"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "symbol",
+          "instrument",
+          "signals",
+          "acceptedSignals",
+          "rejectedSignals",
+          "buyOrders",
+          "sellOrders",
+          "buyQty",
+          "sellQty",
+          "openQty",
+          "avgEntryPrice",
+          "avgExitPrice",
+          "realizedPnl",
+          "unrealizedPnl",
+          "netPnl",
+          "fees",
+          "wins",
+          "losses",
+          "closedTrades",
+          "winRate",
+          "lowSample",
+          "lastActivity"
+        ],
+        "title": "InstrumentRow",
+        "type": "object"
+      },
+      "InstrumentsReport": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/InstrumentRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "totalRows": {
+            "title": "Totalrows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "coverage",
+          "rows",
+          "totalRows"
+        ],
+        "title": "InstrumentsReport",
+        "type": "object"
+      },
       "InterpretationStats": {
         "description": "F081: how interpretation ended (`inbox.interpret_outcome`, F078) and why.",
         "properties": {
@@ -2263,6 +2611,29 @@
           "signals"
         ],
         "title": "Label",
+        "type": "object"
+      },
+      "LabelCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "count"
+        ],
+        "title": "LabelCount",
         "type": "object"
       },
       "LabelDetail": {
@@ -3265,6 +3636,79 @@
         "title": "LotStatus",
         "type": "string"
       },
+      "LotStep": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "avgAfter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgafter"
+          },
+          "avgBefore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgbefore"
+          },
+          "change": {
+            "title": "Change",
+            "type": "string"
+          },
+          "fillId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fillid"
+          },
+          "qtyAfter": {
+            "title": "Qtyafter",
+            "type": "integer"
+          },
+          "qtyBefore": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qtybefore"
+          }
+        },
+        "required": [
+          "change",
+          "qtyBefore",
+          "qtyAfter",
+          "avgBefore",
+          "avgAfter",
+          "fillId",
+          "at"
+        ],
+        "title": "LotStep",
+        "type": "object"
+      },
       "ManualResultOut": {
         "properties": {
           "cardId": {
@@ -3329,6 +3773,38 @@
           "duplicatesSinceStart"
         ],
         "title": "MessageCounts",
+        "type": "object"
+      },
+      "MoneyCompare": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "required": [
+          "current",
+          "previous"
+        ],
+        "title": "MoneyCompare",
         "type": "object"
       },
       "MsgType": {
@@ -3654,6 +4130,145 @@
         "title": "OrderOut",
         "type": "object"
       },
+      "OrderRow": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "avgFillPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgfillprice"
+          },
+          "broker": {
+            "title": "Broker",
+            "type": "string"
+          },
+          "brokerOrderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerorderid"
+          },
+          "executedNotional": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executednotional"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
+          },
+          "filledQty": {
+            "title": "Filledqty",
+            "type": "integer"
+          },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lotId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lotid"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "orderId": {
+            "format": "uuid",
+            "title": "Orderid",
+            "type": "string"
+          },
+          "requestedQty": {
+            "title": "Requestedqty",
+            "type": "integer"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "signalId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signalid"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderId",
+          "at",
+          "symbol",
+          "instrument",
+          "side",
+          "kind",
+          "status",
+          "mode",
+          "requestedQty",
+          "filledQty",
+          "avgFillPrice",
+          "executedNotional",
+          "fees",
+          "broker",
+          "brokerOrderId",
+          "signalId",
+          "lotId"
+        ],
+        "title": "OrderRow",
+        "type": "object"
+      },
       "OrderStats": {
         "properties": {
           "byStatus": {
@@ -3693,6 +4308,448 @@
         ],
         "title": "OrderStatus",
         "type": "string"
+      },
+      "OrderStep": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "brokerStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerstatus"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "source",
+          "at",
+          "brokerStatus"
+        ],
+        "title": "OrderStep",
+        "type": "object"
+      },
+      "OrdersReport": {
+        "properties": {
+          "brokerRejections": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonCount"
+            },
+            "title": "Brokerrejections",
+            "type": "array"
+          },
+          "buyQtyFilled": {
+            "title": "Buyqtyfilled",
+            "type": "integer"
+          },
+          "buyQtyRequested": {
+            "title": "Buyqtyrequested",
+            "type": "integer"
+          },
+          "bySymbol": {
+            "items": {
+              "$ref": "#/components/schemas/SymbolFills"
+            },
+            "title": "Bysymbol",
+            "type": "array"
+          },
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "executedNotional": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executednotional"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
+          },
+          "filled": {
+            "title": "Filled",
+            "type": "integer"
+          },
+          "notionalByBucket": {
+            "items": {
+              "$ref": "#/components/schemas/BucketNotional"
+            },
+            "title": "Notionalbybucket",
+            "type": "array"
+          },
+          "orderToFillRate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordertofillrate"
+          },
+          "partiallyFilled": {
+            "title": "Partiallyfilled",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sellQtyFilled": {
+            "title": "Sellqtyfilled",
+            "type": "integer"
+          },
+          "sellQtyRequested": {
+            "title": "Sellqtyrequested",
+            "type": "integer"
+          },
+          "statusDistribution": {
+            "items": {
+              "$ref": "#/components/schemas/LabelCount"
+            },
+            "title": "Statusdistribution",
+            "type": "array"
+          },
+          "submitted": {
+            "title": "Submitted",
+            "type": "integer"
+          },
+          "totalRows": {
+            "title": "Totalrows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "coverage",
+          "submitted",
+          "filled",
+          "partiallyFilled",
+          "rejected",
+          "cancelled",
+          "pending",
+          "orderToFillRate",
+          "buyQtyRequested",
+          "sellQtyRequested",
+          "buyQtyFilled",
+          "sellQtyFilled",
+          "executedNotional",
+          "fees",
+          "statusDistribution",
+          "notionalByBucket",
+          "bySymbol",
+          "brokerRejections",
+          "rows",
+          "totalRows"
+        ],
+        "title": "OrdersReport",
+        "type": "object"
+      },
+      "Overview": {
+        "properties": {
+          "acceptanceRate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancerate"
+          },
+          "acceptedSignals": {
+            "$ref": "#/components/schemas/CountCompare"
+          },
+          "actionableSignals": {
+            "$ref": "#/components/schemas/CountCompare"
+          },
+          "approved": {
+            "title": "Approved",
+            "type": "integer"
+          },
+          "avgLoss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgloss"
+          },
+          "avgWin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgwin"
+          },
+          "breakeven": {
+            "title": "Breakeven",
+            "type": "integer"
+          },
+          "buyFills": {
+            "title": "Buyfills",
+            "type": "integer"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "executedNotional": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executednotional"
+          },
+          "executedTrades": {
+            "$ref": "#/components/schemas/CountCompare"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
+          },
+          "largestLoss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Largestloss"
+          },
+          "largestWin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Largestwin"
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "integer"
+          },
+          "netPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netpnl"
+          },
+          "openPositions": {
+            "title": "Openpositions",
+            "type": "integer"
+          },
+          "ordersFilled": {
+            "title": "Ordersfilled",
+            "type": "integer"
+          },
+          "ordersPending": {
+            "title": "Orderspending",
+            "type": "integer"
+          },
+          "ordersSubmitted": {
+            "title": "Orderssubmitted",
+            "type": "integer"
+          },
+          "pendingCards": {
+            "title": "Pendingcards",
+            "type": "integer"
+          },
+          "profitFactor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profitfactor"
+          },
+          "realizedPnl": {
+            "$ref": "#/components/schemas/MoneyCompare"
+          },
+          "rejectedByUser": {
+            "title": "Rejectedbyuser",
+            "type": "integer"
+          },
+          "rejectedSignals": {
+            "$ref": "#/components/schemas/CountCompare"
+          },
+          "rejectionRate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejectionrate"
+          },
+          "sellFills": {
+            "title": "Sellfills",
+            "type": "integer"
+          },
+          "signals": {
+            "$ref": "#/components/schemas/CountCompare"
+          },
+          "topRejectionReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toprejectionreason"
+          },
+          "unknownOutcomes": {
+            "title": "Unknownoutcomes",
+            "type": "integer"
+          },
+          "unrealizedAsOf": {
+            "format": "date-time",
+            "title": "Unrealizedasof",
+            "type": "string"
+          },
+          "unrealizedPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unrealizedpnl"
+          },
+          "winRate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winrate"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "coverage",
+          "signals",
+          "actionableSignals",
+          "acceptedSignals",
+          "rejectedSignals",
+          "acceptanceRate",
+          "rejectionRate",
+          "topRejectionReason",
+          "approved",
+          "rejectedByUser",
+          "pendingCards",
+          "ordersSubmitted",
+          "ordersFilled",
+          "ordersPending",
+          "executedTrades",
+          "buyFills",
+          "sellFills",
+          "executedNotional",
+          "fees",
+          "realizedPnl",
+          "unrealizedPnl",
+          "unrealizedAsOf",
+          "openPositions",
+          "netPnl",
+          "wins",
+          "losses",
+          "breakeven",
+          "unknownOutcomes",
+          "winRate",
+          "avgWin",
+          "avgLoss",
+          "largestWin",
+          "largestLoss",
+          "profitFactor"
+        ],
+        "title": "Overview",
+        "type": "object"
       },
       "Page_AlertOut_": {
         "properties": {
@@ -3987,6 +5044,268 @@
           "password"
         ],
         "title": "PasswordRequest",
+        "type": "object"
+      },
+      "Period": {
+        "enum": [
+          "1d",
+          "3d",
+          "7d",
+          "30d",
+          "all",
+          "custom"
+        ],
+        "title": "Period",
+        "type": "string"
+      },
+      "PnlPoint": {
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "cumulative": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulative"
+          },
+          "hasActivity": {
+            "title": "Hasactivity",
+            "type": "boolean"
+          },
+          "realized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized"
+          }
+        },
+        "required": [
+          "bucket",
+          "realized",
+          "cumulative",
+          "hasActivity"
+        ],
+        "title": "PnlPoint",
+        "type": "object"
+      },
+      "PnlReport": {
+        "properties": {
+          "avgHoldSeconds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgholdseconds"
+          },
+          "avgLoss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgloss"
+          },
+          "avgWin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgwin"
+          },
+          "breakeven": {
+            "title": "Breakeven",
+            "type": "integer"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
+          },
+          "grossLoss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grossloss"
+          },
+          "grossProfit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grossprofit"
+          },
+          "largestLoss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Largestloss"
+          },
+          "largestWin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Largestwin"
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "integer"
+          },
+          "net": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net"
+          },
+          "netAfterCosts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netaftercosts"
+          },
+          "profitFactor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profitfactor"
+          },
+          "realized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/PnlPoint"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "unknownOutcomes": {
+            "title": "Unknownoutcomes",
+            "type": "integer"
+          },
+          "unrealized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unrealized"
+          },
+          "winRate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winrate"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "coverage",
+          "realized",
+          "unrealized",
+          "net",
+          "grossProfit",
+          "grossLoss",
+          "fees",
+          "netAfterCosts",
+          "wins",
+          "losses",
+          "breakeven",
+          "unknownOutcomes",
+          "winRate",
+          "avgWin",
+          "avgLoss",
+          "largestWin",
+          "largestLoss",
+          "profitFactor",
+          "avgHoldSeconds",
+          "series"
+        ],
+        "title": "PnlReport",
         "type": "object"
       },
       "PositionDetail": {
@@ -4930,6 +6249,46 @@
         "title": "ProposalOut",
         "type": "object"
       },
+      "ProviderSignals": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "providerId": {
+            "title": "Providerid",
+            "type": "string"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "providerId",
+          "name",
+          "total",
+          "accepted",
+          "rejected"
+        ],
+        "title": "ProviderSignals",
+        "type": "object"
+      },
       "PushKeys": {
         "properties": {
           "auth": {
@@ -5026,6 +6385,29 @@
           "maxMs"
         ],
         "title": "QueueWait",
+        "type": "object"
+      },
+      "ReasonCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "reason",
+          "count"
+        ],
+        "title": "ReasonCount",
         "type": "object"
       },
       "ReconciliationStats": {
@@ -5708,6 +7090,39 @@
         "title": "RuntimeConfig",
         "type": "object"
       },
+      "SeriesPoint": {
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "hasActivity": {
+            "title": "Hasactivity",
+            "type": "boolean"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "bucket",
+          "hasActivity",
+          "values"
+        ],
+        "title": "SeriesPoint",
+        "type": "object"
+      },
       "SessionResponse": {
         "properties": {
           "email": {
@@ -5752,6 +7167,266 @@
         ],
         "title": "Severity",
         "type": "string"
+      },
+      "SignalOutcomes": {
+        "description": "What happened to signals the decision engine accepted. Attribution is by signal -> card ->\nentry order -> lot; a lot fed by several signals (or by a manual entry) is not attributed.",
+        "properties": {
+          "acceptedSignals": {
+            "title": "Acceptedsignals",
+            "type": "integer"
+          },
+          "attributionUnavailable": {
+            "title": "Attributionunavailable",
+            "type": "integer"
+          },
+          "avgRealizedPerOutcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgrealizedperoutcome"
+          },
+          "breakeven": {
+            "title": "Breakeven",
+            "type": "integer"
+          },
+          "closedAttributed": {
+            "title": "Closedattributed",
+            "type": "integer"
+          },
+          "losing": {
+            "title": "Losing",
+            "type": "integer"
+          },
+          "profitable": {
+            "title": "Profitable",
+            "type": "integer"
+          },
+          "realizedPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnl"
+          },
+          "stillOpen": {
+            "title": "Stillopen",
+            "type": "integer"
+          },
+          "winRate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winrate"
+          },
+          "withFills": {
+            "title": "Withfills",
+            "type": "integer"
+          },
+          "withOrders": {
+            "title": "Withorders",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "acceptedSignals",
+          "withOrders",
+          "withFills",
+          "closedAttributed",
+          "profitable",
+          "losing",
+          "breakeven",
+          "stillOpen",
+          "attributionUnavailable",
+          "realizedPnl",
+          "avgRealizedPerOutcome",
+          "winRate"
+        ],
+        "title": "SignalOutcomes",
+        "type": "object"
+      },
+      "SignalRow": {
+        "properties": {
+          "approvalStatus": {
+            "title": "Approvalstatus",
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "engineStatus": {
+            "title": "Enginestatus",
+            "type": "string"
+          },
+          "executionStatus": {
+            "title": "Executionstatus",
+            "type": "string"
+          },
+          "msgType": {
+            "title": "Msgtype",
+            "type": "string"
+          },
+          "providerId": {
+            "title": "Providerid",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "signalId": {
+            "format": "uuid",
+            "title": "Signalid",
+            "type": "string"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "signalId",
+          "at",
+          "providerId",
+          "symbol",
+          "msgType",
+          "engineStatus",
+          "approvalStatus",
+          "executionStatus",
+          "reason"
+        ],
+        "title": "SignalRow",
+        "type": "object"
+      },
+      "SignalsReport": {
+        "properties": {
+          "approvalStatus": {
+            "items": {
+              "$ref": "#/components/schemas/LabelCount"
+            },
+            "title": "Approvalstatus",
+            "type": "array"
+          },
+          "byProvider": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderSignals"
+            },
+            "title": "Byprovider",
+            "type": "array"
+          },
+          "bySymbol": {
+            "items": {
+              "$ref": "#/components/schemas/SymbolSignals"
+            },
+            "title": "Bysymbol",
+            "type": "array"
+          },
+          "conversionToApproval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversiontoapproval"
+          },
+          "conversionToExecution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversiontoexecution"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "engineStatus": {
+            "items": {
+              "$ref": "#/components/schemas/LabelCount"
+            },
+            "title": "Enginestatus",
+            "type": "array"
+          },
+          "funnel": {
+            "items": {
+              "$ref": "#/components/schemas/FunnelStage"
+            },
+            "title": "Funnel",
+            "type": "array"
+          },
+          "outcomes": {
+            "$ref": "#/components/schemas/SignalOutcomes"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonCount"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SignalRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "totalRows": {
+            "title": "Totalrows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "coverage",
+          "funnel",
+          "engineStatus",
+          "approvalStatus",
+          "reasons",
+          "bySymbol",
+          "byProvider",
+          "conversionToApproval",
+          "conversionToExecution",
+          "outcomes",
+          "rows",
+          "totalRows"
+        ],
+        "title": "SignalsReport",
+        "type": "object"
       },
       "SourceMessage": {
         "properties": {
@@ -6090,6 +7765,121 @@
         "title": "SubscribeResponse",
         "type": "object"
       },
+      "SymbolFills": {
+        "properties": {
+          "avgBuyPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgbuyprice"
+          },
+          "avgSellPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgsellprice"
+          },
+          "buyQty": {
+            "title": "Buyqty",
+            "type": "integer"
+          },
+          "sellQty": {
+            "title": "Sellqty",
+            "type": "integer"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "buyQty",
+          "sellQty",
+          "avgBuyPrice",
+          "avgSellPrice"
+        ],
+        "title": "SymbolFills",
+        "type": "object"
+      },
+      "SymbolSignals": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "symbol",
+          "total",
+          "accepted",
+          "rejected"
+        ],
+        "title": "SymbolSignals",
+        "type": "object"
+      },
+      "TimeseriesReport": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "coverage",
+          "granularity",
+          "metrics",
+          "points"
+        ],
+        "title": "TimeseriesReport",
+        "type": "object"
+      },
       "TpLegOut": {
         "properties": {
           "level": {
@@ -6106,6 +7896,796 @@
           "qty"
         ],
         "title": "TpLegOut",
+        "type": "object"
+      },
+      "TradeAuditEntry": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "resourceId": {
+            "title": "Resourceid",
+            "type": "string"
+          },
+          "resourceType": {
+            "title": "Resourcetype",
+            "type": "string"
+          },
+          "userEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Useremail"
+          }
+        },
+        "required": [
+          "at",
+          "action",
+          "userEmail",
+          "resourceType",
+          "resourceId"
+        ],
+        "title": "TradeAuditEntry",
+        "type": "object"
+      },
+      "TradeDecision": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "approvedLimitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approvedlimitprice"
+          },
+          "approvedQty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approvedqty"
+          },
+          "cardId": {
+            "format": "uuid",
+            "title": "Cardid",
+            "type": "string"
+          },
+          "cardType": {
+            "title": "Cardtype",
+            "type": "string"
+          },
+          "decided": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decidedat"
+          },
+          "disabledReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabledreason"
+          },
+          "edited": {
+            "title": "Edited",
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/LabelCount"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "proposedQty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposedqty"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cardId",
+          "action",
+          "cardType",
+          "state",
+          "disabledReason",
+          "warnings",
+          "proposedQty",
+          "events",
+          "decided",
+          "decidedAt",
+          "approvedQty",
+          "approvedLimitPrice",
+          "edited"
+        ],
+        "title": "TradeDecision",
+        "type": "object"
+      },
+      "TradeDetail": {
+        "properties": {
+          "audit": {
+            "items": {
+              "$ref": "#/components/schemas/TradeAuditEntry"
+            },
+            "title": "Audit",
+            "type": "array"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/TradeDecision"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "fills": {
+            "items": {
+              "$ref": "#/components/schemas/TradeFill"
+            },
+            "title": "Fills",
+            "type": "array"
+          },
+          "lotHistory": {
+            "items": {
+              "$ref": "#/components/schemas/LotStep"
+            },
+            "title": "Lothistory",
+            "type": "array"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/TradeOrder"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "outcomeExplanation": {
+            "title": "Outcomeexplanation",
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/TradeSignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/TradeStop"
+            },
+            "title": "Stops",
+            "type": "array"
+          },
+          "trade": {
+            "$ref": "#/components/schemas/TradeRow"
+          }
+        },
+        "required": [
+          "coverage",
+          "trade",
+          "signals",
+          "decisions",
+          "orders",
+          "fills",
+          "lotHistory",
+          "stops",
+          "audit",
+          "outcomeExplanation"
+        ],
+        "title": "TradeDetail",
+        "type": "object"
+      },
+      "TradeFill": {
+        "properties": {
+          "fee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee"
+          },
+          "fillId": {
+            "format": "uuid",
+            "title": "Fillid",
+            "type": "string"
+          },
+          "filledAt": {
+            "format": "date-time",
+            "title": "Filledat",
+            "type": "string"
+          },
+          "orderId": {
+            "format": "uuid",
+            "title": "Orderid",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "integer"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fillId",
+          "orderId",
+          "side",
+          "qty",
+          "price",
+          "filledAt",
+          "fee"
+        ],
+        "title": "TradeFill",
+        "type": "object"
+      },
+      "TradeOrder": {
+        "properties": {
+          "autoReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoreason"
+          },
+          "brokerOrderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerorderid"
+          },
+          "clientOrderId": {
+            "title": "Clientorderid",
+            "type": "string"
+          },
+          "filledQty": {
+            "title": "Filledqty",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "limitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitprice"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "orderId": {
+            "format": "uuid",
+            "title": "Orderid",
+            "type": "string"
+          },
+          "orderType": {
+            "title": "Ordertype",
+            "type": "string"
+          },
+          "remainingQty": {
+            "title": "Remainingqty",
+            "type": "integer"
+          },
+          "requestedQty": {
+            "title": "Requestedqty",
+            "type": "integer"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/OrderStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "stopPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopprice"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "title": "Submittedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderId",
+          "kind",
+          "side",
+          "orderType",
+          "status",
+          "mode",
+          "requestedQty",
+          "filledQty",
+          "remainingQty",
+          "limitPrice",
+          "stopPrice",
+          "brokerOrderId",
+          "clientOrderId",
+          "autoReason",
+          "submittedAt",
+          "steps"
+        ],
+        "title": "TradeOrder",
+        "type": "object"
+      },
+      "TradeRow": {
+        "properties": {
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "avgEntryPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgentryprice"
+          },
+          "avgExitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgexitprice"
+          },
+          "closedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closedat"
+          },
+          "contract": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract"
+          },
+          "entryCost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entrycost"
+          },
+          "entryQty": {
+            "title": "Entryqty",
+            "type": "integer"
+          },
+          "exitQty": {
+            "title": "Exitqty",
+            "type": "integer"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
+          },
+          "holdSeconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdseconds"
+          },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
+          "isForeign": {
+            "title": "Isforeign",
+            "type": "boolean"
+          },
+          "lotId": {
+            "format": "uuid",
+            "title": "Lotid",
+            "type": "string"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "netPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netpnl"
+          },
+          "openQty": {
+            "title": "Openqty",
+            "type": "integer"
+          },
+          "openedAt": {
+            "format": "date-time",
+            "title": "Openedat",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "providerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providerid"
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providername"
+          },
+          "realizedPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnl"
+          },
+          "requestedQty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestedqty"
+          },
+          "signalId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signalid"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "underlying": {
+            "title": "Underlying",
+            "type": "string"
+          },
+          "unrealizedPnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unrealizedpnl"
+          }
+        },
+        "required": [
+          "lotId",
+          "symbol",
+          "underlying",
+          "instrument",
+          "contract",
+          "status",
+          "outcome",
+          "openedAt",
+          "closedAt",
+          "requestedQty",
+          "entryQty",
+          "exitQty",
+          "openQty",
+          "avgEntryPrice",
+          "avgExitPrice",
+          "entryCost",
+          "realizedPnl",
+          "unrealizedPnl",
+          "netPnl",
+          "fees",
+          "holdSeconds",
+          "mode",
+          "providerId",
+          "providerName",
+          "signalId",
+          "attribution",
+          "isForeign"
+        ],
+        "title": "TradeRow",
+        "type": "object"
+      },
+      "TradeSignal": {
+        "properties": {
+          "interpreter": {
+            "title": "Interpreter",
+            "type": "string"
+          },
+          "msgType": {
+            "title": "Msgtype",
+            "type": "string"
+          },
+          "parsed": {
+            "additionalProperties": true,
+            "title": "Parsed",
+            "type": "object"
+          },
+          "postedAt": {
+            "format": "date-time",
+            "title": "Postedat",
+            "type": "string"
+          },
+          "providerId": {
+            "title": "Providerid",
+            "type": "string"
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providername"
+          },
+          "signalId": {
+            "format": "uuid",
+            "title": "Signalid",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "signalId",
+          "msgType",
+          "interpreter",
+          "postedAt",
+          "text",
+          "providerId",
+          "providerName",
+          "parsed"
+        ],
+        "title": "TradeSignal",
+        "type": "object"
+      },
+      "TradeStop": {
+        "properties": {
+          "heldBy": {
+            "title": "Heldby",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "qty",
+          "status",
+          "heldBy"
+        ],
+        "title": "TradeStop",
+        "type": "object"
+      },
+      "TradesReport": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TradeRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "totalRows": {
+            "title": "Totalrows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "coverage",
+          "rows",
+          "totalRows"
+        ],
+        "title": "TradesReport",
         "type": "object"
       },
       "TradingMode": {
@@ -6224,6 +8804,46 @@
           "publicKey"
         ],
         "title": "VapidKeyResponse",
+        "type": "object"
+      },
+      "WindowOut": {
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "America/New_York",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "start",
+          "end",
+          "label",
+          "granularity"
+        ],
+        "title": "WindowOut",
         "type": "object"
       }
     }
@@ -8538,6 +11158,1484 @@
         "summary": "Vapid Public Key",
         "tags": [
           "push"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/instruments": {
+      "get": {
+        "operationId": "instruments_api_v1_reports_trading_instruments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "net_pnl",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentsReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Instruments",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/orders": {
+      "get": {
+        "operationId": "orders_api_v1_reports_trading_orders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "side",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "buy",
+                    "sell"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Side"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "intent",
+                    "submitted",
+                    "working",
+                    "partially_filled",
+                    "filled",
+                    "cancelled",
+                    "rejected",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Orders",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/overview": {
+      "get": {
+        "operationId": "overview_api_v1_reports_trading_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/pnl": {
+      "get": {
+        "operationId": "pnl_api_v1_reports_trading_pnl_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PnlReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Pnl",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/signals": {
+      "get": {
+        "operationId": "signals_api_v1_reports_trading_signals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "accepted",
+                    "rejected",
+                    "no_card"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalsReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Signals",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/timeseries": {
+      "get": {
+        "description": "`metrics`: comma-separated names (see `TIMESERIES_METRICS`); none = all of them.",
+        "operationId": "timeseries_api_v1_reports_trading_timeseries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "metrics",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metrics"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeseriesReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Timeseries",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/trades": {
+      "get": {
+        "operationId": "trades_api_v1_reports_trading_trades_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "open",
+                    "closed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "profit",
+                    "loss",
+                    "breakeven",
+                    "open",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "opened_at",
+              "enum": [
+                "opened_at",
+                "closed_at",
+                "realized",
+                "cost",
+                "symbol"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradesReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Trades",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/v1/reports/trading/trades/{trade_id}": {
+      "get": {
+        "operationId": "trade_detail_api_v1_reports_trading_trades__trade_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trade_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trade Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Period",
+              "default": "7d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Startdate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endDate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enddate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "shadow",
+                    "paper",
+                    "live",
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Instrument"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument"
+            }
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Providerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Client Error"
+          }
+        },
+        "summary": "Trade Detail",
+        "tags": [
+          "reports"
         ]
       }
     },

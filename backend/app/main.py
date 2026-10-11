@@ -30,6 +30,7 @@ from app.api.routes import manual as manual_routes
 from app.api.routes import orders as orders_routes
 from app.api.routes import positions as positions_routes
 from app.api.routes import push as push_routes
+from app.api.routes import reports as reports_routes
 from app.api.routes import testing as testing_routes
 from app.api.routes import users as users_routes
 from app.auth.audit import AuditService
@@ -504,7 +505,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(config_routes.router, prefix="/api/v1")
     app.include_router(discord_routes.router, prefix="/api/v1")
     app.include_router(events_routes.router, prefix="/api/v1")
-    for read in (feed_routes, cards_routes, positions_routes, lots_routes, orders_routes):
+    for read in (
+        feed_routes,
+        cards_routes,
+        positions_routes,
+        lots_routes,
+        orders_routes,
+        reports_routes,
+    ):
         app.include_router(read.router, prefix="/api/v1")
     app.include_router(alerts_routes.router, prefix="/api/v1")
     app.include_router(manual_routes.router, prefix="/api/v1")

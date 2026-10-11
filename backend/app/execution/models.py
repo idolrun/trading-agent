@@ -212,6 +212,7 @@ class Fill(SQLModel, table=True):
     __table_args__ = (
         CheckConstraint("qty > 0", name="qty_positive"),
         Index("ix_fills_order_id", "order_id"),
+        Index("ix_fills_filled_at", "filled_at"),  # reports window every fill by time (F083)
     )
 
     fill_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

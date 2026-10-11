@@ -212,6 +212,8 @@ cd frontend && pnpm dev                  # after F052
 | [F080](F080-version-pinning-catalog.md) | Jev pinned to jev-1.13.0 + `model_returned`; question-set version = catalog fingerprint; unused questions dropped; replayable audit row | F033, F078 | TRD §4.3, C44 |
 | [F081](F081-interpretation-metrics.md) | Interpretation metrics: path shares, Jev statuses/failures, feed-guard blocks, link decisions, live wrong-link rate, model p99 | F049, F077, F078 | PRD §16 |
 | [F082](F082-replay-parity-corpus.md) | Replay parity (production resolver + resolve_link over label history), assistant labels for the 519-message corpus, before/after measurement | F048, F076, F077–F081 | PRD §17 |
+| [F083](F083-trading-reports.md) | Trading reports API: signal funnel, orders and fills, realized / unrealized P&L, instruments, trades, time series | F030, F040 | PRD FR-25 |
+| [F084](F084-frontend-trading-reports.md) | Trading Performance page (`/reports/trading`) | F083, F052 | PRD FR-25 |
 
 ---
 
