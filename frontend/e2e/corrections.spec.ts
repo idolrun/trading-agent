@@ -58,6 +58,7 @@ test("correction after trade: alert only", async ({ page, driver }) => {
     (alerts) => alerts.find((a) => a.kind === "late_correction"),
     "the late-correction alert",
   )
+  await page.goto("/alerts") // the desk's alerts panel is collapsed; the list shows the message
   await expect(page.getByText(alert.message).first()).toBeVisible()
   expect(await driver.cards("pending")).toEqual([]) // no action proposed
   expect(await driver.orders()).toEqual(ordersBefore)

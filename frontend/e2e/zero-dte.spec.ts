@@ -27,7 +27,7 @@ test("0DTE lot unanswered: cutoff-1 card, then forced close at cutoff 2", async 
   const close = await driver.cardFor("close", { state: "pending" })
   expect(close).toMatchObject({ lotId: lot.id })
   expect(close.proposal).toMatchObject({ qty: lot.qty, labels: ["urgent"] })
-  const onDesk = page.getByRole("article").filter({ has: page.getByRole("listitem").filter({ hasText: "Urgent" }) })
+  const onDesk = page.getByRole("article").filter({ hasText: "Urgent" })
   await expect(onDesk).toHaveCount(1)
   await expect(onDesk.getByRole("button", { name: /Close entire position/ })).toBeEnabled()
   expect((await driver.orders()).filter((o) => o.kind === "exit")).toEqual([])

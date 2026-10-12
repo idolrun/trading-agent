@@ -38,7 +38,7 @@ export async function signIn(page: Page, email = E2E_EMAIL, password = E2E_PASSW
 
 export async function fillSignIn(page: Page, email: string, password: string) {
   await page.getByLabel("Email").fill(email)
-  await page.getByLabel("Password").fill(password)
+  await page.getByLabel("Password", { exact: true }).fill(password)
   await page.getByRole("button", { name: "Sign in" }).click()
 }
 
@@ -46,7 +46,7 @@ export async function fillSignIn(page: Page, email: string, password: string) {
 export async function confirmStepUp(page: Page, password = E2E_PASSWORD) {
   const dialog = page.getByRole("dialog", { name: "Confirm with your password" })
   await expect(dialog).toBeVisible()
-  await dialog.getByLabel("Password").fill(password)
+  await dialog.getByLabel("Password", { exact: true }).fill(password)
   await dialog.getByRole("button", { name: "Confirm" }).click()
   await expect(dialog).toBeHidden()
 }

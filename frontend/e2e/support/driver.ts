@@ -339,7 +339,7 @@ export class Driver {
 /** The article of one card on the desk. The accessible name is the provider's display label; these attributes stay stable. */
 export function cardOnDesk(page: Page, providerId: string, action: string, underlying = "") {
   return page.locator(
-    `article[data-provider-id="${providerId}"][data-action="${action}"][data-underlying="${underlying}"]`,
+    `:is(article, [role="article"])[data-provider-id="${providerId}"][data-action="${action}"][data-underlying="${underlying}"]`,
   )
 }
 
