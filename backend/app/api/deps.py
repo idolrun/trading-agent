@@ -85,13 +85,6 @@ RawSessionDep = Annotated[AuthContext, Depends(require_raw_session)]
 SessionDep = Annotated[AuthContext, Depends(require_session)]
 
 
-async def require_step_up(ctx: SessionDep, auth: AuthDep) -> AuthContext:
-    """Manual entry / flatten: a fresh password check, used once (PRD §13)."""
-    if not await auth.consume_step_up(ctx):
-        raise ApiError("confirm your password first", "step_up_required", 403)
-    return ctx
-
-
 async def rate_limit(request: Request, auth: AuthDep, client: ClientDep) -> None:
     if not request.app.state.auth_limiter.allow(client.ip or "unknown"):
         await auth.record_rate_limited(client)
@@ -103,4 +96,3 @@ SessionFactoryDep = Annotated[async_sessionmaker[AsyncSession], Depends(get_sess
 AlertsDep = Annotated[AlertService, Depends(get_alerts)]
 ClockDep = Annotated[Clock, Depends(get_clock)]
 ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
-StepUpDep = Annotated[AuthContext, Depends(require_step_up)]

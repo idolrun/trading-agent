@@ -170,10 +170,6 @@ async def snapshot(run: LoadRun, ids: list[int]) -> Snapshot:
     return Snapshot(Counter(str(s) for _, s in rows), stored, {int(m) for m, _ in rows})
 
 
-async def _never() -> bool:
-    return False
-
-
 async def open_lot(run: LoadRun, session_id: uuid.UUID) -> None:
     """A user lot before the burst, so the startup reconciliation compares a real position."""
     s = run.envelope(LOT_ENTRY, {})
@@ -188,7 +184,6 @@ async def open_lot(run: LoadRun, session_id: uuid.UUID) -> None:
         card.version,
         Edits(qty=2),
         session_id=session_id,
-        consume_step_up=_never,
     )
     await run.consume()
 

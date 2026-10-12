@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
 const apiError = (status: number, code: string, message: string) =>
   HttpResponse.json({ code, message }, { status })
 
-const session = { email: "me@example.com", expiresAt: "2026-09-30T00:00:00Z", mustChangePassword: false, stepUpUntil: null }
+const session = { email: "me@example.com", expiresAt: "2026-09-30T00:00:00Z", mustChangePassword: false }
 
 beforeEach(() => {
   nav.replace.mockReset()

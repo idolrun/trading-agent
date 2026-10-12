@@ -9,6 +9,7 @@ import {
   Briefcase,
   ChartNoAxesCombined,
   ClipboardList,
+  Gauge,
   Inbox,
   MessageSquare,
   PenLine,
@@ -43,6 +44,7 @@ const GROUPS: { id: string; label: string; links: DeskLink[] }[] = [
     label: "Trading",
     links: [
       { href: "/", label: "Inbox", icon: Inbox },
+      { href: "/control-room", label: "Control room", icon: Gauge },
       { href: "/feed", label: "Feed", icon: Rss },
       { href: "/positions", label: "Positions", icon: Briefcase },
       { href: "/orders", label: "Orders", icon: ClipboardList },

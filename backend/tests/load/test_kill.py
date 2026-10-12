@@ -146,10 +146,6 @@ def install_approval_kill(run: LoadRun, kill: Kill, monkeypatch: pytest.MonkeyPa
         monkeypatch.setattr(run.approvals, name, step)
 
 
-async def _never() -> bool:
-    return False
-
-
 async def send(run: LoadRun, items: tuple[sd.DayMessage, ...]) -> list[Sent]:
     ids: dict[int, int] = {}
     sent = [run.envelope(m, ids) for m in items]
@@ -350,7 +346,6 @@ async def test_5_kill_in_approval_graph(
                 card.version,
                 Edits(qty=2),
                 session_id=session_id,
-                consume_step_up=_never,
             )
         except Killed:
             pass

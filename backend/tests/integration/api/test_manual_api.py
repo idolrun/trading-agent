@@ -1,5 +1,6 @@
 """F047: manual operations, kill switch and corrections. Every manual order is a card approved
-by the user's own action and revalidated like a signal order (C42); AC-10 step-up at API level."""
+by the user's own action and revalidated like a signal order (C42); no password
+step-up (removed 2026-10-12)."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -93,13 +94,7 @@ async def m(owner_engine: object) -> AsyncIterator[Api]:
         yield api
 
 
-async def step_up(api: Api) -> None:
-    await api.step_up()
-
-
-async def post(api: Api, path: str, body: dict[str, Any], *, up: bool = False) -> Any:
-    if up:
-        await step_up(api)
+async def post(api: Api, path: str, body: dict[str, Any]) -> Any:
     return await api.client.post(f"/api/v1{path}", json=body)
 
 
@@ -177,14 +172,28 @@ async def test_requires_session(api: Api, method: str, path: str) -> None:
 # --- manual entry (C42, AC-10) ----------------------------------------------------------
 
 
-async def test_entry_needs_step_up(m: Api) -> None:
-    r = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"})
-    assert (r.status_code, r.json()["code"]) == (403, "step_up_required")
-    assert await rows(m, Card) == [] and await orders(m) == []
+async def test_entry_maps_spx_to_the_spxw_root_like_a_signal(m: Api) -> None:
+    spx = {"underlying": "SPX", "expiry": "2026-09-28", "strike": "5800", "right": "call"}
+    body = {"instrument": {"instrument": "option", **spx}, "qty": 1, "limitPrice": "18.10"}
+    r = await post(m, "/manual/entry", body | {"idempotencyKey": "e-spx"})
+    assert r.status_code == 200, r.text
+    [order] = await orders(m)
+    assert order.broker_symbol.startswith("SPXW")  # the root the chain and the broker know
+
+
+async def test_an_index_entered_as_a_stock_says_it_has_no_quote(m: Api) -> None:
+    body = {"instrument": {"instrument": "stock", "underlying": "NDX"}, "qty": 1, "limitPrice": "1"}
+    r = await post(m, "/manual/entry", body | {"idempotencyKey": "e-ndx"})
+    assert r.status_code == 422
+    assert r.json()["message"] == (
+        "market_data_unavailable: no quote for NDX; "
+        "an index has no stock quote, enter it as an option"
+    )
+    assert await rows(m, Card) == []
 
 
 async def test_entry_passes_the_signal_checks_then_places_one_limit_order(m: Api) -> None:
-    r = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"}, up=True)
+    r = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"})
     assert r.status_code == 200, r.text
     [card] = await rows(m, Card)
     assert (card.source, card.state, card.provider_position_id) == (
@@ -193,7 +202,7 @@ async def test_entry_passes_the_signal_checks_then_places_one_limit_order(m: Api
         None,
     )
     [approval] = await rows(m, Approval)
-    assert approval.card_id == card.card_id and approval.step_up  # the user's action, with step-up
+    assert approval.card_id == card.card_id and not approval.step_up  # the session authorizes
     [order] = await orders(m)
     assert order.approval_id == approval.approval_id and order.kind == OrderKind.ENTRY
     assert (order.qty, order.limit_price, order.provider_position_id) == (1, Decimal("0.71"), None)
@@ -221,12 +230,12 @@ async def test_entry_gate_breach_is_422_with_the_reason(m: Api) -> None:
         actor=Actor.CLI,
         reason="tight",
     )
-    r = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"}, up=True)
+    r = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"})
     assert (r.status_code, r.json()["message"]) == (422, "max exposure")
     assert await orders(m) == []
     [card] = await rows(m, Card)  # the refusal stays auditable
     assert card.state == CardState.INVALIDATED
-    again = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"}, up=True)
+    again = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"})
     assert (again.status_code, again.json()["message"]) == (422, "max exposure")
     assert len(await rows(m, Card)) == 1
 
@@ -242,7 +251,7 @@ async def test_entry_gate_breach_is_422_with_the_reason(m: Api) -> None:
     ],
 )
 async def test_entry_validation_is_422(m: Api, change: dict[str, Any], message: str) -> None:
-    r = await post(m, "/manual/entry", ENTRY | change | {"idempotencyKey": "e-1"}, up=True)
+    r = await post(m, "/manual/entry", ENTRY | change | {"idempotencyKey": "e-1"})
     assert r.status_code == 422 and message in r.json()["message"], r.text
     assert await orders(m) == []
 
@@ -252,7 +261,7 @@ async def test_kill_switch_toggle_blocks_entries_but_not_exits(m: Api) -> None:
     r = await post(m, "/kill-switch", {"active": True, "reason": "panic"})
     assert (r.status_code, r.json()) == (200, {"active": True})
     assert await m.app.state.flags.is_active(FlagName.KILL_SWITCH)
-    blocked = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"}, up=True)
+    blocked = await post(m, "/manual/entry", ENTRY | {"idempotencyKey": "e-1"})
     assert (blocked.status_code, blocked.json()["message"]) == (422, "kill switch active")
     exit_ = await post(m, "/manual/exit", {"lotId": str(lot_id), "qty": 1, "idempotencyKey": "x-1"})
     assert exit_.status_code == 200 and len(await orders(m, OrderKind.EXIT)) == 1  # OD-27
@@ -334,10 +343,7 @@ async def test_flatten_options_exits_tracked_option_lots_only(m: Api) -> None:
     foreign = await seed_lot(m, GOOGL_PUT, 3, provider=None)
     body = {"scope": "options", "idempotencyKey": "f-1"}
 
-    assert (await post(m, "/flatten", body)).status_code == 403  # AC-10
-    assert not await m.app.state.flags.is_active(FlagName.KILL_SWITCH)
-
-    r = await post(m, "/flatten", body, up=True)
+    r = await post(m, "/flatten", body)
     assert r.status_code == 200, r.text
     assert r.json()["killSwitch"] is True
     assert await m.app.state.flags.is_active(FlagName.KILL_SWITCH)
@@ -346,9 +352,8 @@ async def test_flatten_options_exits_tracked_option_lots_only(m: Api) -> None:
     sold = {o.lot_id: o.qty for o in await orders(m, OrderKind.EXIT)}
     assert sold == {a: 2, b: 1}  # the stock and the foreign lot are untouched
     assert stock not in sold and foreign not in sold
-    assert all(a.step_up for a in await rows(m, Approval))
 
-    again = await post(m, "/flatten", body, up=True)  # replayed key: same cards, no new order
+    again = await post(m, "/flatten", body)  # replayed key: same cards, no new order
     assert [x["cardId"] for x in again.json()["lots"]] == [x["cardId"] for x in r.json()["lots"]]
     assert len(await orders(m, OrderKind.EXIT)) == 2
 
@@ -357,7 +362,7 @@ async def test_flatten_all_includes_stocks(m: Api) -> None:
     await seed_lot(m, GOOGL, 2)
     stock = await seed_lot(m, GOOGL_STOCK, 5, avg="355")
     m.app.state.marketdata.set_quote(GOOGL_STOCK, Decimal("355.00"), Decimal("355.05"))
-    r = await post(m, "/flatten", {"scope": "all", "idempotencyKey": "f-1"}, up=True)
+    r = await post(m, "/flatten", {"scope": "all", "idempotencyKey": "f-1"})
     assert [lot["blocked"] for lot in r.json()["lots"]] == [None, None]
     assert stock in {o.lot_id for o in await orders(m, OrderKind.EXIT)}
 
@@ -365,14 +370,12 @@ async def test_flatten_all_includes_stocks(m: Api) -> None:
 # --- lot adjust (F046 resolution) -------------------------------------------------------------
 
 
-async def test_adjust_needs_step_up_and_a_valid_qty(m: Api) -> None:
+async def test_adjust_needs_a_valid_qty(m: Api) -> None:
     lot_id = await seed_lot(m, GOOGL, 3)
     body = {"qty": 2, "reason": "broker holds 2"}
-    r = await post(m, f"/lots/{lot_id}/adjust", body)
-    assert (r.status_code, r.json()["code"]) == (403, "step_up_required")
-    bad = await post(m, f"/lots/{lot_id}/adjust", body | {"qty": -1}, up=True)
+    bad = await post(m, f"/lots/{lot_id}/adjust", body | {"qty": -1})
     assert bad.status_code == 422
-    missing = await post(m, f"/lots/{uuid.uuid4()}/adjust", body, up=True)
+    missing = await post(m, f"/lots/{uuid.uuid4()}/adjust", body)
     assert missing.status_code == 404
     assert (await rows(m, Lot))[0].qty == 3
 
@@ -383,7 +386,7 @@ async def test_adjust_resolves_a_reconciliation_mismatch(m: Api) -> None:
     report = await m.app.state.reconciler.run()
     assert not report.clean and await m.app.state.flags.is_active(FlagName.ENTRIES_BLOCKED)
 
-    r = await post(m, f"/lots/{lot_id}/adjust", {"qty": 2, "reason": "broker holds 2"}, up=True)
+    r = await post(m, f"/lots/{lot_id}/adjust", {"qty": 2, "reason": "broker holds 2"})
     assert r.status_code == 200, r.text
     assert r.json()["qty"] == 2
     [event] = await rows(m, LotEvent, col(LotEvent.change) == "reconcile_adjust")

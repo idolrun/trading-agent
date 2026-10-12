@@ -79,23 +79,6 @@ async def revoke_user_sessions(
     await db.execute(stmt.values(revoked_at=now))
 
 
-async def set_step_up(db: AsyncSession, session_id: uuid.UUID, now: datetime) -> None:
-    await db.execute(
-        update(AuthSession).where(col(AuthSession.session_id) == session_id).values(step_up_at=now)
-    )
-
-
-async def consume_step_up(db: AsyncSession, session_id: uuid.UUID, since: datetime) -> bool:
-    """Atomically use a step-up made at/after `since`; each step-up authorizes one action."""
-    used = await db.scalar(
-        update(AuthSession)
-        .where(col(AuthSession.session_id) == session_id, col(AuthSession.step_up_at) >= since)
-        .values(step_up_at=None)
-        .returning(col(AuthSession.session_id))
-    )
-    return used is not None
-
-
 async def list_audit(
     db: AsyncSession,
     *,

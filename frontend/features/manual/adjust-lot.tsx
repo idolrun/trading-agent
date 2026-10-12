@@ -3,20 +3,16 @@
 import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { StepUpDialog } from "@/features/auth/step-up-dialog"
-import { useStepUp } from "@/features/auth/use-step-up"
 import { postAdjust, useManualMutation } from "@/features/manual/api"
 import { Field, FormError } from "@/features/manual/fields"
 import type { LotDetail } from "@/features/lots/types"
 
-/** Reconcile our lot quantity to what the broker shows (step-up). Qty 0 closes the lot. */
+/** Reconcile our lot quantity to what the broker shows. Qty 0 closes the lot. */
 export function AdjustLot({ lot }: { lot: LotDetail }) {
-  const stepUp = useStepUp()
   const [qty, setQty] = useState(String(lot.qty))
   const [reason, setReason] = useState("")
   const adjust = useManualMutation({
     call: (body: { qty: number; reason: string }) => postAdjust(lot.id, body),
-    withStepUp: stepUp.withStepUp,
     success: "Lot quantity adjusted",
     onDone: () => setReason(""),
   })
@@ -32,7 +28,7 @@ export function AdjustLot({ lot }: { lot: LotDetail }) {
     <>
     <form onSubmit={submit} aria-label="Adjust" className="flex flex-col gap-2 rounded-lg border border-border p-3">
       <h3 className="font-medium">Adjust to broker quantity</h3>
-      <Field label="Broker qty" hint="Setting 0 closes this lot. Needs a password check.">
+      <Field label="Broker qty" hint="Setting 0 closes this lot.">
         {(id) => (
           <Input
             id={id}
@@ -53,7 +49,6 @@ export function AdjustLot({ lot }: { lot: LotDetail }) {
         {adjust.isPending ? "Adjusting…" : "Adjust quantity"}
       </Button>
     </form>
-    <StepUpDialog {...stepUp.dialogProps} />
     </>
   )
 }

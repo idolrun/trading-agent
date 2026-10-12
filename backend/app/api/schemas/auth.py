@@ -10,10 +10,6 @@ class LoginRequest(CamelModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
-class PasswordRequest(CamelModel):
-    password: str = Field(min_length=1, max_length=1024)
-
-
 class ChangePasswordRequest(CamelModel):
     current_password: str = Field(min_length=1, max_length=1024)
     new_password: str = Field(min_length=1, max_length=1024)
@@ -23,8 +19,3 @@ class SessionResponse(CamelModel):
     email: str
     expires_at: datetime
     must_change_password: bool = False
-    step_up_until: datetime | None = None
-
-
-class StepUpResponse(CamelModel):
-    step_up_until: datetime

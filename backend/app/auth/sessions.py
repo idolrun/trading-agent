@@ -34,8 +34,3 @@ def session_problem(
     if row.user_agent != user_agent:
         return "device_changed"
     return None
-
-
-def step_up_since(now: datetime, settings: Settings) -> datetime:
-    """Oldest step-up time still accepted."""
-    return now - timedelta(seconds=settings.step_up_window_s)

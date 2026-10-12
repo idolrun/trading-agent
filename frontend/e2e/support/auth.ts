@@ -41,12 +41,3 @@ export async function fillSignIn(page: Page, email: string, password: string) {
   await page.getByLabel("Password", { exact: true }).fill(password)
   await page.getByRole("button", { name: "Sign in" }).click()
 }
-
-/** The password step-up dialog (AC-10): it must open, then confirm with the password. */
-export async function confirmStepUp(page: Page, password = E2E_PASSWORD) {
-  const dialog = page.getByRole("dialog", { name: "Confirm with your password" })
-  await expect(dialog).toBeVisible()
-  await dialog.getByLabel("Password", { exact: true }).fill(password)
-  await dialog.getByRole("button", { name: "Confirm" }).click()
-  await expect(dialog).toBeHidden()
-}

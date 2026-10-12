@@ -1,30 +1,24 @@
-import { confirmStepUp } from "./support/auth"
 import { expect, test } from "./support/driver"
 
-// AC-10 / 7.9: a manual entry needs a fresh password (step-up) and then places one limit order,
+// 7.9: a manual entry places one limit order with no password prompt (step-up removed 2026-10-12),
 // under its own approved card, revalidated like a signal order (shadow mode: filled at the ask).
-test("manual entry: step-up prompt, then the order", async ({ page, driver }) => {
+test("manual entry: submit places the order", async ({ page, driver }) => {
   await page.goto("/manual/entry")
   const form = page.getByRole("form", { name: "Manual entry" })
   await form.getByLabel("Underlying").fill("googl")
   await form.getByLabel("Expiry").fill("2026-10-02")
   await form.getByLabel("Strike").fill("357.5")
-  await form.getByLabel("Right").selectOption("call")
+  await form.getByRole("radio", { name: "Call" }).click()
   await form.getByLabel("Quantity").fill("1")
   await form.getByLabel("Limit price").fill("0.71")
   await form.getByRole("button", { name: "Submit entry" }).click()
 
-  // The first attempt is refused with step_up_required: nothing is placed until the password.
-  await expect(page.getByRole("dialog", { name: "Confirm with your password" })).toBeVisible()
-  expect(await driver.orders()).toEqual([])
-  expect(await driver.cards()).toEqual([])
-  await confirmStepUp(page)
   await expect(page.getByText("Entry submitted")).toBeVisible()
 
   const [card] = await driver.cards()
   expect(card).toMatchObject({ action: "entry", providerId: null, providerPositionId: null })
   const detail = await driver.card(card.id)
-  expect(detail.approval).toMatchObject({ decision: "approve", stepUp: true })
+  expect(detail.approval).toMatchObject({ decision: "approve", stepUp: false })
   const [order] = await driver.orders()
   expect(order).toMatchObject({
     cardId: card.id,

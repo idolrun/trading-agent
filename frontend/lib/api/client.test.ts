@@ -1,12 +1,11 @@
 import { http, HttpResponse } from "msw"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { apiGet, apiPost, onStepUpRequired, onUnauthorized } from "@/lib/api/client"
+import { apiGet, apiPost, onUnauthorized } from "@/lib/api/client"
 import { isApiError } from "@/lib/api/errors"
 import { server } from "@/test/msw"
 
 afterEach(() => {
   onUnauthorized(undefined)
-  onStepUpRequired(undefined)
 })
 
 describe("api client errors", () => {
@@ -99,21 +98,5 @@ describe("api client errors", () => {
     )
     await expect(apiGet("/api/v1/cards")).rejects.toMatchObject({ status: 401, code: "unauthorized" })
     expect(handler).toHaveBeenCalledOnce()
-  })
-
-  it("calls the step-up hook only for 403 step_up_required", async () => {
-    const stepUp = vi.fn()
-    onStepUpRequired(stepUp)
-    server.use(
-      http.post("*/api/v1/flatten", () =>
-        HttpResponse.json({ message: "Step up", code: "step_up_required" }, { status: 403 }),
-      ),
-      http.post("*/api/v1/forbidden", () =>
-        HttpResponse.json({ message: "No", code: "forbidden" }, { status: 403 }),
-      ),
-    )
-    await expect(apiPost("/api/v1/flatten")).rejects.toMatchObject({ code: "step_up_required" })
-    await expect(apiPost("/api/v1/forbidden")).rejects.toMatchObject({ code: "forbidden" })
-    expect(stepUp).toHaveBeenCalledOnce()
   })
 })

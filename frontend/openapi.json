@@ -1723,7 +1723,7 @@
         "type": "object"
       },
       "ErrorBody": {
-        "description": "What every error body looks like (README \u00a71.2); codes: not_found, conflict, invalid,\nunauthorized, step_up_required, forbidden, rate_limited, unavailable (503; `/health` has\nits own body).",
+        "description": "What every error body looks like (README \u00a71.2); codes: not_found, conflict, invalid,\nunauthorized, forbidden, rate_limited, unavailable (503; `/health` has\nits own body).",
         "properties": {
           "code": {
             "title": "Code",
@@ -5056,21 +5056,6 @@
         "title": "Page[QueueItem]",
         "type": "object"
       },
-      "PasswordRequest": {
-        "properties": {
-          "password": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "title": "Password",
-            "type": "string"
-          }
-        },
-        "required": [
-          "password"
-        ],
-        "title": "PasswordRequest",
-        "type": "object"
-      },
       "Period": {
         "enum": [
           "1d",
@@ -7123,18 +7108,6 @@
             "default": false,
             "title": "Mustchangepassword",
             "type": "boolean"
-          },
-          "stepUpUntil": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stepupuntil"
           }
         },
         "required": [
@@ -7529,20 +7502,6 @@
           "p99Ms"
         ],
         "title": "StageLatency",
-        "type": "object"
-      },
-      "StepUpResponse": {
-        "properties": {
-          "stepUpUntil": {
-            "format": "date-time",
-            "title": "Stepupuntil",
-            "type": "string"
-          }
-        },
-        "required": [
-          "stepUpUntil"
-        ],
-        "title": "StepUpResponse",
         "type": "object"
       },
       "StopOut": {
@@ -9199,47 +9158,6 @@
           }
         },
         "summary": "Session",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/step-up": {
-      "post": {
-        "operationId": "step_up_api_v1_auth_step_up_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StepUpResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Client Error"
-          }
-        },
-        "summary": "Step Up",
         "tags": [
           "auth"
         ]

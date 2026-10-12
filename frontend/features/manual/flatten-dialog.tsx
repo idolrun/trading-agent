@@ -7,8 +7,6 @@ import { Dialog } from "@/components/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { StepUpDialog } from "@/features/auth/step-up-dialog"
-import { useStepUp } from "@/features/auth/use-step-up"
 import { words } from "@/features/cards/types"
 import { postFlatten, useManualMutation, type FlattenResult, type FlattenScope } from "@/features/manual/api"
 import { FormError } from "@/features/manual/fields"
@@ -46,11 +44,9 @@ function FlattenSummary({ result }: { result: FlattenResult }) {
 }
 
 function FlattenDialog({ onClose }: { onClose: () => void }) {
-  const stepUp = useStepUp()
   const [scope, setScope] = useState<FlattenScope>("options")
   const flatten = useManualMutation({
     call: (value: FlattenScope, key) => postFlatten(value, key),
-    withStepUp: stepUp.withStepUp,
     success: "Flatten submitted",
   })
 
@@ -65,7 +61,7 @@ function FlattenDialog({ onClose }: { onClose: () => void }) {
         open
         onOpenChange={(open) => !open && onClose()}
         title="Flatten positions"
-        description="Turns the kill switch on and sends an exit for every open lot in scope. Needs a password check."
+        description="Turns the kill switch on and sends an exit for every open lot in scope."
       >
         {flatten.data ? (
           <>
@@ -103,7 +99,6 @@ function FlattenDialog({ onClose }: { onClose: () => void }) {
           </form>
         )}
       </Dialog>
-      <StepUpDialog {...stepUp.dialogProps} />
     </>
   )
 }
@@ -117,7 +112,7 @@ export function FlattenControl() {
         size="sm"
         variant="outline"
         className="border-destructive/60 text-destructive hover:bg-destructive/10 hover:text-destructive"
-        title="Exit open lots in a chosen scope. Asks for a password check."
+        title="Exit open lots in a chosen scope."
         onClick={() => setOpen(true)}
       >
         <OctagonX aria-hidden />

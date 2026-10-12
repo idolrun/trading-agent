@@ -18,7 +18,7 @@ import { providerLabel } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 /** What the original message said, in at most two lines. The full text is in Details. */
-function signalText(card: Card): string | null {
+export function signalText(card: Card): string | null {
   const message = card.sourceMessages.find((item) => item.messageId === card.messageId) ?? card.sourceMessages.at(-1)
   return message?.text?.trim() || null
 }

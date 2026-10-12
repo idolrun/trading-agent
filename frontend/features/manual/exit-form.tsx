@@ -7,7 +7,7 @@ import { postExit, useManualMutation } from "@/features/manual/api"
 import { Field, FormError } from "@/features/manual/fields"
 import type { LotDetail } from "@/features/lots/types"
 
-/** Manual exit (FR-27): sells `qty` of this lot. No step-up; allowed for foreign lots too. */
+/** Manual exit (FR-27): sells `qty` of this lot. Allowed for foreign lots too. */
 export function ExitForm({ lot }: { lot: LotDetail }) {
   const [qty, setQty] = useState("") // the user types it; "Flatten" is the whole-position close
   const exit = useManualMutation({

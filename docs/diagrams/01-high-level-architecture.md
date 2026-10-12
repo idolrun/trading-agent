@@ -66,7 +66,7 @@ flowchart TB
     CARDS -.->|"SSE + push"| WEB
     WEB -.->|"card / fill / alert push"| PUSHSVC
     PUSHSVC -.-> TRADER
-    TRADER -->|"approve / edit / reject<br/>manual ops · kill switch (password step-up)"| WEB
+    TRADER -->|"approve / edit / reject<br/>manual ops · kill switch"| WEB
     WEB ==>|"approvals row BEFORE resume"| PG
     WEB -->|"Command(resume=approve)"| PIPE
     PIPE -->|"revalidate → submit_order()"| EXEC

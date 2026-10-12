@@ -17,7 +17,6 @@ from app.cards.approval_service import (
     CardNotFound,
     DecisionConflict,
     DecisionInvalid,
-    StepUpRequired,
 )
 from app.cards.edits import Edits
 from app.cards.models import CardState
@@ -98,7 +97,6 @@ async def decide_card(
             body.version,
             edits,
             session_id=ctx.session_id,
-            consume_step_up=lambda: auth.consume_step_up(ctx),
         )
     except CardNotFound:
         raise ApiError("card not found", "not_found", 404) from None
@@ -106,8 +104,6 @@ async def decide_card(
         raise ApiError(str(exc), "conflict", 409) from None
     except (DecisionInvalid, ValidationError) as exc:
         raise ApiError(str(exc), "invalid", 422) from None
-    except StepUpRequired:
-        raise ApiError("confirm your password first", "step_up_required", 403) from None
     action = {
         "approve": AuditAction.TRADE_APPROVED,
         "reject": AuditAction.TRADE_REJECTED,

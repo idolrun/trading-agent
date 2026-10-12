@@ -61,7 +61,7 @@ export function invalidateBook(queryClient: QueryClient) {
 
 /**
  * One idempotency key per mounted form (= per dialog open). It stays the same
- * across a step-up retry and any retry after a network/5xx failure, and rotates
+ * across any retry after a network/5xx failure, and rotates
  * after a success or a 422 (the backend binds the key to the refusal and would
  * replay it, so a corrected resubmit needs a new key).
  */
@@ -73,22 +73,17 @@ function useIdempotencyKey() {
 type Options<Vars, Result> = {
   /** `key` is the current idempotency key; ignore it for endpoints that take none. */
   call: (vars: Vars, key: string) => Promise<Result>
-  /** `useStepUp().withStepUp`, only for the endpoints that require a fresh password check. */
-  withStepUp?: <R>(fn: () => Promise<R>) => () => Promise<R>
   success: string | ((result: Result) => string)
   /** Runs after a successful call (close the dialog, reset the form). */
   onDone?: (result: Result) => void
 }
 
-export function useManualMutation<Vars, Result>({ call, withStepUp, success, onDone }: Options<Vars, Result>) {
+export function useManualMutation<Vars, Result>({ call, success, onDone }: Options<Vars, Result>) {
   const queryClient = useQueryClient()
   const { key, rotate } = useIdempotencyKey()
 
   return useMutation<Result, Error, Vars>({
-    mutationFn: (vars) => {
-      const run = () => call(vars, key)
-      return (withStepUp ? withStepUp(run) : run)()
-    },
+    mutationFn: (vars) => call(vars, key),
     onSuccess: (result) => {
       rotate()
       toast(typeof success === "function" ? success(result) : success)

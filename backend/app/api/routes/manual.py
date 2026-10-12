@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Path, Request
 from pydantic import ValidationError
 
-from app.api.deps import AuditDep, ClientDep, SessionDep, SessionFactoryDep, StepUpDep
+from app.api.deps import AuditDep, ClientDep, ConfigServiceDep, SessionDep, SessionFactoryDep
 from app.api.errors import ApiError
 from app.api.schemas.ledger import LotDetail, PositionDetail
 from app.api.schemas.manual import (
@@ -30,9 +30,12 @@ from app.api.schemas.manual import (
     StopRequest,
 )
 from app.auth.models import AuditAction
+from app.instruments import OptionContract
 from app.ledger import queries
 from app.manual.corrections import Corrections
 from app.manual.service import ManualInvalid, ManualNotFound, ManualResult, ManualService
+from app.runtime_config.schema import RuntimeConfig
+from app.validate.normalize import normalize_symbol
 
 router = APIRouter(tags=["manual"])
 
@@ -90,11 +93,21 @@ async def manual_stop(
 
 @router.post("/manual/entry")
 async def manual_entry(
-    body: EntryRequest, request: Request, ctx: StepUpDep, audit: AuditDep, client: ClientDep
+    body: EntryRequest,
+    request: Request,
+    ctx: SessionDep,
+    audit: AuditDep,
+    client: ClientDep,
+    config: ConfigServiceDep,
 ) -> ManualResultOut:
+    contract = body.instrument.to_instrument()
+    if isinstance(contract, OptionContract):  # the signal path's symbol map: SPX -> SPXW
+        cfg = config.get() or RuntimeConfig()
+        root, _ = normalize_symbol(contract.underlying, cfg.symbol_map, {})
+        contract = contract.model_copy(update={"underlying": root})
     async with _errors():
         result = await _service(request).entry(
-            body.instrument.to_instrument(),
+            contract,
             body.qty,
             body.limit_price,
             body.idempotency_key,
@@ -131,7 +144,7 @@ async def kill_switch(
 
 @router.post("/flatten")
 async def flatten(
-    body: FlattenRequest, request: Request, ctx: StepUpDep, audit: AuditDep, client: ClientDep
+    body: FlattenRequest, request: Request, ctx: SessionDep, audit: AuditDep, client: ClientDep
 ) -> FlattenOut:
     async with _errors():
         results = await _service(request).flatten(body.scope, body.idempotency_key, ctx.session_id)
@@ -190,7 +203,7 @@ async def adjust_lot(
     body: AdjustRequest,
     request: Request,
     sessions: SessionFactoryDep,
-    ctx: StepUpDep,
+    ctx: SessionDep,
     audit: AuditDep,
     client: ClientDep,
 ) -> LotDetail:

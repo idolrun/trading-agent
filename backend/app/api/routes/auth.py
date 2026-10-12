@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, Response
 
 from app.api.deps import (
@@ -14,9 +12,7 @@ from app.api.errors import ApiError
 from app.api.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
-    PasswordRequest,
     SessionResponse,
-    StepUpResponse,
 )
 from app.auth.service import AuthContext, AuthFailed, InvalidPassword
 
@@ -24,18 +20,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 limited = [Depends(rate_limit)]
 
 _FAILED = ApiError("wrong email or password", "unauthorized", 401)
-_WRONG_PASSWORD = ApiError("wrong password", "unauthorized", 401)
 
 
 def _session(ctx: AuthContext, settings: SettingsDep) -> SessionResponse:
-    step_up_until = None
-    if ctx.step_up_at is not None:
-        step_up_until = ctx.step_up_at + timedelta(seconds=settings.step_up_window_s)
     return SessionResponse(
         email=ctx.email,
         expires_at=ctx.expires_at,
         must_change_password=ctx.must_change_password,
-        step_up_until=step_up_until,
     )
 
 
@@ -61,17 +52,6 @@ async def login(
         samesite="strict",
     )
     return _session(ctx, settings)
-
-
-@router.post("/step-up", dependencies=limited)
-async def step_up(
-    body: PasswordRequest, ctx: RawSessionDep, auth: AuthDep, client: ClientDep
-) -> StepUpResponse:
-    try:
-        until = await auth.step_up(ctx, body.password, client)
-    except AuthFailed:
-        raise _WRONG_PASSWORD from None
-    return StepUpResponse(step_up_until=until)
 
 
 @router.post("/change-password", status_code=204, dependencies=limited)

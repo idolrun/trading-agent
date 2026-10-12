@@ -11,8 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { StepUpDialog } from "@/features/auth/step-up-dialog"
-import { useStepUp } from "@/features/auth/use-step-up"
 import { CardActions } from "@/features/cards/card-actions"
 import { cardStateLabel, side, TONE_CLASS } from "@/features/cards/card-state"
 import { CardSummary } from "@/features/cards/card-summary"
@@ -270,8 +268,7 @@ function Groups({ pending, disabled, decide }: { pending: Cards; disabled: Cards
 export function CardInbox() {
   const query = useCardList(PENDING)
   const disabled = useCardList(DISABLED)
-  const stepUp = useStepUp()
-  const decide = useDecideCard(stepUp.withStepUp)
+  const decide = useDecideCard()
   const failure = generalDecisionError(decide)
   const disabledCount = disabled.data?.items.length ?? 0
   const freshness = freshnessOf(query)
@@ -326,7 +323,6 @@ export function CardInbox() {
       >
         {() => <Groups pending={query} disabled={disabled} decide={decide} />}
       </QueryState>
-      <StepUpDialog {...stepUp.dialogProps} />
     </section>
   )
 }

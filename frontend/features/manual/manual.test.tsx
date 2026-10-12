@@ -18,63 +18,35 @@ import { renderWithQuery } from "@/test/render"
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }))
 
 const SNOWFLAKE = "111222333444555666"
-const stepUpRequired = () =>
-  HttpResponse.json({ code: "step_up_required", message: "confirm your password first" }, { status: 403 })
-
 type Body = Record<string, unknown>
 let bodies: Body[]
-let fresh: boolean
-let stepUps: number
 
-/** Step-up is single-use: `guarded` consumes it, like the backend. */
-function guarded(handler: (body: Body, attempt: number) => Response) {
+/** Records each request body, then answers with `handler` (the attempt number starts at 1). */
+function recorded(handler: (body: Body, attempt: number) => Response) {
   return async ({ request }: { request: Request }) => {
     const body = (await request.json()) as Body
-    if (!fresh) return stepUpRequired()
-    fresh = false
     bodies.push(body)
     return handler(body, bodies.length)
   }
 }
 
-function recorded(response: () => Response) {
-  return async ({ request }: { request: Request }) => {
-    bodies.push((await request.json()) as Body)
-    return response()
-  }
-}
-
 beforeEach(() => {
   bodies = []
-  fresh = false
-  stepUps = 0
-  server.use(
-    http.post("*/api/v1/auth/step-up", () => {
-      fresh = true
-      stepUps += 1
-      return HttpResponse.json({ stepUpUntil: "2026-09-29T15:00:00Z" })
-    }),
-  )
 })
 
-async function confirmPassword() {
-  await userEvent.type(await screen.findByLabelText("Password"), "correct horse battery")
-  await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
-}
-
 async function fillStockEntry() {
-  await userEvent.selectOptions(screen.getByLabelText("Instrument"), "stock")
+  await userEvent.click(screen.getByRole("radio", { name: "Stock" }))
   await userEvent.type(screen.getByLabelText("Underlying"), "spy")
   await userEvent.type(screen.getByLabelText("Quantity"), "1")
   await userEvent.type(screen.getByLabelText("Limit price"), "1.25")
 }
 
 describe("manual entry", () => {
-  it("asks for the password first, keeps the idempotency key across it, and rotates it after a 422", async () => {
+  it("submits with no password prompt, and rotates the idempotency key after a 422", async () => {
     server.use(
       http.post(
         "*/api/v1/manual/entry",
-        guarded((_body, attempt) =>
+        recorded((_body, attempt) =>
           attempt === 1
             ? HttpResponse.json({ code: "invalid", message: "entries are blocked" }, { status: 422 })
             : HttpResponse.json({ cardId: cardFixture.id, state: "approved", orderIds: [] }),
@@ -85,15 +57,13 @@ describe("manual entry", () => {
     await fillStockEntry()
 
     await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
-    await confirmPassword()
     expect(await screen.findByRole("alert")).toHaveTextContent("entries are blocked")
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument()
     expect(bodies).toHaveLength(1)
     expect(bodies[0]).toMatchObject({ instrument: { instrument: "stock", underlying: "SPY" }, qty: 1, limitPrice: "1.25" })
 
     await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
-    await confirmPassword()
     await waitFor(() => expect(bodies).toHaveLength(2))
-    expect(stepUps).toBe(2)
     expect(typeof bodies[0].idempotencyKey).toBe("string")
     expect(bodies[1].idempotencyKey).not.toBe(bodies[0].idempotencyKey)
   })
@@ -129,30 +99,14 @@ describe("manual entry", () => {
     )
     expect(bodies).toHaveLength(1)
   })
-
-  it("sends the same key on both calls of one submission (403 then retry)", async () => {
-    const keys: unknown[] = []
-    server.use(
-      http.post("*/api/v1/manual/entry", async ({ request }) => {
-        keys.push(((await request.json()) as Body).idempotencyKey)
-        return fresh ? HttpResponse.json({ cardId: cardFixture.id, state: "approved", orderIds: [] }) : stepUpRequired()
-      }),
-    )
-    renderWithQuery(<EntryForm />)
-    await fillStockEntry()
-    await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
-    await confirmPassword()
-    await waitFor(() => expect(keys).toHaveLength(2))
-    expect(keys[0]).toBe(keys[1])
-  })
 })
 
 describe("flatten", () => {
-  it("picks a scope, confirms with the password and shows each blocked lot", async () => {
+  it("picks a scope and shows each blocked lot", async () => {
     server.use(
       http.post(
         "*/api/v1/flatten",
-        guarded(() =>
+        recorded(() =>
           HttpResponse.json({
             killSwitch: true,
             lots: [
@@ -168,7 +122,6 @@ describe("flatten", () => {
     const dialog = screen.getByRole("dialog", { name: "Flatten positions" })
     await userEvent.click(within(dialog).getByRole("radio", { name: "Everything" }))
     await userEvent.click(within(dialog).getByRole("button", { name: "Flatten now" }))
-    await confirmPassword()
     expect(await screen.findByText("Blocked: Market closed")).toBeInTheDocument()
     expect(bodies[0]).toMatchObject({ scope: "all" })
     expect(typeof bodies[0].idempotencyKey).toBe("string")
@@ -176,8 +129,8 @@ describe("flatten", () => {
 })
 
 describe("lot actions", () => {
-  it("adjusts to the broker quantity behind a password check", async () => {
-    server.use(http.post(`*/api/v1/lots/${lotDetailFixture.id}/adjust`, guarded(() => HttpResponse.json({ ...lotDetailFixture, qty: 3 }))))
+  it("adjusts to the broker quantity", async () => {
+    server.use(http.post(`*/api/v1/lots/${lotDetailFixture.id}/adjust`, recorded(() => HttpResponse.json({ ...lotDetailFixture, qty: 3 }))))
     renderWithQuery(<LotDetail lotId={lotDetailFixture.id} />)
     const form = within(await screen.findByRole("form", { name: "Adjust" }))
     await userEvent.clear(form.getByLabelText("Broker qty"))
@@ -185,11 +138,10 @@ describe("lot actions", () => {
     expect(form.getByRole("button", { name: "Adjust quantity" })).toBeDisabled()
     await userEvent.type(form.getByLabelText("Adjust reason"), "broker shows 3")
     await userEvent.click(form.getByRole("button", { name: "Adjust quantity" }))
-    await confirmPassword()
     await waitFor(() => expect(bodies).toEqual([{ qty: 3, reason: "broker shows 3" }]))
   })
 
-  it("exits without a password and adds a stop", async () => {
+  it("exits and adds a stop", async () => {
     server.use(
       http.post("*/api/v1/manual/exit", recorded(() => HttpResponse.json({ cardId: cardFixture.id, state: "approved", orderIds: [] }))),
       http.post("*/api/v1/manual/stops", recorded(() => HttpResponse.json({ cardId: cardFixture.id, state: "approved", orderIds: [] }))),
@@ -206,7 +158,6 @@ describe("lot actions", () => {
     await waitFor(() => expect(bodies).toHaveLength(2))
     expect(bodies[0]).toMatchObject({ lotId: lotDetailFixture.id, qty: lotDetailFixture.qty })
     expect(bodies[1]).toMatchObject({ lotId: lotDetailFixture.id, op: "add", level: "0.8", basis: "premium" })
-    expect(stepUps).toBe(0)
   })
 
   it("offers exit only on a foreign lot", async () => {

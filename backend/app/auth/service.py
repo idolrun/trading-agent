@@ -17,7 +17,7 @@ from app.auth.passwords import (
     temporary_password,
     verify_password_async,
 )
-from app.auth.sessions import hash_token, new_token, session_problem, step_up_since
+from app.auth.sessions import hash_token, new_token, session_problem
 from app.config import Settings
 from app.db import in_transaction
 from app.markettime import Clock
@@ -53,7 +53,6 @@ class AuthContext:
     user_id: uuid.UUID
     email: str
     expires_at: datetime
-    step_up_at: datetime | None
     must_change_password: bool
 
     @classmethod
@@ -63,7 +62,6 @@ class AuthContext:
             user.user_id,
             user.email,
             row.expires_at,
-            row.step_up_at,
             user.must_change_password,
         )
 
@@ -153,33 +151,12 @@ class AuthService:
                 db=db,
             )
 
-    # --- Password: step-up and change ---
+    # --- Password change ---
 
     async def _check_password(self, ctx: AuthContext, password: str) -> bool:
         async with in_transaction(self._sessions, None) as db:
             user = await repo.user_by_id(db, ctx.user_id)
         return await verify_password_async(password, user.password_hash if user else None)
-
-    async def step_up(self, ctx: AuthContext, password: str, client: Client) -> datetime:
-        """Fresh password check. Returns when the step-up lapses."""
-        if not await self._check_password(ctx, password):
-            await self.audit.record(
-                AuditAction.STEP_UP_FAILURE, client, user_id=ctx.user_id, email=ctx.email
-            )
-            raise AuthFailed
-        now = self.clock.now()
-        async with in_transaction(self._sessions, None) as db:
-            await repo.set_step_up(db, ctx.session_id, now)
-            await self.audit.record(
-                AuditAction.STEP_UP_SUCCESS, client, user_id=ctx.user_id, email=ctx.email, db=db
-            )
-        return now + timedelta(seconds=self._settings.step_up_window_s)
-
-    async def consume_step_up(self, ctx: AuthContext) -> bool:
-        """True once per step-up, within the window."""
-        since = step_up_since(self.clock.now(), self._settings)
-        async with in_transaction(self._sessions, None) as db:
-            return await repo.consume_step_up(db, ctx.session_id, since)
 
     async def change_password(
         self, ctx: AuthContext, current: str, new: str, client: Client

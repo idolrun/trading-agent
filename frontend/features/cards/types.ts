@@ -17,8 +17,8 @@ export function isDecidable(card: Card): boolean {
 }
 
 /**
- * A review card for a signal the system could not read: it holds no trade and no re-link, so
- * there is nothing to approve. The server refuses an approval; the card offers a dismissal only.
+ * A review card for a signal the system could not read: it holds no trade and no re-link, so the
+ * card itself is never approved (the server refuses). Its Approve opens a manual entry instead.
  */
 export function isUnreadable(card: Card): boolean {
   const { proposal } = card

@@ -3,14 +3,12 @@ from datetime import UTC, datetime, timedelta
 
 from app.auth.models import AuthSession
 from app.auth.rate_limit import SlidingWindowLimiter
-from app.auth.sessions import hash_token, new_token, session_problem, step_up_since
+from app.auth.sessions import hash_token, new_token, session_problem
 from app.config import Settings
 from app.markettime import FixedClock
 
 T0 = datetime(2026, 9, 28, 14, 0, tzinfo=UTC)
-SETTINGS = Settings.model_construct(
-    session_idle_minutes=60, session_absolute_hours=12, step_up_window_s=120
-)
+SETTINGS = Settings.model_construct(session_idle_minutes=60, session_absolute_hours=12)
 
 
 def row(**overrides: object) -> AuthSession:
@@ -46,10 +44,6 @@ def test_revoked() -> None:
 
 def test_device_bound_to_user_agent() -> None:
     assert session_problem(row(), T0, "laptop", SETTINGS) == "device_changed"
-
-
-def test_step_up_window() -> None:
-    assert step_up_since(T0, SETTINGS) == T0 - timedelta(seconds=120)
 
 
 def test_tokens_are_random_and_hashed() -> None:

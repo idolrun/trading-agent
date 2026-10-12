@@ -166,26 +166,56 @@ describe("card inbox", () => {
     expect(decisions[0].body.edits).toEqual({ qty: 4 })
   })
 
-  it("an unreadable-signal card can only be dismissed: no Approve, no Quantity", async () => {
-    const { decisions } = serve([
-      card({
-        action: "review",
-        cardType: "review",
-        underlying: null,
-        contract: null,
-        proposal: { qty: null, price: null, reviewReasons: ["needs_review: role_n4: confidence 0.30 < t_field"] },
+  it("an unreadable-signal card offers Reject, and Approve to enter the trade by hand", async () => {
+    const unreadable = card({
+      action: "review",
+      cardType: "review",
+      underlying: null,
+      contract: null,
+      proposal: { qty: null, price: null, reviewReasons: ["needs_review: role_n4: confidence 0.30 < t_field"] },
+    })
+    const { decisions } = serve([unreadable])
+    const entries: unknown[] = []
+    server.use(
+      http.post("*/api/v1/manual/entry", async ({ request }) => {
+        entries.push(await request.json())
+        return HttpResponse.json({ cardId: "0a1b2c3d-0000-4000-8000-0000000000e1", state: "approved", orderIds: [] })
       }),
-    ])
+    )
     renderWithQuery(<CardInbox />)
     const article = await screen.findByRole("article")
     expect(within(article).getByText(/Could not read this signal reliably/)).toBeInTheDocument()
-    expect(within(article).getByRole("link", { name: "Manual entry" })).toHaveAttribute("href", "/manual/entry")
-    expect(within(article).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument()
+    expect(within(article).getByRole("button", { name: "Reject" })).toBeEnabled()
     expect(within(article).queryByLabelText("Quantity")).not.toBeInTheDocument()
     article.focus()
-    await userEvent.keyboard("a")
+    await userEvent.keyboard("a") // the raw card itself is never approved
     expect(decisions).toHaveLength(0)
-    await userEvent.click(within(article).getByRole("button", { name: "Dismiss" }))
+
+    await userEvent.click(within(article).getByRole("button", { name: "Approve" }))
+    const sheet = await screen.findByRole("dialog", { name: "Enter trade" })
+    const form = within(sheet).getByRole("form", { name: "Manual entry" })
+    await userEvent.click(within(form).getByRole("radio", { name: "Stock" }))
+    await userEvent.type(within(form).getByLabelText("Underlying"), "tsla")
+    await userEvent.type(within(form).getByLabelText("Quantity"), "3")
+    expect(within(form).getByLabelText("Limit price")).toHaveValue(1.2) // the signal price, prefilled
+    await userEvent.clear(within(form).getByLabelText("Limit price"))
+    await userEvent.type(within(form).getByLabelText("Limit price"), "2.5")
+    await userEvent.click(within(form).getByRole("button", { name: "Submit entry" }))
+
+    await waitFor(() => expect(decisions).toHaveLength(1))
+    expect(entries).toEqual([
+      expect.objectContaining({ instrument: { instrument: "stock", underlying: "TSLA" }, qty: 3, limitPrice: "2.5" }),
+    ])
+    expect(decisions[0].body).toEqual({ decision: "reject", version: 1 }) // the raw card clears itself
+  })
+
+  it("an unreadable-signal card can be rejected", async () => {
+    const { decisions } = serve([
+      card({ action: "review", cardType: "review", underlying: null, contract: null, proposal: { qty: null, price: null } }),
+    ])
+    renderWithQuery(<CardInbox />)
+    const article = await screen.findByRole("article")
+    await userEvent.click(within(article).getByRole("button", { name: "Reject" }))
     await waitFor(() => expect(decisions).toHaveLength(1))
     expect(decisions[0].body).toEqual({ decision: "reject", version: 1 })
   })
@@ -409,36 +439,6 @@ describe("card inbox", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Approve" }))
     const article = screen.getByRole("article")
     expect(await within(article).findByText("not approvable: qty_exceeds_lot")).toBeInTheDocument()
-  })
-
-  it("403 step_up_required (manual entry): asks for the password and retries the approval once", async () => {
-    let steps = 0
-    server.use(
-      http.post("*/api/v1/auth/step-up", () => {
-        steps += 1
-        return HttpResponse.json({ stepUpUntil: "2026-09-29T15:00:00Z" })
-      }),
-    )
-    const { decisions } = serve([card()], (_body, current) =>
-      steps === 0
-        ? HttpResponse.json({ code: "step_up_required", message: "confirm your password first" }, { status: 403 })
-        : { ...current, state: "approved" },
-    )
-    renderWithQuery(<CardInbox />)
-    await screen.findByRole("article")
-    await typeQty("2")
-    await userEvent.click(await screen.findByRole("button", { name: "Approve" }))
-
-    await userEvent.type(await screen.findByLabelText("Password"), "correct horse battery")
-    await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
-    await waitFor(() => expect(decisions).toHaveLength(2))
-    expect(steps).toBe(1)
-    expect(decisions.map((d) => d.body)).toEqual([
-      { decision: "approve", version: 1, edits: { qty: 2 } },
-      { decision: "approve", version: 1, edits: { qty: 2 } },
-    ])
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(screen.queryByText("confirm your password first")).not.toBeInTheDocument()
   })
 
   it("keyboard: A approves and R rejects the focused card, but not while typing in a field", async () => {

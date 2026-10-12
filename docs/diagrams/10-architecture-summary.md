@@ -108,7 +108,7 @@ Every entry, add, exit, trim, stop, take-profit, manual entry, and flatten needs
 
 The approval row is written before the graph resumes. Cards expire on their timer or on process restart. A review card cannot be approved until the missing fields are filled. Disabled cards explain the block.
 
-Manual operations insert a card and approve it through the same executor. Password step-up is required for manual entry and flatten.
+Manual operations insert a card and approve it through the same executor. No password step-up (removed 2026-10-12).
 
 ### Shape of the deployment
 

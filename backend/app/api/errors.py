@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 class ErrorBody(BaseModel):
     """What every error body looks like (README §1.2); codes: not_found, conflict, invalid,
-    unauthorized, step_up_required, forbidden, rate_limited, unavailable (503; `/health` has
+    unauthorized, forbidden, rate_limited, unavailable (503; `/health` has
     its own body)."""
 
     message: str

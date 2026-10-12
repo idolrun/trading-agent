@@ -59,9 +59,7 @@ function statusMessage(status: number, code: string | undefined, retryAfterSecon
     case 401:
       return "Your session may have expired. Please sign in again."
     case 403:
-      return code === "step_up_required"
-        ? "Confirm your password to continue."
-        : "You don't have permission to perform this action."
+      return "You don't have permission to perform this action."
     case 404:
       return "We couldn't find the requested resource."
     case 409:

@@ -2,7 +2,6 @@
 
 import { Input } from "@/components/ui/input"
 
-import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { BracketLegs, legsProblem, parseLegs, splitLegs } from "@/features/cards/bracket-legs"
 import { BreakevenChoice } from "@/features/cards/breakeven-choice"
@@ -11,6 +10,7 @@ import { labelHint } from "@/features/cards/labels"
 import { usePreflight } from "@/features/cards/queries"
 import { useExpired } from "@/features/cards/countdown"
 import { emptyReviewDraft, ReviewFields, reviewEdits } from "@/features/cards/review-fields"
+import { EntrySheet } from "@/features/manual/entry-sheet"
 import { isDecidable, isUnreadable, words } from "@/features/cards/types"
 import type { BreakevenPick, Card, CardDecision, CardEdits } from "@/features/cards/types"
 import { Button } from "@/components/ui/button"
@@ -45,34 +45,56 @@ export function CardActions(props: Props) {
   return <ActionsForm key={props.card.version} {...props} />
 }
 
-/** The system could not read this signal: no order was made and none can be approved from here. */
+/**
+ * The system could not read this signal, so the card holds no trade. Approve opens the entry sheet:
+ * the user types the trade, it is placed as a manual entry (same gates), and this card is rejected.
+ * ponytail: two requests, not atomic; if the reject fails after the entry, the card stays for Reject.
+ */
 function UnreadableActions({ card, pending, blocked = false, error = null, onDecide }: Props) {
+  const [trading, setTrading] = useState(false)
+  const reject = () => onDecide({ decision: "reject", version: card.version })
+  const buttonClass = "h-11 min-h-11 text-sm font-semibold"
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       <p role="note" className="text-sm">
         <span className="font-medium">Could not read this signal reliably.</span>{" "}
         <span className="text-muted-foreground">
-          No order will be placed. To trade it, use{" "}
-          <Link href="/manual/entry" className="underline">
-            Manual entry
-          </Link>
-          .
+          Approve to enter the trade yourself, or reject it.
         </span>
       </p>
+      <EntrySheet
+        card={card}
+        open={trading}
+        onOpenChange={setTrading}
+        onDone={() => {
+          setTrading(false)
+          reject()
+        }}
+      />
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
-      <Button
-        type="button"
-        variant="outline"
-        className="min-h-11 self-start"
-        disabled={pending || blocked}
-        onClick={() => onDecide({ decision: "reject", version: card.version })}
-      >
-        {pending ? "Dismissing…" : "Dismiss"}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className={cn(buttonClass, "flex-1 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive")}
+          disabled={pending || blocked}
+          onClick={reject}
+        >
+          {pending ? "Rejecting…" : "Reject"}
+        </Button>
+        <Button
+          type="button"
+          className={cn(buttonClass, "flex-[2]")}
+          disabled={pending || blocked}
+          onClick={() => setTrading(true)}
+        >
+          Approve
+        </Button>
+      </div>
     </div>
   )
 }

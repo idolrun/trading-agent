@@ -2,8 +2,9 @@
 and options from the "indicative" feed (documented as delayed 15 min); the quote's `at` is
 Alpaca's own timestamp, so staleness checks (FR-19) see the delay honestly.
 
-Alpaca lists US equity and ETF options only: there is no index (SPX) quote and no SPXW chain, so
-those signals end in review cards (QuoteUnavailable / not optionable).
+Alpaca lists US equity, ETF and SPX index options (verified 2026-10-12: SPX contracts trade under
+the SPXW root, European style; the config symbol map turns SPX into SPXW). An index has no stock
+quote.
 `stream()` polls snapshots; the app's only streaming consumer is the underlying-stop watch.
 """
 

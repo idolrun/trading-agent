@@ -35,10 +35,6 @@ from tests.messages import PROVIDER_A
 QTY = 13  # the quantity a test user types when the test does not care
 
 
-async def _never() -> bool:
-    return False
-
-
 @dataclass
 class World:
     h: Harness
@@ -86,7 +82,6 @@ class World:
             version,
             Edits(**edits),
             session_id=self.session_id,
-            consume_step_up=_never,
         )
 
     async def card(self, card_id: uuid.UUID) -> Card:

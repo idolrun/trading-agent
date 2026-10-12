@@ -63,10 +63,6 @@ class Api:
         )
         assert r.status_code == 204, r.text
 
-    async def step_up(self, password: str = PASSWORD) -> None:
-        r = await self.client.post("/api/v1/auth/step-up", json={"password": password})
-        assert r.status_code == 200, r.text
-
 
 @pytest.fixture
 async def api(owner_engine: object) -> AsyncIterator[Api]:

@@ -100,10 +100,6 @@ class DecisionInvalid(Exception):
     """Edits / missing fields / qty rules -> 422."""
 
 
-class StepUpRequired(Exception):
-    pass
-
-
 @dataclass(frozen=True)
 class _Loaded:
     card: Card
@@ -301,8 +297,6 @@ class ApprovalService:
         edits: Edits,
         *,
         session_id: uuid.UUID,
-        consume_step_up: Callable[[], Awaitable[bool]],
-        stepped_up: bool = False,  # the caller already held a password step-up (flatten, F047)
     ) -> None:
         with bind(card_id=str(card_id)):
             resume: dict[str, Any] | None = None
@@ -340,9 +334,7 @@ class ApprovalService:
                     )
                     resume = {"decision": "reject"}
                 else:
-                    approval = await self._approve(
-                        db, card, proposal, edits, session_id, consume_step_up, stepped_up
-                    )
+                    approval = await self._approve(db, card, proposal, edits, session_id)
                     resume = {"decision": "approve", "approval_id": str(approval.approval_id)}
                 await notify(db, "cards", _event(card.card_id))
             if resume is not None:  # approvals are written before resuming (AC-2)
@@ -355,8 +347,6 @@ class ApprovalService:
         proposal: ProposedAction,
         edits: Edits,
         session_id: uuid.UUID,
-        consume_step_up: Callable[[], Awaitable[bool]],
-        stepped_up: bool,
     ) -> Approval:
         if extra := edits.given() - APPROVE_EDITS:
             raise DecisionInvalid(f"use an edit first for: {', '.join(sorted(extra))}")
@@ -367,11 +357,6 @@ class ApprovalService:
             approved = approved.model_copy(update={"qty": lot_qty})
         if blockers := approval_blockers(approved, {}, lot_qty):  # AC-14, AC-15
             raise DecisionInvalid("not approvable: " + ", ".join(blockers))
-        step_up = stepped_up
-        if card.source == CardSource.MANUAL and card.action in ENTRY_ACTIONS:
-            if not await consume_step_up():
-                raise StepUpRequired()
-            step_up = True
         approval = Approval(
             card_id=card.card_id,
             decision=Decision.APPROVE,
@@ -379,7 +364,7 @@ class ApprovalService:
             approved_proposal=approved.model_dump(mode="json"),
             card_version=card.version,
             session_id=session_id,
-            step_up=step_up,
+            step_up=False,  # password step-up removed 2026-10-12: the session authorizes
             decided_at=self._clock.now(),
         )
         db.add(approval)

@@ -162,7 +162,7 @@ Everything outside the graph stays plain async code: ingest, market-data streams
 | `timers` | Persisted deadlines (card expiry, cutoffs, off-hours release). | 7.6, 7.7 |
 | `reconcile` | Startup and periodic broker reconciliation. | §11 |
 | `api`, `notify` | FastAPI JSON API under `/api/v1` (OpenAPI is the frontend contract), SSE event bus, Web Push. | FR-25–27 |
-| `auth` | Email + password users, sessions, step-up, rate limit, audit log, user CLI. | §13 |
+| `auth` | Email + password users, sessions, rate limit, audit log, user CLI. | §13 |
 | `manual` | Manual exit/stop/entry, kill switch, flatten, provider-position corrections, provider profile. | 7.9 |
 | `runtime_config`, `system`, `alerts` | Database-backed tunables with audit; system flags and heartbeat; alerts. | §18 |
 | `observability` | Stage timings, health metrics, spend check, checkpoint pruning. | §16 |
@@ -704,7 +704,7 @@ channel_id ── with provider_id the lane: the context and book scope (C104, F
   - Temporary passwords must be changed at first login (`POST /api/v1/auth/change-password`); every other endpoint answers 403 `password_change_required` until then.
   - Server-side sessions in an HttpOnly, Secure, `SameSite=Strict` cookie: 60 min idle, 12 h absolute, bound to the User-Agent (a change revokes it).
   - State-changing `/api/*` calls must carry `Origin: DASHBOARD_ORIGIN`. Login is rate limited.
-  - Step-up = re-entering the password (120 s, single use) for manual entry, flatten and lot adjust. Approving a signal-sourced card does not need it.
+  - Step-up (password re-entry) was removed 2026-10-12 by owner decision: manual entry, flatten and lot adjust are authorized by the session. `auth_sessions.step_up_at` and `approvals.step_up` stay for history.
   - Append-only `audit_log` (DB grant SELECT + INSERT only). Route handlers call `audit.by(...)` for user-initiated trading actions.
   - `seed-dev-user` creates a fixed local login and refuses to run unless `ENVIRONMENT=development`.
 - The Discord account token, like every API key, lives in the env file / secret storage and is never logged.
@@ -739,7 +739,7 @@ Dashboard health page (`GET /api/v1/health/details`), all as SQL over the tables
 
 ## 12. Testing and evaluation
 
-**As built:** `backend/tests/` has `unit`, `integration` (real PostgreSQL 17, database `trading_test`), `api`, `graph`, `scenarios`, `load` and `live` levels; `frontend/` has Vitest + MSW component tests and a Playwright suite (`pnpm e2e`, its own `trading_e2e` database and ports 8100/3100) covering AC-18, trim on a 1-lot, TP legs, entry invalidation, edit/correction, missing underlying, 0DTE cutoffs, manual-entry step-up, feed silence and password sign-in. `live` tests call real model APIs and are excluded from default runs.
+**As built:** `backend/tests/` has `unit`, `integration` (real PostgreSQL 17, database `trading_test`), `api`, `graph`, `scenarios`, `load` and `live` levels; `frontend/` has Vitest + MSW component tests and a Playwright suite (`pnpm e2e`, its own `trading_e2e` database and ports 8100/3100) covering AC-18, trim on a 1-lot, TP legs, entry invalidation, edit/correction, missing underlying, 0DTE cutoffs, manual entry, feed silence and password sign-in. `live` tests call real model APIs and are excluded from default runs.
 
 **Load and fault results** (`docs/reviews/load-2026-09-29.md`, model latency **simulated** from seeded lognormals until real bench numbers exist):
 

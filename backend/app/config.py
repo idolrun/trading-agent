@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     dashboard_origin: str = "http://localhost:3000"
     session_idle_minutes: int = 60
     session_absolute_hours: int = 12  # covers one US session (19:15-01:45 local)
-    step_up_window_s: int = 120
     auth_rate_limit_per_min: int = 10
     # Message API webhook (F011). HMAC-SHA256 over "<timestamp>.<raw body>".
     ingest_hmac_secret: SecretStr

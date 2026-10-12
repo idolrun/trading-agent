@@ -10,16 +10,11 @@ const http = axios.create({
 
 type ErrorHandler = (error: ApiError) => void
 
-const handlers: { unauthorized?: ErrorHandler; stepUpRequired?: ErrorHandler } = {}
+const handlers: { unauthorized?: ErrorHandler } = {}
 
 /** 401: session missing or expired. F053 registers the redirect to /login. */
 export function onUnauthorized(handler: ErrorHandler | undefined) {
   handlers.unauthorized = handler
-}
-
-/** 403 `step_up_required`: F053 registers the step-up prompt. */
-export function onStepUpRequired(handler: ErrorHandler | undefined) {
-  handlers.stepUpRequired = handler
 }
 
 function toApiError(error: unknown): ApiError {
@@ -28,11 +23,7 @@ function toApiError(error: unknown): ApiError {
 
 function fail(error: unknown, notifyUnauthorized: boolean): never {
   const apiError = toApiError(error)
-  if (apiError.status === 401) {
-    if (notifyUnauthorized) handlers.unauthorized?.(apiError)
-  } else if (apiError.status === 403 && apiError.code === "step_up_required") {
-    handlers.stepUpRequired?.(apiError)
-  }
+  if (apiError.status === 401 && notifyUnauthorized) handlers.unauthorized?.(apiError)
   throw apiError
 }
 
@@ -48,7 +39,7 @@ export async function apiGet<T>(path: string, filters?: object): Promise<T> {
 }
 
 /**
- * `notifyUnauthorized: false` is for sign-in and step-up calls, where a 401
+ * `notifyUnauthorized: false` is for sign-in and password calls, where a 401
  * means "wrong password", not "session expired".
  */
 export async function apiPost<T>(

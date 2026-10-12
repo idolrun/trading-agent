@@ -2,8 +2,6 @@
 
 import Link from "next/link"
 import { QueryState } from "@/components/query-state"
-import { StepUpDialog } from "@/features/auth/step-up-dialog"
-import { useStepUp } from "@/features/auth/use-step-up"
 import { CardActions } from "@/features/cards/card-actions"
 import { CardReview } from "@/features/cards/card-review"
 import { decisionStateFor, generalDecisionError, useDecideCard } from "@/features/cards/mutations"
@@ -38,8 +36,7 @@ function CardWithOrder({
 
 export function CardDetailScreen({ cardId }: { cardId: string }) {
   const query = useCard(cardId)
-  const stepUp = useStepUp()
-  const decide = useDecideCard(stepUp.withStepUp)
+  const decide = useDecideCard()
   const failure = generalDecisionError(decide)
   const state = decisionStateFor(decide, cardId)
 
@@ -56,7 +53,6 @@ export function CardDetailScreen({ cardId }: { cardId: string }) {
       <QueryState query={query} loadingLabel="Loading card" emptyTitle="Card not found" emptyLayout="line">
         {(card) => <CardWithOrder card={card} decide={decide} state={state} />}
       </QueryState>
-      <StepUpDialog {...stepUp.dialogProps} />
     </div>
   )
 }

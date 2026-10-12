@@ -51,10 +51,6 @@ P = sd.PROVIDER_BASE + 600
 AFFORDABLE = [c for c in sc.CONTRACTS if float(c[3]) * 100 <= 1000]
 
 
-async def _never() -> bool:
-    return False
-
-
 @dataclass
 class Plan:
     live: list[sd.DayMessage]
@@ -137,7 +133,6 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
                 card.version,
                 Edits(qty=2),
                 session_id=session_id,
-                consume_step_up=_never,
             )
         await run.consume()
         async with run.factory() as db:

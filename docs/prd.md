@@ -176,8 +176,8 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 
 ### 7.9 Manual operations [C40, C42, C77]
 - Manual exit of a tracked lot. Manual stop add/move/cancel.
-- Manual entry of any contract. Requires a fresh password confirmation (step-up).
-- Kill switch: pauses new entry and add cards and entries. Exit and stop cards are still created [C102]. The optional "flatten" asks which to close (options / stocks / all) and requires a fresh password confirmation. Flatten exits **tracked lots only**; foreign lots are untouched, though a foreign lot can still be sold by an explicit manual exit [C103].
+- Manual entry of any contract. No password step-up: the signed-in session authorizes it (step-up removed 2026-10-12 by owner decision).
+- Kill switch: pauses new entry and add cards and entries. Exit and stop cards are still created [C102]. The optional "flatten" asks which to close (options / stocks / all). Flatten exits **tracked lots only**; foreign lots are untouched, though a foreign lot can still be sold by an explicit manual exit [C103].
 - Manual orders pass every check that signal orders pass.
 - Provider-position correction: the user can add, edit, or close provider positions. Every correction is audited and fed into evaluation data [C73].
 
@@ -437,7 +437,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 - Approving every action plus unanswered-means-expire means exits can be missed. Mitigations: end-of-day forced close, and pre-approved stops.
 - System-held underlying stops give no protection during a system outage [C49].
 - Stock stop-market orders fill below the stop on gap-downs [C61].
-- A public dashboard that allows manual entry has a high attack surface. Mitigated by allowlisted email + password login, step-up confirmation, and identical order checks [C42].
+- A public dashboard that allows manual entry has a high attack surface. Mitigated by allowlisted email + password login and identical order checks [C42]. Password step-up was removed 2026-10-12 (owner decision): a stolen session can place orders.
 - Parsing every author produces false cards. Mitigated by showing the author, muting, and the recall/precision gates [C54, C57].
 - Errors in the provider ledger spread to follow-ups. Mitigated by user correction and evaluation [C73].
 - The full-session approval workload (19:15–01:45 local): 50–150 cards per day at the user's current activity (§12). This makes one-tap approval on the phone essential.
@@ -474,7 +474,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 - AC-7. Killing the process mid-order and restarting produces no duplicate order. Lots reconcile against the broker, and a mismatch blocks entries.
 - AC-8. Feed silence longer than N s during market hours raises an alert and the "degraded" state.
 - AC-9. An LLM outage falls back to the second provider, then to a raw review card. No message is lost.
-- AC-10 (revised 2026-09-29). Only allowlisted active users can sign in with email + password; there is no self-registration; temporary passwords must be changed at first login. Manual entry and flatten require step-up (password) confirmation. Security-sensitive and user-initiated trading actions are recorded in an append-only audit log.
+- AC-10 (revised 2026-09-29). Only allowlisted active users can sign in with email + password; there is no self-registration; temporary passwords must be changed at first login. Manual entry and flatten need no step-up (removed 2026-10-12, owner decision). Security-sensitive and user-initiated trading actions are recorded in an append-only audit log.
 - AC-11. A literal span that is not present in the source text is always rejected.
 - AC-12. All stage gates in §17 are passed in order before real money is used.
 - AC-13. The advisory note can never change a card's fields or actions. A note containing a number not present in the validated fields or source messages is hidden (if the note guard is confirmed).

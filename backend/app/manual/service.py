@@ -38,7 +38,7 @@ from app.ledger import repo as ledger
 from app.ledger.lots import LotUpdate
 from app.ledger.models import Instrument as Kind
 from app.ledger.models import Lot, LotChange, LotStatus
-from app.marketdata.port import MarketData
+from app.marketdata.port import MarketData, QuoteUnavailable
 from app.markettime import Clock
 from app.pipeline.apply import insert_card
 from app.reconcile.service import Reconciler
@@ -48,6 +48,9 @@ from app.system.models import FlagName
 from app.validate.identity import find_in_chain
 
 logger = logging.getLogger(__name__)
+
+# Cash indexes: quoted only through their options (SPX -> SPXW), never as a stock.
+INDEXES = frozenset({"SPX", "SPXW", "NDX", "RUT", "VIX", "XSP", "DJX"})
 Scope = Literal["options", "stocks", "all"]
 StopOp = Literal["add", "move", "cancel"]
 SCOPES = {
@@ -72,10 +75,6 @@ class ManualResult:
     order_ids: list[uuid.UUID]
     lot_id: uuid.UUID | None = None
     blocked: str | None = None  # why revalidation refused it (the card is then invalidated)
-
-
-async def _consumed() -> bool:
-    return True  # the route's `StepUpDep` already used the password check
 
 
 class ManualService:
@@ -166,7 +165,7 @@ class ManualService:
             limit_price=limit_price,
             contract=contract,
         )
-        return _strict(await self._act(key, proposal, None, session_id, stepped_up=True))
+        return _strict(await self._act(key, proposal, None, session_id))
 
     # --- kill switch, flatten ------------------------------------------------------------
 
@@ -189,10 +188,8 @@ class ManualService:
         results = []
         for lot in lots:
             lot_key = f"{key}:{lot.lot_id}"
-            found = await self._existing(lot_key, session_id, stepped_up=True)
-            results.append(
-                found or await self._exit(lot, lot.qty, lot_key, session_id, stepped_up=True)
-            )
+            found = await self._existing(lot_key, session_id)
+            results.append(found or await self._exit(lot, lot.qty, lot_key, session_id))
         return results
 
     # --- lot adjust ----------------------------------------------------------------------
@@ -215,11 +212,9 @@ class ManualService:
 
     # --- internals -----------------------------------------------------------------------
 
-    async def _exit(
-        self, lot: Lot, qty: int, key: str, session_id: uuid.UUID, *, stepped_up: bool = False
-    ) -> ManualResult:
+    async def _exit(self, lot: Lot, qty: int, key: str, session_id: uuid.UUID) -> ManualResult:
         proposal = ProposedAction(action=CardAction.EXIT, card_type=CardType.NORMAL, qty=qty)
-        return await self._act(key, proposal, lot, session_id, stepped_up=stepped_up)
+        return await self._act(key, proposal, lot, session_id)
 
     async def _act(
         self,
@@ -227,8 +222,6 @@ class ManualService:
         proposal: ProposedAction,
         lot: Lot | None,
         session_id: uuid.UUID,
-        *,
-        stepped_up: bool = False,
     ) -> ManualResult:
         async with in_transaction(self._sessions, None) as db:
             await insert_card(
@@ -243,12 +236,10 @@ class ManualService:
                 posted_at=self._clock.now(),
             )
         card_id = card_id_for(f"manual:{key}")
-        await self._decide(card_id, session_id, stepped_up)
+        await self._decide(card_id, session_id)
         return await self._result(card_id)
 
-    async def _existing(
-        self, key: str, session_id: uuid.UUID, *, stepped_up: bool = False
-    ) -> ManualResult | None:
+    async def _existing(self, key: str, session_id: uuid.UUID) -> ManualResult | None:
         """Idempotency: the card of an earlier request with this key (finished if that one
         stopped before the approval)."""
         card_id = card_id_for(f"manual:{key}")
@@ -257,10 +248,10 @@ class ManualService:
         if card is None:
             return None
         if card.state == CardState.PENDING:
-            await self._decide(card_id, session_id, stepped_up)
+            await self._decide(card_id, session_id)
         return await self._result(card_id)
 
-    async def _decide(self, card_id: uuid.UUID, session_id: uuid.UUID, stepped_up: bool) -> None:
+    async def _decide(self, card_id: uuid.UUID, session_id: uuid.UUID) -> None:
         """The user's explicit action is the approval; the graph revalidates and executes."""
         try:
             await self._approvals.decide(
@@ -269,8 +260,6 @@ class ManualService:
                 1,
                 Edits(),
                 session_id=session_id,
-                consume_step_up=_consumed,
-                stepped_up=stepped_up,
             )
         except DecisionConflict:
             pass  # a concurrent request with the same key decided it first
@@ -311,9 +300,19 @@ class ManualService:
             tick = await self._md.tick_size(contract, limit_price)
         except ManualInvalid:
             raise
-        except Exception:
+        except QuoteUnavailable:
+            # OD-12: never guess. Say which symbol, and why an index typed as a stock has none.
+            symbol = (
+                contract.underlying if isinstance(contract, OptionContract) else contract.symbol
+            )
+            index_as_stock = not isinstance(contract, OptionContract) and symbol in INDEXES
+            hint = "; an index has no stock quote, enter it as an option" if index_as_stock else ""
+            raise ManualInvalid(f"market_data_unavailable: no quote for {symbol}{hint}") from None
+        except Exception as exc:
             logger.exception("manual entry: market data unavailable")
-            raise ManualInvalid("market_data_unavailable") from None  # OD-12: never guess
+            raise ManualInvalid(
+                f"market_data_unavailable: provider error ({type(exc).__name__}), try again"
+            ) from None
         if limit_price % tick != 0:
             raise ManualInvalid(f"price_not_on_tick: {tick}")
 

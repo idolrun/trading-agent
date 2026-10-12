@@ -123,23 +123,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/step-up": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Step Up */
-        post: operations["step_up_api_v1_auth_step_up_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/cards": {
         parameters: {
             query?: never;
@@ -1449,7 +1432,7 @@ export interface components {
         /**
          * ErrorBody
          * @description What every error body looks like (README §1.2); codes: not_found, conflict, invalid,
-         *     unauthorized, step_up_required, forbidden, rate_limited, unavailable (503; `/health` has
+         *     unauthorized, forbidden, rate_limited, unavailable (503; `/health` has
          *     its own body).
          */
         ErrorBody: {
@@ -2620,11 +2603,6 @@ export interface components {
             /** Nextcursor */
             nextCursor: string | null;
         };
-        /** PasswordRequest */
-        PasswordRequest: {
-            /** Password */
-            password: string;
-        };
         /**
          * Period
          * @enum {string}
@@ -3198,8 +3176,6 @@ export interface components {
              * @default false
              */
             mustChangePassword: boolean;
-            /** Stepupuntil */
-            stepUpUntil?: string | null;
         };
         /**
          * Severity
@@ -3339,14 +3315,6 @@ export interface components {
             path: "fast" | "slow";
             /** Stage */
             stage: string;
-        };
-        /** StepUpResponse */
-        StepUpResponse: {
-            /**
-             * Stepupuntil
-             * Format: date-time
-             */
-            stepUpUntil: string;
         };
         /** StopOut */
         StopOut: {
@@ -3998,39 +3966,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionResponse"];
-                };
-            };
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    step_up_api_v1_auth_step_up_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StepUpResponse"];
                 };
             };
             /** @description Client Error */

@@ -2,11 +2,9 @@
 
 from datetime import timedelta
 
-from fastapi import FastAPI
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import StepUpDep
 from app.auth.models import AuditLog, AuthSession, User
 from app.auth.sessions import hash_token
 from app.markettime import FixedClock
@@ -23,7 +21,7 @@ async def test_login_session_logout(api: Api, db_session: AsyncSession) -> None:
     r = await api.client.get("/api/v1/auth/session")
     assert r.status_code == 200
     assert r.json()["email"] == EMAIL
-    assert r.json()["stepUpUntil"] is None and r.json()["mustChangePassword"] is False
+    assert r.json()["mustChangePassword"] is False
     assert (await api.client.post("/api/v1/auth/logout")).status_code == 204
     assert (await api.client.get("/api/v1/auth/session")).status_code == 401
     assert await actions(db_session) == [
@@ -129,40 +127,6 @@ async def test_idle_session_expires(signed_in: Api) -> None:
     auth = signed_in.app.state.auth
     auth.clock = FixedClock(auth.clock.now() + timedelta(minutes=61))
     assert (await signed_in.client.get("/api/v1/auth/session")).status_code == 401
-
-
-def _add_step_up_route(app: FastAPI) -> None:
-    async def flatten(_ctx: StepUpDep) -> dict[str, bool]:
-        return {"ok": True}
-
-    app.add_api_route("/api/v1/_test/flatten", flatten, methods=["POST"])
-
-
-async def test_step_up_required_and_single_use(signed_in: Api, db_session: AsyncSession) -> None:
-    _add_step_up_route(signed_in.app)
-    client = signed_in.client
-
-    r = await client.post("/api/v1/_test/flatten")
-    assert (r.status_code, r.json()["code"]) == (403, "step_up_required")
-
-    r = await client.post("/api/v1/auth/step-up", json={"password": "wrong password"})
-    assert r.status_code == 401
-    assert (await client.post("/api/v1/_test/flatten")).status_code == 403  # a failure grants none
-
-    r = await client.post("/api/v1/auth/step-up", json={"password": PASSWORD})
-    assert r.status_code == 200 and r.json()["stepUpUntil"]
-    assert (await client.post("/api/v1/_test/flatten")).status_code == 200
-    assert (await client.post("/api/v1/_test/flatten")).status_code == 403  # used up
-    recorded = await actions(db_session)
-    assert "step_up_failure" in recorded and recorded[-1] == "step_up_success"
-
-
-async def test_step_up_window_lapses(signed_in: Api) -> None:
-    _add_step_up_route(signed_in.app)
-    await signed_in.step_up()
-    auth = signed_in.app.state.auth
-    auth.clock = FixedClock(auth.clock.now() + timedelta(seconds=121))
-    assert (await signed_in.client.post("/api/v1/_test/flatten")).status_code == 403
 
 
 async def test_rate_limit(api: Api, db_session: AsyncSession) -> None:
