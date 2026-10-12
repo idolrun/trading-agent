@@ -103,6 +103,26 @@ describe("useLiveEvents", () => {
     expect(source.closed).toBe(true)
   })
 
+  it("a hidden tab releases its connection and catches up when shown", () => {
+    const setHidden = (hidden: boolean) => {
+      vi.spyOn(document, "hidden", "get").mockReturnValue(hidden)
+      document.dispatchEvent(new Event("visibilitychange"))
+    }
+    const { spy } = setup()
+    act(() => latest().onopen?.())
+    const first = latest()
+
+    act(() => setHidden(true))
+    expect(first.closed).toBe(true)
+    act(() => void vi.advanceTimersByTime(60_000))
+    expect(FakeEventSource.instances).toHaveLength(1) // no reconnect while hidden
+
+    act(() => setHidden(false))
+    expect(FakeEventSource.instances).toHaveLength(2)
+    act(() => latest().onopen?.())
+    expect(spy.mock.calls).toEqual([[]]) // refetch what was missed
+  })
+
   it("caps the backoff at 30 s", () => {
     expect([0, 1, 2, 4].map(backoffMs)).toEqual([1_000, 2_000, 4_000, 16_000])
     expect(backoffMs(5)).toBe(30_000)

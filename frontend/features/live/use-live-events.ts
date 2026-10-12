@@ -23,6 +23,10 @@ function eventId(event: Event): string {
  * One SSE connection for the desk: events invalidate the matching queries. `EventSource` gives
  * up for good on an HTTP error, so reconnecting is ours (exponential backoff, capped at 30 s).
  * Nothing is replayed, so every reconnect refetches everything.
+ *
+ * Hidden tabs let go of the stream. Over HTTP/1.1 the browser allows 6 connections per host
+ * across all tabs and an open stream holds one for good, so 6 open desk tabs left every new
+ * tab's requests (first `/auth/session`) queued forever behind "Checking your session".
  */
 export function useLiveEvents(): LiveStatus {
   const queryClient = useQueryClient()
@@ -35,6 +39,11 @@ export function useLiveEvents(): LiveStatus {
     let dropped = false
 
     const connect = () => {
+      clearTimeout(timer)
+      if (document.hidden) {
+        dropped = true // events may be missed until the tab is shown
+        return
+      }
       const current = new EventSource(EVENTS_URL, { withCredentials: true })
       source = current
       current.onopen = () => {
@@ -45,6 +54,7 @@ export function useLiveEvents(): LiveStatus {
       }
       current.onerror = () => {
         current.close()
+        source = undefined
         dropped = true
         setStatus("reconnecting")
         timer = setTimeout(connect, backoffMs(failures++))
@@ -54,8 +64,22 @@ export function useLiveEvents(): LiveStatus {
       }
     }
 
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearTimeout(timer)
+        source?.close()
+        source = undefined
+        dropped = true
+      } else if (!source) {
+        failures = 0
+        connect()
+      }
+    }
+
     connect()
+    document.addEventListener("visibilitychange", onVisibility)
     return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
       clearTimeout(timer)
       source?.close()
     }
