@@ -2,9 +2,9 @@
 
 [← Data model](07-data-model.md) · [Index](README.md) · Next: [Failure & recovery →](09-failure-recovery.md)
 
-Source: TRD §3 (hosting row), §9, §10; PRD §13, §18. **One US-East VM running Docker Compose (app + Caddy), managed HA PostgreSQL in the same region with PITR, an external uptime monitor.** No Kubernetes, Kafka, Redis or vector DB.
+What the repository runs, and the production layout named in `docs/implementation/F064-deployment-runbooks.md`. The F064 images and Caddy file are not in the tree yet.
 
-## 8.1 Deployment topology and network boundaries
+## 8.1 Processes and dependencies
 
 ```mermaid
 flowchart LR
@@ -15,143 +15,97 @@ flowchart LR
     classDef sec fill:#fffde7,stroke:#f9a825,color:#5d4037
     classDef future fill:#fafafa,stroke:#9e9e9e,color:#757575,stroke-dasharray: 5 5
 
-    subgraph CLIENTS["Zone: user devices (untrusted network)"]
-        DESK["Desktop browser"]:::human
-        PHONE["Phone PWA<br/>(iOS: added to Home Screen for push)"]:::human
+    subgraph CLIENTS["Browsers"]
+        DESK["Desktop"]:::human
+        PHONE["Phone PWA"]:::human
     end
 
-    subgraph INTERNET["Zone: public internet — third-party SaaS"]
-        MAPI["User's Message API"]:::ext
-        JEV["TypeSafe Jev API"]:::ext
-        ANTH["Anthropic API"]:::ext
-        OAI["OpenAI API"]:::ext
-        DSK["DeepSeek API or US-hosted<br/>OpenAI-compatible endpoint (OD-7)"]:::ext
-        BRK["Broker API + streams<br/>(TBD, OD-3) · paper + live"]:::ext
-        MDF["Market data (broker feed,<br/>SPX entitlement, OD-4)"]:::ext
-        PUSH["Browser push services"]:::ext
-        UPT["External uptime monitor"]:::ext
-        LSM["LangSmith (optional, dev only)"]:::future
+    subgraph APPHOST["App host"]
+        NEXT["Next.js<br/>rewrites /api/* to the backend<br/>SSE compression off"]:::code
+        API["uvicorn, one worker<br/>FastAPI lifespan<br/>advisory lock held"]:::code
+        LAYA["Laya weights in process<br/>loaded off the hot path when enabled"]:::code
+        ENV["env file<br/>Discord, Alpaca, TypeSafe, LLM keys,<br/>HMAC, VAPID, database URL"]:::sec
     end
 
-    subgraph REGION["Cloud region: US-East"]
-        subgraph VM["App VM (single host) — Docker Compose"]
-            direction TB
-            CADDY["Caddy container<br/>TLS termination · :443 only public port<br/>rate limiting (logins)"]:::sec
-            subgraph APPC["App container — ONE Python 3.12 asyncio process"]
-                direction LR
-                WEBM["web: FastAPI / SSE / Web Push<br/>/ingest · /health · dashboard"]:::code
-                CORE["ingest · inbox · dispatcher · graph<br/>interpret · validate · decide · ledger<br/>cards · execution · timers · reconcile"]:::code
-                CACHE["in-process quote dict<br/>+ chain TTL cache"]:::code
-            end
-            ENV["root-only env file<br/>TypeSafe, Anthropic, OpenAI, DeepSeek,<br/>AWS (if Bedrock), broker keys, VAPID, HMAC secret<br/>redacted from logs"]:::sec
-            SPOOL["local append-only spool<br/>ONLY IF Message API has no<br/>redelivery and no backfill (OD-1)"]:::future
-        end
-        subgraph PGHA["Managed PostgreSQL 16 — separate hosts (OD-9)"]
-            PRIM[("Primary")]:::store
-            STBY[("Synchronous standby<br/>other AZ — auto failover")]:::store
-            PITR[("PITR: base backups + WAL archive")]:::store
-        end
+    subgraph DATA["Database"]
+        PG[("PostgreSQL 17<br/>local: compose.yaml on 127.0.0.1<br/>prod target: managed HA")]:::store
     end
 
-    OPER["Operator: server console<br/>(password recovery, runbooks)"]:::human
+    subgraph SAAS["External"]
+        DC["Discord gateway + channel history"]:::ext
+        ALP["Alpaca broker and market-data HTTP"]:::ext
+        JEV["TypeSafe Jev"]:::ext
+        LLM["Anthropic, OpenAI, DeepSeek,<br/>or an OpenAI-compatible endpoint"]:::ext
+        PUSH["Web Push"]:::ext
+        UPT["Uptime monitor<br/>GET /health"]:::ext
+    end
 
-    DESK -->|"HTTPS 443, user session<br/>SameSite=Strict cookie"| CADDY
-    PHONE -->|"HTTPS 443"| CADDY
-    MAPI -->|"HTTPS POST /ingest<br/>HMAC + timestamp window"| CADDY
-    UPT -->|"HTTPS GET /health"| CADDY
-    CADDY -->|"HTTP (container network)"| WEBM
-    WEBM --- CORE
-    CORE --- CACHE
-    CORE -.->|"reads secrets at start"| ENV
-    CORE -->|"HTTPS: history API (backfill)"| MAPI
-    CORE -->|"HTTPS"| JEV
-    CORE -->|"HTTPS"| ANTH
-    CORE -->|"HTTPS"| OAI
-    CORE -->|"HTTPS"| DSK
-    CORE <-->|"HTTPS REST + streaming"| BRK
-    MDF -.->|"quote stream"| CACHE
-    WEBM -.->|"Web Push (VAPID)"| PUSH
+    CADDY["Caddy TLS and rate limits<br/>named in F064, file not in the repo"]:::future
+
+    DESK --> NEXT
+    PHONE --> NEXT
+    NEXT --> API
+    API --- LAYA
+    API --> ENV
+    API ==> PG
+    API <--> DC
+    API <--> ALP
+    API --> JEV
+    API --> LLM
+    API --> PUSH
     PUSH -.-> PHONE
     PUSH -.-> DESK
-    CORE ==>|"TLS, asyncpg pool<br/>private network — PROPOSED (OD-17)"| PRIM
-    PRIM ==>|"sync replication (RPO ≈ 0)"| STBY
-    PRIM -.->|"WAL archive (RPO ≤ 5 min)"| PITR
-    UPT -.->|"page phone on failure"| PHONE
-    OPER -.->|"SSH / console"| VM
-    CORE -.->|"optional traces"| LSM
-    SPOOL -.-> CORE
+    UPT --> API
+    CADDY -.-> NEXT
+    CADDY -.-> API
 ```
 
-### What the diagram represents
-Physical placement, trust zones and every network dependency. Outbound calls go to SaaS over HTTPS; the only inbound port is 443 on Caddy, carrying three kinds of traffic: the Message API webhook (HMAC-authenticated), the dashboard (email + password, allowlisted users), and the uptime probe.
+### What actually starts
 
-### Component responsibilities
-| Element | Responsibility | Notes |
-|---|---|---|
-| **Caddy** | TLS, reverse proxy, login rate limiting | Only public listener. |
-| **App container** | Every module in one asyncio process | Simplifies ordering (per-provider workers are in-process) and removes network hops from the p95 budget. |
-| **Env file** | All API keys and secrets | Root-only; never in code or logs (PRD §13). |
-| **Managed Postgres** | All state; HA with automatic failover; PITR | **Must not share a host or disk with the app** (PRD §18, C93). |
-| **External uptime monitor** | Probes `/health` (fails if dispatcher heartbeat > 15 s old) | Pages the phone — the only mitigation for system-held stops during an outage. |
-| **Push services** | Deliver Web Push to desktop and phone | Best-effort; dashboard latency is the SLO, push is not (PRD §12). |
+| Piece | Where it comes from |
+|---|---|
+| **PostgreSQL 17** | `compose.yaml`. One container, database `trading`, bound to `127.0.0.1`. Init scripts in `infra/postgres/init` create the owner and app roles. |
+| **Backend** | `uv run fastapi dev` or uvicorn. `background_enabled` starts the listener, dispatcher, timers, consumer, reconciler, push, and gap loop. |
+| **Frontend** | Next.js App Router. Browser calls same-origin `/api/v1/*`. `BACKEND_ORIGIN` defaults to `http://127.0.0.1:8000`. |
+| **Single instance** | `hold_instance_lock` takes a session advisory lock when background work is on. A second process raises `SecondInstance` and does not trade. |
+| **Health** | `GET /health` fails when the dispatcher heartbeat is stale and background work is on. `GET /api/v1/health/details` is the signed-in view. Heartbeat rows are written every 5 s. |
 
-### Network / security boundaries
-1. **Public → Caddy (443):** HMAC on `/ingest`; email + password auth for allowlisted users (no self-registration), short device-bound server-side sessions, password step-up for manual entry and flatten, append-only audit log.
-2. **App → SaaS:** only provider-side text and provider context leave the system (FR-8); enforced by the Jev state builder's types and the LLM scope-guard middleware.
-3. **App → Postgres:** a separate failure domain. Network path is not specified in the TRD (OD-17); private networking + TLS is the proposed default.
-4. **Operator:** server console only — the sole password-recovery path (PRD §13).
+### Production target (F064)
 
-### Important dependencies and their deployment implications
-| Dependency | If slow/down | Mitigation |
-|---|---|---|
-| Message API | No new signals | Feed-health alert; backfill on reconnect; catch-up mode |
-| Jev | Every message on slow path | Latency rises; nothing lost |
-| LLM vendors | Slow path fails | ≥ 2 independent vendors, circuit breakers, raw review card |
-| Broker | No orders / fills | Status query by client order ID; broker-held stops continue |
-| Market data | No validation, no system-held stops | See [09 §9.7](09-failure-recovery.md) (OD-12) |
-| Postgres | Trading halts | HA failover ≤ 5 min RTO; webhook 503 → redelivery |
+One VM, Docker Compose for the backend image, the frontend image, and Caddy. Managed PostgreSQL in the same region, with failover and PITR, not a Postgres container on the app host. `uvicorn --workers 1` and `replicas: 1`. Secrets in a root-only env file. An external monitor pages the phone from `/health`. Those deploy files are still to be added; the process boundaries above are what the code assumes.
 
----
+### Network boundaries
 
-## 8.2 Environments and go-live stages
+1. **Browser → Next.js → FastAPI.** Session cookie, `SameSite` strict, allowlisted emails, no self-registration. Users are created from the console (`app.auth.cli`). Step-up is required for manual entry and flatten. `origin_check` rejects a cross-origin dashboard.
+2. **`POST /ingest`.** HMAC-SHA256 over `timestamp.body`, headers `X-Timestamp` and `X-Signature`, skew ±300 s. No session. Mounted at `/ingest`, not under `/api/v1`.
+3. **Discord.** Outbound gateway using `DISCORD_TOKEN`. The listener drops channels that are not in `RuntimeConfig.channels` before insert.
+4. **Alpaca and model vendors.** Outbound HTTPS. Paper and live must match `broker_kind` to the endpoint or the process refuses to start. Shadow never opens a broker order call.
+5. **Models.** Requests carry provider text and the narrowed lane book. The scope guard blocks a request that contains portfolio fields.
 
-PRD §17 defines a staged go-live. The runtime topology is the same in every stage; only `submit_order()`'s mode and the broker account change.
+### Desk routes
 
-```mermaid
-flowchart TB
-    classDef code fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef gate fill:#fff3e0,stroke:#e65100,color:#bf360c
+`/` desk home, `/feed`, `/cards/[cardId]`, `/positions`, `/lots/[id]`, `/orders`, `/manual/entry`, `/config`, `/discord`, `/alerts`, `/health`, `/users`, `/audit`, `/labels`, `/reports/trading`, `/login`, `/change-password`.
 
-    R["1 Replay<br/>evalkit over labelled history<br/>no live feed, no broker"]:::code
-    G1{"gate: 100% normal-card field accuracy<br/>0 wrong contracts · recall ≥ 98%"}:::gate
-    S["2 Shadow ≥ 20 days<br/>live feed + cards<br/>submit_order() records only"]:::code
-    G2{"gate: 0 invariant violations · p95 ≤ 5 s, p99 ≤ 8 s<br/>0 undetected outages · 0 lost msgs<br/>load + fault tests passed first"}:::gate
-    P["3 Paper ≥ 10 days<br/>broker paper account (OD-16)"]:::code
-    G3{"gate: every order path exercised<br/>0 unexplained reconciliation mismatches"}:::gate
-    L["4 Live, minimum sizes ≥ 10 days"]:::code
-    G4{"gate before size increase"}:::gate
+Live updates are one `EventSource` on `GET /api/v1/events`. The client also refetches on an interval (feed and cards about 8 s, health 15 s, Discord status 10 s) so a dropped SSE stream still converges.
 
-    R --> G1 --> S --> G2 --> P --> G3 --> L --> G4
-```
+### In-process background tasks
 
-Each `(provider, model, prompt)` in the LLM chain must pass the replay gate on its own; config validation rejects live chain entries without a passing `gate_run` and chains with fewer than two independent vendors (TRD §4.8).
+Started from `lifespan` when `background_enabled` is set:
 
----
+| Task | Role |
+|---|---|
+| `config-listener` | `NOTIFY` on config changes, reloads `RuntimeConfig` |
+| `bus` | `LISTEN` on `cards`, `alerts`, `flags`, `orders`, `fills`, `positions`, `lots`, `feed` |
+| `reconcile` | periodic broker compare |
+| `heartbeat` | `dispatcher_heartbeat` upsert |
+| `feed-health` | silence and catch-up flags |
+| `timers` | due deadlines |
+| `broker-events` | Alpaca stream plus the simulator |
+| `underlying-stops` | poll snapshots, fire system-held stops |
+| `push` | Web Push from the same bus |
+| `gap-detector` | every 60 s in regular hours |
+| `discord-listener` | gateway, 30 s heartbeat |
+| `llm-spend` | daily spend check |
+| `checkpoint-prune` | daily checkpoint cleanup |
 
-## 8.3 Scaling path (only on measured triggers)
-
-```mermaid
-flowchart TB
-    classDef code fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef future fill:#fafafa,stroke:#9e9e9e,color:#757575,stroke-dasharray: 5 5
-
-    NOW["Today: 1 VM, 1 process<br/>asyncio per-provider workers<br/>~0.1 msg/s avg, bursts 50 / 10 s"]:::code
-    S1["Step 1 — PROPOSED if load test 3 fails:<br/>parallel interpret, serial apply (OD-19)"]:::future
-    S2["Step 2 — if multi-process needed:<br/>session-level pg advisory lock per provider"]:::future
-    S3["Step 3 — only on TRD 15.2 triggers:<br/>Redis for derived quote cache"]:::future
-    S4["Step 4 — only on TRD 15.1 triggers:<br/>Kafka behind inbox boundary, key = provider_id"]:::future
-
-    NOW -.-> S1 -.-> S2 -.-> S3 -.-> S4
-```
-
-The explicit prohibition in TRD §12: if only the single-provider slow-path burst test fails, apply Step 1; **do not** add Kafka or Redis for it.
+Laya's weights load on a background call when `laya.enabled` is set. Tests skip that load.

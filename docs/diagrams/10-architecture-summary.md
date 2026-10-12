@@ -1,6 +1,6 @@
 # 10. Architecture Summary
 
-[← Failure & recovery](09-failure-recovery.md) · [Index](README.md)
+[← Failure and recovery](09-failure-recovery.md) · [Index](README.md)
 
 ## 10.1 One-page view
 
@@ -12,19 +12,19 @@ flowchart TB
     classDef ext fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef store fill:#eceff1,stroke:#37474f,color:#263238
 
-    IN["Message API"]:::ext --> ACC["durable accept<br/>(exactly once)"]:::code
-    ACC --> SEQ["per-provider<br/>ordered workers"]:::code
-    SEQ --> INT["interpret<br/>Jev → LLM"]:::model
-    INT --> DET["validate · decide<br/>(pure code)"]:::code
-    DET --> APPLY["apply<br/>one txn"]:::code
-    APPLY --> CARD["approval card"]:::code
-    CARD --> HUMAN["human approves"]:::human
-    HUMAN --> EXEC["submit_order()<br/>invariants"]:::code
-    EXEC --> BRK["broker"]:::ext
-    BRK --> FILL["fills → lots"]:::code
-    FILL --> REC["reconcile"]:::code
-    REC -.-> EXEC
-    PG[("PostgreSQL<br/>source of truth")]:::store
+    IN["Discord gateway<br/>or POST /ingest"]:::ext --> ACC["inbox.accept<br/>exactly once"]:::code
+    ACC --> SEQ["lane worker<br/>channel + provider<br/>posted_at order"]:::code
+    SEQ --> RES["resolve_context<br/>code"]:::code
+    RES --> INT["fast, else Jev<br/>then Laya or LLM"]:::model
+    INT --> DET["validate and decide"]:::code
+    DET --> APPLY["apply, one txn"]:::code
+    APPLY --> CARD["pending card<br/>approval graph paused"]:::code
+    CARD --> HUMAN["user approves<br/>qty included"]:::human
+    HUMAN --> EXEC["revalidate<br/>submit_order"]:::code
+    EXEC --> BRK["Alpaca or simulator"]:::ext
+    BRK --> FILL["fills to lots"]:::code
+    FILL --> REC["reconcile<br/>paper and live"]:::code
+    PG[("PostgreSQL 17")]:::store
     ACC --- PG
     APPLY --- PG
     HUMAN --- PG
@@ -32,86 +32,95 @@ flowchart TB
     FILL --- PG
 ```
 
-## 10.2 Summary by topic
+## 10.2 By topic
 
-### Overall architecture style
-A **modular monolith**: one Python asyncio process containing a **deterministic event-processing pipeline** with a **durable human-in-the-loop pause**, backed by one highly-available PostgreSQL. It is explicitly *not* an autonomous trading agent (PRD §4): models interpret language; code decides; a human authorises. Orchestration uses LangGraph (per-message `StateGraph`, `interrupt()` for approval); everything outside the graph (ingest, market data, execution loops, timers, reconciliation, web) is plain async code.
+### Style
 
-### Main components
-`ingest` → `inbox` → `dispatcher` → `graph` (`load_context`, `find_candidates`, `jev_interpret`, `route`, `llm_extract`, `assemble_signal`, `validate`, `decide`, `apply`, `notify`, `await_approval`, `revalidate`, `submit_order`) → `execution` → `broker`; plus `cards`, `ledger`, `timers`, `reconcile`, `marketdata`, `llm` registry, `web`, `evalkit`. See [02](02-component-architecture.md).
+A modular monolith: one Python asyncio process, one Next.js desk, one PostgreSQL 17 database. The message graph is a `StateGraph` that ends at `notify`. Human approval is a second graph per card, paused with `interrupt()`. Ingest, market data, execution loops, timers, reconciliation, and the API are plain async code around those graphs.
+
+### Modules
+
+`discord_source` and `ingest` → `inbox` → `dispatcher` → message graph (`load_context`, `resolve_context`, `find_candidates`, `fast_interpret`, `jev_interpret`, `laya_interpret`, `llm_extract`, `decide_apply`, `raw_review`, `notify`) → approval graph (`await_approval`, `revalidate`, `execute`) → `execution` → Alpaca or `SimulatedBroker`.
+
+Beside that path: `cards`, `ledger`, `validate`, `decide`, `pipeline`, `timers`, `reconcile`, `marketdata`, `llm`, `notify`, `auth`, `alerts`, `manual`, `runtime_config`, `reports`, `evalkit`, `observability`.
 
 ### Source of truth
-- **PostgreSQL** is the only source of truth for system state and the only message queue (C94): message events, signals, links, provider ledger, lots, cards, approvals, order intents, fills, audit.
-- **The broker** is the source of truth for actual holdings and working orders (PRD §11). Reconciliation keeps the two aligned and blocks entries on mismatch.
-- LangGraph checkpoints hold *where a run paused*, never business truth (TRD §1.4).
+
+- **PostgreSQL** stores messages, signals, links, the provider book and its events, lots and lot events, cards, approvals, order intents, fills, flags, and sessions.
+- **Alpaca** is the source of truth for holdings and working orders in paper and live. Reconciliation blocks entries on a mismatch.
+- **Shadow** fills inside `SimulatedBroker` from the quote feed. Reconciliation is skipped.
+- **LangGraph checkpoints** store where an approval thread paused. Domain truth stays in the domain tables. Message runs checkpoint once, at the end.
 
 ### Data flow
-Message → HMAC check → `accept()` (commit, then `200`) → NOTIFY → provider worker (post-time order, staleness check) → provider-scoped context → candidates → Jev (fast) or LLM (slow) → assembled signal with provenance → validation against live chain/quote → pure decision → **one transaction** writing signals, links, provider ledger, card → push → pause → approval row → resume → revalidate → invariants → order intent → broker → fills → lot update → reconciliation. See [03](03-end-to-end-data-flow.md).
 
-### Context / signal correlation strategy
-Three-step ladder, strictly within one provider (C71, AC-18):
-1. `reply_to_id` whose parent is linked to the same provider's position (deterministic);
-2. the provider's own book + Jev `links_to` above `T_link`;
-3. otherwise a review card listing candidates.
+Gateway or HMAC webhook → `accept` (commit, then ack) → `NOTIFY` → lane worker → lane context → code resolver → fast rules or Jev, then Laya or the LLM → span check → validate against a snapshot → `decide` → one transaction → SSE and push → approval thread paused → user decision row → resume → revalidate → intent row → broker or simulator → consumer → lot → reconcile.
 
-Links are append-only rows with method and confidence. `signal_id` and `provider_position_id` are interpretation outputs, never transport keys. Two providers on the same contract → two provider positions → two lots. See [04](04-context-correlation.md).
+### Correlation
 
-### How ordering is maintained
-- **Per provider, by Discord snowflake post time** (FR-1a, C88), not by arrival order.
-- One worker per provider holds a **provider slot** from `load_context` through `apply`/`notify`, then releases it **before** the approval wait, so a pending approval never blocks that provider's next message.
-- Late arrivals are applied, flagged `late`, and trigger re-linking of affected follow-ups into **review cards**, never automatic changes (FR-1b, C89).
-- Validity clocks start at `posted_at` (C90).
+Inside one lane, in order: reply chain (depth 3), thread, stated contract, else the single open position. A contradiction with the text makes the result ambiguous. A model hint is stored as evidence and does not create the link. Ambiguous and empty results are review cards. `watch` and `conditional` are book rows without cards. See [04](04-context-correlation.md).
 
-### How concurrency is handled
+### Ordering
+
+- Per lane, by `posted_at`, then message id.
+- The lane lock covers the message graph only. It is released at `notify`, before anyone approves.
+- A late event is applied, flagged `late`, and follow-ups are rechecked into review cards.
+- `valid_until` is computed from `posted_at`.
+
+### Concurrency
+
 | Concern | Mechanism |
 |---|---|
-| Same provider | serial worker (asyncio); future multi-process: session-level Postgres advisory lock per provider |
-| Different providers | parallel workers |
-| Ledger rows | `SELECT … FOR UPDATE` inside `apply` |
-| Lots on fill | lot row lock, independent of provider slot |
-| Model vendors | global semaphore for Jev and one per LLM vendor; 429 backoff inside the semaphore counts as queue wait |
-| Card races (approve vs expire vs supersede) | card state machine: exactly one transition out of `pending`; late resumes are no-ops |
-| Duplicate work after crash | UNIQUE constraints + deterministic `client_order_id` |
+| Same lane | one `asyncio.Lock`, one worker |
+| Other lanes | other workers, same process |
+| Second process | Postgres advisory lock, startup fails |
+| Provider book | `lock_open_book`; `BookChanged` retries the attempt |
+| Lots on a fill | lot row lock, no lane lock |
+| Jev and each LLM vendor | semaphores and circuit breakers in the LLM and Jev clients |
+| Laya | in-process queue; `busy` and `queue_timeout` fall through |
+| Approve vs expire vs supersede | one legal transition out of `pending` |
+| Duplicate work | unique keys and deterministic `client_order_id` |
 
-### How reliability and recovery work
-Durable-before-acknowledge at every boundary; idempotent effects; HA Postgres with synchronous standby for trading data (RPO ≈ 0, RTO ≤ 5 min) and PITR for the rest; an 11-step startup sequence (block entries → load broker → adopt orders → reconcile → expire open cards → reset inbox → backfill → timers → quotes → dispatcher → unblock); periodic reconciliation; poison-message isolation; feed-health, heartbeat and uptime monitoring. Broker-held stops protect positions during outages; system-held underlying stops do not (accepted risk). See [09](09-failure-recovery.md).
+Parallel interpret with serial apply is not implemented. A slow model call holds that lane and no other.
 
-### Where LLMs (models) are used
-| Model | Role | Bounded by |
+### Recovery
+
+Commit before ack. Idempotent effects. Startup blocks entries, reconciles, expires pending cards, backfills, fires due timers, starts the dispatcher, then releases the block if the books match. See [09](09-failure-recovery.md).
+
+Broker-held stops survive a process outage. System-held underlying stops do not, and a blind snapshot poll does not fire them.
+
+### Where models are used
+
+| Model | Role | Bound by |
 |---|---|---|
-| **TypeSafe Jev** | Fast path: classify message type, assign roles to code-found numbers, pick ticker/right/expiry/tier/fraction, link to provider position, exit intent | Chooses only among code-provided candidates; calibrated probabilities; thresholds route; confidence only downgrades |
-| **LLM chain** (Anthropic → OpenAI → DeepSeek, OD-7) | Slow path: missing candidates, context-implied fields, multi-signal messages | Shared 3 s deadline; ≤ 2 read-only tools; schema + literal-span verification; scope guard; no answer shopping; one model per message |
-| **LLM note writer** | Advisory plain-language note per card | Async, labelled "advisory", cannot change fields; note guard hides unvalidated numbers (OD-6) |
-| **LLM pre-labeler** | Offline labeling for evaluation (C64) | User corrects every label |
+| Fast rules | Whole-message patterns for the obvious cases | No model call. Spans still checked |
+| Jev | Classify, assign roles, pick among candidates | Code candidates only. Thresholds downgrade |
+| Laya | Local fallback after a Jev model failure | Not used for semantic or link doubts |
+| LLM chain | Semantic extract and the advisory note | Configured order of `anthropic`, `openai`, `deepseek`, `openai_compat`. Shared deadline. Scope guard. No answer shopping |
+| Prelabel | Offline labels in evalkit | A person corrects the label |
 
-Models never receive the user's lots, balances or P&L (FR-8), never write to ledgers or the long-term store, and have no write tools.
+### Where code decides
 
-### Where deterministic code is used
-Everything else: candidate finding, routing thresholds, literal-span verification, validation (symbol map, optionable list, chain/quote identity, scale normalisation, adjacent strike, calendar dates), sizing (tiers, fractions, TP legs), risk limits, card tiers, ledgers, approval validity, FR-20 invariants, order construction and pricing, re-pricing, system-held stops, stop restore, end-of-day close, reconciliation, staleness, sequencing, backfill. `decide` is a pure function so every live decision is replayable and every PRD scenario is a unit test.
+Routing, the resolver, span checks, validation, card tier, limits, brackets, the blank quantity, risk, validity, order invariants, pricing, re-pricing, stops, end-of-day close, reconciliation, staleness, and sequencing. `decide()` is pure. Entry, add, trim, and exit cards leave `qty` for the user. A close card sells the lot.
 
-### How human approval fits into the system
-- Every entry, add, exit, trim, stop/TP change, bracket, manual entry and flatten needs an approval (PRD §9). The only automatic actions are the pre-approved ones: broker/system stop or TP firing after approval, exit re-pricing within an approved intent, EOD close at cutoff 2, and stop restore after an unfilled exit — each recorded with `auto_reason`.
-- Approval is a LangGraph `interrupt()`; the approval record is written to the `approvals` table **before** resuming, so AC-2 is auditable from domain tables alone.
-- Cards expire rather than act when unanswered (C18); entry cards also expire on price-band breach or supersession (C22). Review cards require the user to complete fields first; disabled cards explain why they are blocked.
-- Manual operations use password auth (step-up for manual entry and flatten) and pass the **same** `submit_order()` checks (C42).
+### Human approval
 
-### How the architecture can scale
-The design point is ~0.1 msg/s average with bursts of 50 messages/10 s; latency is dominated by model calls, not infrastructure. Scaling steps are ordered and **trigger-gated**:
-1. **Single-provider slow-path bursts** (the identified risk): *parallel interpret, serial apply* — interpret a provider's queued messages concurrently, apply strictly in snowflake order, re-interpret if an earlier message changes the book (OD-19). No new infrastructure.
-2. **More processes:** provider slot becomes a session-level Postgres advisory lock; `LISTEN/NOTIFY` still drives workers.
-3. **Redis** only for derived, rebuildable data, only on TRD §15.2 triggers.
-4. **Kafka** only behind the `inbox` boundary (key = `provider_id`, offset committed after `apply`), only on TRD §15.1 triggers.
-5. **Multi-user** is a PRD non-goal; if ever needed, isolation comes from `user_id` on every row + row-level security, interpreting each message once and fanning out per user.
+Every entry, add, exit, trim, stop, take-profit, manual entry, and flatten needs an approval. Automatic orders carry `auto_reason`: exit re-price, underlying stop, end-of-day close at cutoff 2, stop restore.
 
-## 10.3 Principal risks carried by this architecture
+The approval row is written before the graph resumes. Cards expire on their timer or on process restart. A review card cannot be approved until the missing fields are filled. Disabled cards explain the block.
 
-| Risk | Where it shows up | Mitigation in design |
+Manual operations insert a card and approve it through the same executor. Password step-up is required for manual entry and flatten.
+
+### Shape of the deployment
+
+One uvicorn worker and one Next.js server. Local Postgres is the compose file. The production target is a managed PostgreSQL 17 with the app on one VM. A second backend is refused. Kafka and Redis are not used.
+
+## 10.3 Risks the code still carries
+
+| Risk | Where it shows | What the code does |
 |---|---|---|
-| Message API cannot redeliver or backfill | [09 §9.2](09-failure-recovery.md) | Blocking spike; local spool if needed (OD-1) |
-| Single-provider slow-path burst breaches p95 | [04 §4.1](04-context-correlation.md) | Load test 3 → OD-19 |
-| App VM outage leaves system-held stops blind | [08](08-deployment.md) | Uptime monitor pages phone; prefer broker-held stops |
-| Provider-ledger error propagates to follow-ups | [04 §4.3](04-context-correlation.md) | Review cards, user corrections, eval data |
-| 50–150 approval cards/day | [06 §6.6](06-sequence-diagrams.md) | One-tap phone approval, push |
-| Unspecified behaviours (OD-10 – OD-14, OD-18) | marked in diagrams | Decide before phase 3/4 build |
-
-See the full [open architectural decisions register](README.md#3-open-architectural-decisions-register).
+| Discord history misses thread-only messages | [09.2](09-failure-recovery.md) | Channel history is paged. Thread messages under a channel are not |
+| One lane's model call delays that lane's next message | [04.1](04-context-correlation.md) | Other lanes keep running. This lane stays serial through `notify` |
+| Process down, system-held stops silent | [08](08-deployment.md) | `/health` plus the uptime monitor. Broker-held stops still rest at Alpaca |
+| A wrong provider-book update teaches the next message | [04.4](04-context-correlation.md) | Review cards, user corrections, eval labels |
+| Snapshot poll lags the underlying | [02.4](02-component-architecture.md) | Default poll is 5 s. A missing quote does not fire the stop |
+| Single database host in local compose | [08](08-deployment.md) | Production HA is the F064 target, not this compose file |

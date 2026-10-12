@@ -2,11 +2,11 @@
 
 [← Components](02-component-architecture.md) · [Index](README.md) · Next: [Context & correlation →](04-context-correlation.md)
 
-The journey of one message: **ingestion → persistence → context resolution → interpretation → validation → signal/ledger update → decision → approval → order execution → broker → fills → reconciliation.** It is split at the approval pause, because that is where the provider slot is released and the time scale changes from milliseconds to minutes.
+One message, split where the lane slot is released. The message graph ends at `notify`. The human wait is a second graph, one thread per card.
 
-Legend for this section: cylinders = persisted rows; **⚑** = a state change; thick arrows = durable writes.
+Legend: cylinders are rows; **⚑** is a state change; thick arrows are durable writes.
 
-## 3.1 Part A — message to approval card (provider slot held)
+## 3.1 Part A — message to pending cards (lane slot held)
 
 ```mermaid
 flowchart TB
@@ -16,73 +16,78 @@ flowchart TB
     classDef store fill:#eceff1,stroke:#37474f,color:#263238
     classDef fail fill:#ffebee,stroke:#c62828,color:#b71c1c
 
-    MAPI["Message API event<br/>create / edit / delete"]:::ext
-    HM{"HMAC + timestamp<br/>window valid?"}:::code
-    R401["reject (401)"]:::fail
-    ACC["inbox.accept(envelope)<br/>INSERT … ON CONFLICT DO NOTHING<br/>COMMIT → then 200"]:::code
-    DUP["duplicate → no-op, 200"]:::code
-    ME[("message_events ⚑ new immutable row<br/>raw payload, posted_at (snowflake),<br/>reply_to_id, backfilled flag, t_received")]:::store
-    IBX[("inbox ⚑ status = received")]:::store
-    NTF["NOTIFY provider channel"]:::code
+    SRC["Discord gateway event<br/>or POST /ingest"]:::ext
+    HM{"webhook: HMAC<br/>and timestamp ok?"}:::code
+    R401["401"]:::fail
+    ACC["inbox.accept<br/>INSERT ON CONFLICT DO NOTHING<br/>COMMIT, then 200 or gateway ack"]:::code
+    ME[("message_events ⚑")]:::store
+    IBX[("inbox ⚑ received")]:::store
+    NTF["NOTIFY inbox<br/>payload channel_id:provider_id"]:::code
 
-    WRK["provider worker (1 per provider_id)<br/>next_for_provider(): oldest by posted_at"]:::code
-    PROC[("inbox ⚑ status = processing<br/>t_dequeued, attempts + 1")]:::store
-    AGE{"age = now − posted_at<br/>> stale_entry_s ?"}:::code
-    CATCH["catch-up mode if backlog > N<br/>or oldest > stale_entry_s → alert"]:::fail
+    WRK["lane worker<br/>next_for_lane by posted_at"]:::code
+    SKIP{"muted author<br/>or channel not configured?"}:::code
+    DONE0[("inbox ⚑ done + skip_reason<br/>still on the feed")]:::store
+    PROC[("inbox ⚑ processing<br/>attempts + 1")]:::store
+    POI{"attempts > poison_retry_limit?"}:::code
+    RAW0["poison: inbox failed<br/>raw review card + alert"]:::fail
 
-    LC["load_context — C71 scope only<br/>message, reply parent, author recent msgs,<br/>@mentions, provider book, provider profile"]:::code
+    LC["load_context"]:::code
+    DEL{"delete, or edit with<br/>no correction service?"}:::code
+    RS["resolve_context"]:::code
     FC["find_candidates"]:::code
+    FAST["fast_interpret"]:::code
     JV["jev_interpret"]:::model
-    RT{"route"}:::code
-    LX["llm_extract (slow path)"]:::model
-    MC[("model_calls ⚑ per call / attempt")]:::store
-    AS["assemble_signal<br/>fields + provenance"]:::code
-    VA["validate<br/>symbol map (SPX→SPXW), optionable list,<br/>chain + quote identity, scale, adjacent strike,<br/>dates (XNYS calendar)"]:::code
-    MD["marketdata cache"]:::ext
-    DC["decide (pure)<br/>action · qty · card tier · risk limits<br/>stale → no approvable card"]:::code
+    LAY["laya_interpret"]:::model
+    LX["llm_extract"]:::model
+    MC[("model_calls ⚑")]:::store
 
-    subgraph TX["apply — ONE Postgres transaction (provider rows FOR UPDATE)"]
-        S1[("signals ⚑ (message_id, idx)<br/>fields + provenance")]:::store
-        S2[("message_links ⚑ signal → provider_position<br/>method, confidence")]:::store
-        S3[("provider_positions ⚑<br/>open / add / trim / closed / stop info")]:::store
-        S4[("cards ⚑ pending — UNIQUE (signal_id, action)<br/>card_events ⚑ created")]:::store
-        S5[("timers ⚑ card expiry deadline<br/>(from posted_at, C90)")]:::store
-        S6[("inbox ⚑ status = done")]:::store
+    subgraph TX["decide_apply — one transaction"]
+        S1[("signals ⚑")]:::store
+        S2[("message_links ⚑")]:::store
+        S3[("provider_positions ⚑<br/>+ provider_position_events")]:::store
+        S4[("cards ⚑ pending or disabled<br/>card_events ⚑ created")]:::store
+        S5[("timers ⚑ card_expiry<br/>or offhours_release")]:::store
+        S6[("inbox ⚑ done or stale<br/>interpret_outcome set")]:::store
     end
 
-    NT["notify: SSE to dashboard + Web Push<br/>t_card, t_pushed recorded"]:::code
-    NW["note_writer (async, off critical path)"]:::model
-    REL["⚑ provider slot RELEASED<br/>worker takes provider's next event"]:::code
-    AW["await_approval: interrupt()<br/>⚑ checkpoint persisted"]:::code
+    NT["notify<br/>start approval threads<br/>invalidate superseded threads<br/>spawn note_writer"]:::code
+    REL["lane lock released"]:::code
 
-    MAPI --> HM
-    HM -->|"no"| R401
-    HM -->|"yes"| ACC
-    ACC -->|"conflict"| DUP
+    SRC --> HM
+    HM -->|"webhook no"| R401
+    HM -->|"gateway, or webhook yes"| ACC
     ACC ==> ME
     ACC ==> IBX
     ACC --> NTF
-    NTF -.->|"LISTEN"| WRK
-    WRK ==> PROC
-    PROC --> AGE
-    AGE -.->|"backlog signal"| CATCH
-    AGE -->|"flag stale / late in state"| LC
-    LC --> FC --> JV --> RT
-    RT -->|"slow path"| LX --> AS
-    RT -->|"fast path"| AS
+    NTF -.-> WRK
+    WRK --> SKIP
+    SKIP -->|"yes"| DONE0
+    SKIP -->|"no"| PROC
+    PROC --> POI
+    POI -->|"yes"| RAW0
+    POI -->|"no"| LC
+    LC --> DEL
+    DEL -->|"yes: mark done"| REL
+    DEL -->|"no"| RS --> FC --> FAST
+    FAST -->|"not settled"| JV
+    JV -->|"model_failure"| LAY
+    JV -->|"semantic"| LX
+    FAST -->|"settled"| TX
+    JV -->|"assemble or feed"| TX
+    LAY -->|"settled"| TX
+    LAY -->|"semantic"| LX
+    LX --> TX
     JV -.-> MC
+    LAY -.-> MC
     LX -.-> MC
-    AS --> VA
-    VA <-->|"chain, quote"| MD
-    VA --> DC
-    DC ==> TX
-    TX --> NT
-    NT -.-> NW
-    NT --> REL
-    REL --> AW
+    TX --> NT --> REL
 ```
 
-## 3.2 Part B — approval to reconciled lot (provider slot NOT held)
+Off-hours does not skip interpretation. `decide_apply` still updates the provider book, then schedules `offhours_release` and inserts no cards. At the open, `ReleaseService` re-plans with fresh quotes.
+
+A stale entry or add (`age > stale_entry_s`, default 30 s) is marked inbox `stale`: the book may update, and there is no approvable entry card. Exits, stops, and corrections still card, with `late` when a newer lane event was already applied.
+
+## 3.2 Part B — approval to a reconciled lot (lane slot free)
 
 ```mermaid
 flowchart TB
@@ -92,74 +97,73 @@ flowchart TB
     classDef human fill:#fff3e0,stroke:#e65100,color:#bf360c
     classDef fail fill:#ffebee,stroke:#c62828,color:#b71c1c
 
-    AW["await_approval (paused thread)"]:::code
-    U["Trader: approve / edit / reject<br/>(dashboard or phone)"]:::human
-    TMR["timers: expiry deadline"]:::code
-    SUP["newer message on same position<br/>(supersession, OD-14)"]:::code
-    CR["crash recovery"]:::code
+    AW["approval graph<br/>thread card:id<br/>interrupt at await_approval"]:::code
+    U["User: approve, edit, or reject"]:::human
+    TMR["card_expiry timer"]:::code
+    SUP["newer message superseded the card"]:::code
+    CR["startup expire_on_restart<br/>or resume_approved"]:::code
 
-    AP[("approvals ⚑ written BEFORE resume<br/>card_events ⚑ approved")]:::store
-    RES["Command(resume=decision)"]:::code
-    TERM[("cards ⚑ rejected / expired / invalidated<br/>card_events ⚑ + reason · no order (C18)")]:::store
+    AP[("approvals ⚑ before resume<br/>cards ⚑ approved / rejected / expired / invalidated")]:::store
+    RES["Command resume"]:::code
+    TERM["graph ends<br/>no order"]:::code
 
-    RV{"revalidate (C22)<br/>entry: within N s of posted_at,<br/>ask ≤ signal + X%, not superseded<br/>exit: position not already closed"}:::code
-    INV{"submit_order()<br/>FR-20 invariants on fresh broker read"}:::code
-    BLK["blocked → alert"]:::fail
-    OI[("orders ⚑ status = intent<br/>client_order_id = uuid5(card_id, action_seq)<br/>cards ⚑ submitted")]:::store
-    BRK["Broker"]:::ext
-    OE[("order_events ⚑ submitted → working<br/>→ partially_filled → filled / cancelled")]:::store
-    LOOP["execution loops<br/>entry: cancel remainder after M s<br/>exit: re-price mid → bid until floor"]:::code
-    FL[("fills ⚑ immutable")]:::store
-    LOT[("lots ⚑ create / grow (avg price) /<br/>reduce / close — lot row lock<br/>stops ⚑ bracket legs, restored if exit unfilled")]:::store
-    NP["push: fill notification"]:::code
-    RC["reconcile (after every fill + every 60 s)<br/>lots & working orders vs broker"]:::code
-    OK["consistent"]:::code
-    MM[("alerts ⚑ mismatch<br/>⚑ entry cards BLOCKED until resolved")]:::fail
+    RV{"revalidate<br/>validity + preflight quote"}:::code
+    EX["CardExecutor"]:::code
+    INV{"submit_order invariants"}:::code
+    BLK["invalidated or alert"]:::fail
+    OI[("orders ⚑ intent<br/>cards ⚑ submitted")]:::store
+    BRK["Alpaca, or SimulatedBroker in shadow"]:::ext
+    CONS["BrokerEventConsumer"]:::code
+    FL[("fills ⚑")]:::store
+    LOT[("lots ⚑ + lot_events<br/>stops updated by brackets.on_fill")]:::store
+    RC["reconcile<br/>paper and live"]:::code
+    MM[("alerts ⚑ reconcile_mismatch<br/>entries_blocked")]:::fail
 
-    U --> AP --> RES
-    TMR --> RES
-    SUP --> RES
-    CR --> RES
+    U --> AP
+    TMR --> AP
+    SUP --> AP
+    CR --> AP
+    AP --> RES
     AW --- RES
-    RES -->|"reject / expire / invalidate"| TERM
-    RES -->|"approve (+ edits)"| RV
-    RV -->|"invalid"| TERM
-    RV -->|"valid"| INV
+    RES -->|"reject, expire, invalidate"| TERM
+    RES -->|"approve"| RV
+    RV -->|"failed"| BLK
+    RV -->|"ok"| EX --> INV
     INV -->|"violation"| BLK
     INV -->|"pass"| OI
     OI ==> BRK
-    BRK -.->|"status / fill events (OD-10)"| OE
-    OE --> LOOP
-    LOOP -->|"replace / cancel"| BRK
-    BRK -.-> FL
+    BRK -.-> CONS
+    CONS ==> FL
     FL ==> LOT
-    LOT --> NP
     LOT --> RC
-    RC <-->|"positions, orders"| BRK
-    RC --> OK
     RC --> MM
 ```
 
-## 3.3 Persistence and state-change ledger
+The decision API writes the approval and the card transition in one transaction, then resumes the graph. Restart recovery calls `resume_approved`. Entry resumes wait while `entries_blocked` is set.
 
-| # | Step | Persisted in | Transaction boundary | State change | Idempotency key |
-|---|---|---|---|---|---|
-| 1 | Webhook / backfill accept | `message_events`, `inbox` | own txn, commit before `200` | inbox `received` | `(message_id, event_type, event_seq)` |
-| 2 | Dequeue | `inbox` | own txn | `processing`, attempts+1 | event_id |
-| 3 | Interpretation | `model_calls` | per call | none (audit only) | — (repeatable, no side effects) |
-| 4 | Graph progress | LangGraph checkpoints | per node | orchestration only | `thread_id = msg:<message_id>:<event_seq>` |
-| 5 | **apply** | `signals`, `message_links`, `provider_positions`, `cards`, `card_events`, `timers`, `inbox` | **one txn** | provider ledger + card `pending` + inbox `done` | card UNIQUE `(signal_id, action)` |
-| 6 | Approval | `approvals`, `card_events` | own txn, **before** resume | card `approved` | approval_id |
-| 7 | Order intent | `orders`, `cards` | own txn, **before** broker call | order `intent`, card `submitted` | `client_order_id` UNIQUE |
-| 8 | Broker status | `order_events` | per event | order state machine | client_order_id + broker id |
-| 9 | Fill | `fills`, `lots`, `stops` | one txn per fill, lot row lock | lot created / grown / reduced / closed | broker fill id (**OD-10** defines source) |
-| 10 | Reconciliation | `lots`, `orders`, `alerts` | own txn | adopt orders; foreign lots; entry gate | client_order_id prefix |
+## 3.3 Persistence ledger
 
-### Explanation
-- **Why the split at `apply`:** everything that depends on per-provider order (context, linking, ledger, card) is committed atomically before the run pauses. After resume, nothing touches the provider ledger, so the next message from the same provider never waits on a human (FR-1a, C88).
-- **Why the approval row precedes resume:** AC-2 ("no order without an approval record") is checked against domain tables, not against checkpoint internals (TRD §5.1).
-- **Why the order intent precedes the broker call:** if the process dies between the two, restart finds the intent and queries the broker by `client_order_id` instead of resubmitting (AC-7).
-- **Validity clocks start at `posted_at`**, not at card creation (C90); a backlog therefore cannot create a fresh-looking card for an old price.
+| # | Step | Persisted in | Boundary | Idempotency |
+|---|---|---|---|---|
+| 1 | Gateway or webhook accept | `message_events`, `inbox` | commit before ack | PK `(message_id, event_type, event_seq)` |
+| 2 | Dequeue | `inbox` | own update | attempts, `claimed_at` |
+| 3 | Stage marks | `stage_timings` | per stage | PK includes `attempt` and `stage` |
+| 4 | Model calls | `model_calls` | per attempt | append-only |
+| 5 | Message-graph checkpoint | `langgraph.checkpoints` | once, at exit | thread `msg:{message_id}:{event_type}:{event_seq}:{attempt}` |
+| 6 | **apply** | `signals`, `message_links`, `provider_positions`, `provider_position_events`, `cards`, `card_events`, `timers`, `inbox` | **one transaction** | `signals` unique on the event key + `idx`; `cards.dedupe_key`; card unique `(signal_id, action)` |
+| 7 | Approval | `approvals`, `card_events` | before resume | one `approvals` row per card |
+| 8 | Approval checkpoint | `langgraph.checkpoints` | interrupt and resume | thread `card:{card_id}` |
+| 9 | Order intent | `orders`, `cards` | before the broker call | `client_order_id` unique |
+| 10 | Broker status | `order_events`, `orders` | per event, forward-only | `client_order_id` |
+| 11 | Fill | `fills`, `lots`, `lot_events`, `stops` | one transaction | `broker_fill_id` unique |
+| 12 | Reconciliation | `lots`, `orders`, `alerts`, `system_flags` | own transaction | mismatch dedupe |
+
+`signal_id` is a UUID. It is not the pair `(message_id, idx)`. That pair is a unique key on `signals` together with `event_type` and `event_seq`.
+
+### Why the split is at notify
+
+Everything that depends on lane order (context, the link, the provider book, the card) commits before the message graph ends. The next event on that lane does not wait for a person. Fills lock the lot and do not take the lane lock.
 
 ### Failure points on this path
-Postgres down at step 1 (→ `503`, redelivery, OD-1) · poison at steps 2–5 (3 attempts → raw review card) · LLM chain exhausted at step 3 (raw review card) · market data missing at validate (review card, OD-12) · crash between 7 and broker call (resolved by status query) · missing fill event (periodic reconciliation catches it).
+
+Postgres down at accept (webhook `503`; the gateway retries on reconnect plus the gap detector) · poison after `poison_retry_limit` (default 3) · model chain exhausted (raw review card) · quote missing at validate (review card) · crash after the intent row (status query by `client_order_id`) · missed fill (the consumer plus periodic reconcile).
