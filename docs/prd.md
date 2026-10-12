@@ -76,9 +76,9 @@ Discord listener / Message API (push) → Ingest → Interpret (Jev or LLM) → 
 ```
 
 - **The LLM handles:** classifying messages, extracting fields with their source, and resolving references (which provider position a follow-up refers to, and fields implied by context) [C31, C71].
-- **Deterministic code handles:** validation, normalization, all sizing, risk limits, safety invariants, order construction and pricing, approval validity, the end-of-day rule, stops, reconciliation.
+- **Deterministic code handles:** validation, normalization, risk limits, safety invariants, order construction and pricing, approval validity, the end-of-day rule, stops, reconciliation.
 - **The human handles:** every order action, except the pre-approved automatic actions in §9 [C14].
-- The LLM never decides whether to trade, how much, or at what price beyond extracting what the provider wrote. Code proposes the action; the human approves it [C80].
+- The LLM never decides whether to trade, how much, or at what price beyond extracting what the provider wrote. Code proposes the action; the human approves it [C80]. **Neither the LLM nor code ever chooses a quantity: the user types it on every buy and sell card [C105].**
 - The LLM also writes an **advisory note** for each card: a plain-language explanation of what the provider did or intends. It is labeled "advisory". It cannot change fields, actions, quantities, or prices. It is generated from the same provider-only context (C71), so it never sees the user's lots or money [C80].
 - **[CONFIRM] Note guard:** if the note contains a ticker, strike, expiry, or price that does not appear in the validated fields or source messages, the note is hidden and the event is logged.
 
@@ -108,16 +108,16 @@ Discord listener / Message API (push) → Ingest → Interpret (Jev or LLM) → 
 - **Lot:** the user's real holding at the broker, linked to exactly one provider position. Two providers on the same contract means two lots [C24]. Positions not opened by the system are "foreign": read-only [C47].
 - **Card:** an approval request for one action. Types: normal, inferred, review, disabled (blocked). Non-actionable messages get no card [C31, C75].
 - **Field provenance:** each field is *literal* (an exact text span, verified by code), *context* (inferred from a specific earlier message), or *resolved* (computed by code, e.g. "0dte" = today, "friday" = that date) [C31].
-- **Tier:** a configured mapping from a size word (default / small / lotto, extensible) to a maximum dollar amount. Code computes the quantity [C15]. Stocks have a separate tier table [C76].
+- **Quantity:** shares for a stock, contracts for an option. It is always typed by the user on the card [C105]; it starts empty and nothing sizes it (the former size tiers [C15, C76] are removed). A quantity the signal states, or a fraction ("half"), is untrusted information shown on the card, never the order quantity.
 
 ## 7. User workflows
 
 ### 7.1 Option entry (happy path)
-1. A message arrives by push [C13]. The LLM classifies it as an entry and extracts underlying, expiry, strike, call/put, price or range, size word, and SL/TP, each with its provenance.
+1. A message arrives by push [C13]. The LLM classifies it as an entry and extracts underlying, expiry, strike, call/put, price or range, and SL/TP, each with its provenance.
 2. Code validates and normalizes (§10). If the provider has an open position this adds to, it becomes an add card [C62].
 3. Code checks the risk limits [C23]. If any limit is hit, a disabled card is shown with the reason [C75].
-4. A card is displayed within 5 s p95 [C38], with a push notification [C58]. It shows the author prominently [C57], the source messages, highlighted inferred fields, the quantity computed from the tier, any bracket legs [C50], and warnings (e.g. an opposite-direction lot [C74]).
-5. The user approves with one click (inferred cards included [C32]). Review cards require the missing fields first.
+4. A card is displayed within 5 s p95 [C38], with a push notification [C58]. It shows the author prominently [C57], the source messages, highlighted inferred fields, an empty **Quantity** field the user must fill (contracts), the estimated order value that follows the typed quantity, any bracket levels [C50], and warnings (e.g. an opposite-direction lot [C74]).
+5. The user enters the quantity, then approves (inferred cards included [C32]). Approve stays off until the quantity is a whole number of 1 or more. The backend refuses an approval without one, and refuses one that the buying power, exposure, daily loss or position limits cannot take: it says why and never reduces the number. Review cards require the missing fields first [C105].
 6. The order is sent as a limit at the signal price (top of the range, if a range was given) + X%. Any unfilled remainder is cancelled after M s; partial fills are kept [C22].
 7. The lot is created and linked to the provider position.
 
@@ -133,9 +133,8 @@ The user is notified. No order is placed [C18].
 1. The LLM links the message to a provider position (reply parent, the author's open positions, recent messages from the author and anyone @mentioned [C71]).
 2. If the user holds no lot for that position, the provider ledger is updated and the message goes to the feed only.
 3. If the user holds a lot, an exit card is created:
-   - With a stated fraction, the quantity is pre-filled as that fraction of the lot, rounded down, editable [C51].
-   - If rounding down gives 0 (e.g. "trim half" on a 1-contract lot, which is common per §3), the quantity is left blank. The card is labeled "lot too small to trim: exit all or skip", and no order is placed until the user enters a quantity [C82].
-   - With no quantity stated, the field is blank and the user enters it [C26].
+   - A trim or partial exit card has a blank quantity the user enters, between 1 and the lot [C26, C105]. A stated fraction ("half") is shown as "Provider said half" and nothing more [supersedes C51, C82].
+   - "All out" / a full exit becomes a **Close** card: "Close entire position (N)", no quantity field. It sells the whole lot, N is fixed at approval, and if the lot changes before execution the approval is void and the user approves again [C105].
    - A soft exit gets a card labeled "suggestion, provider still holding", quantity blank [C52].
 4. The exit card expires only on timeout or when the position is already closed [C22].
 5. On approval, the exit starts as a limit at the mid price. It re-prices toward the bid every few seconds until it fills or reaches the configured floor. The floor is `exit_floor_pct` below the mid at exit start, never below one tick. At the floor it stops and notifies the user [C25, C100].
@@ -150,8 +149,7 @@ The user is notified. No order is placed [C18].
 - Take-profits are limit orders at the broker, split equally across TP levels (editable), and linked to the stop so one cancels the other [C50, C56].
   - A bracket's stop and TP legs share one OCO group. The FR-20 invariant counts the group as max(stop qty, Σ TP qty).
   - The linkage is system-managed and covered by the bracket's approval: a TP fill resizes the stop, and a stop fill cancels the TPs [C99].
-- When the quantity is smaller than the number of TP levels, the number of TP legs is min(levels, quantity). Contracts are assigned from TP1 onward (1 contract → TP1 only; 2 contracts with 3 levels → TP1 and TP2), and the user can edit this [C83].
-- A tier whose dollar amount cannot buy one contract at the signal price produces a disabled card with that reason. It is never rounded up to 1 contract.
+- The card keeps the stated TP levels. Once the user types a quantity, the legs are split equally over it and the user can edit the split. When the quantity is smaller than the number of TP levels, the number of TP legs is min(levels, quantity). Contracts are assigned from TP1 onward (1 contract → TP1 only; 2 contracts with 3 levels → TP1 and TP2) [C83, C105].
 
 ### 7.5 Corrections and edits
 - Before the user trades: a correction message or a message edit updates the pending card. The update needs fresh approval (it invalidates per C22) [C48].
@@ -172,7 +170,7 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 ### 7.8 Stock signals [C55, C60, C76, C61]
 - Long only.
 - Entries with no price are not actionable (feed only).
-- Sizing: "X% commons" = X% of account equity, capped by the stock tier maximum. Otherwise the stock tier's dollar amount.
+- Sizing: the user types the number of shares, as for options. "X% commons" and any stated size are information only [C105].
 - Stops as in 7.4.
 - Multi-week holds are followed until the provider exits [C20].
 
@@ -237,7 +235,7 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 
 **Ledgers and decisions (deterministic)**
 - FR-16. Maintain the provider-position ledger and the user-lot ledger [C72]. Lots are per provider [C24]. Adds grow the lot and recompute the average price. A re-entry after a full exit creates a new lot [C62].
-- FR-17. Compute proposed actions and quantities from tiers [C15, C76] and fractions [C51].
+- FR-17. Compute proposed actions (never quantities): the user enters the quantity on every buy and sell card. Entry, add, trim and exit cards start with a blank quantity; the backend refuses to approve or execute one without a valid whole-number quantity, and sends the broker exactly the approved quantity. Informational values (order value, cost, exposure) follow the typed quantity and never set it [C105].
 - FR-18. Enforce the risk limits before creating an approvable entry card: max daily loss (realized + unrealized), max open positions, max total premium/exposure. Foreign positions count toward the limits [C23, C47].
 - FR-19. Warn when the user holds an opposite-direction lot on the same underlying [C74].
 
@@ -263,7 +261,7 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 | Actor | What it may do |
 |---|---|
 | LLM | Classify, extract with provenance, link references, write the advisory note. Nothing else. |
-| Code only | Validation, normalization, dates, sizing, risk limits, invariants, pricing and re-pricing, validity and expiry, reconciliation, end-of-day forced close. |
+| Code only | Validation, normalization, dates, risk limits, invariants, pricing and re-pricing, validity and expiry, reconciliation, end-of-day forced close. |
 | Needs user approval | Every entry, add, exit, trim, stop placement/move/cancel, bracket, manual entry, flatten. |
 | Pre-approved automatic actions (the only exceptions) | A broker-held stop or TP firing after approval; a system-held underlying stop firing after approval; exit re-pricing within an approved intent; the end-of-day forced close at cutoff 2; automatic stop restore after an unfilled exit; system-managed bracket linkage (TP fill resizes the stop, stop fill cancels the TPs) [C99]. |
 
@@ -406,7 +404,7 @@ Every record below is persisted with a timestamp, and the whole audit trail is i
 - Hosting is decided in architecture [C37].
 - The database must not share a single server or disk with the application. It needs automatic failover and point-in-time recovery, per the durability NFR in §12 [C93].
 - Transport and caching: PostgreSQL is the only source of truth and the message queue. Kafka and Redis are not used [C94]. They may be introduced only behind the architecture's defined boundaries, and only when a measured trigger in the TRD is met.
-- Configuration: tiers (options and stocks), X, N, M, re-price step and floor, cutoffs 1 and 2, risk limits, feed-silence N, context window size, muted authors, channels, symbol map (C85), missing-underlying proximity % and look-back days (C84), staleness threshold (FR-1c), catch-up backlog size, retry limit (FR-1e), identity price tolerance and adjacent-strike ratio (FR-11, FR-13), routing thresholds, Jev on/off, LLM model chains, prices and per-vendor concurrency, note-guard switch (default on), LLM monthly budget, and the **trading mode** (shadow | paper | live; default shadow). Initial values are tuned in the shadow and paper stages [C69].
+- Configuration: X, N, M, re-price step and floor, cutoffs 1 and 2, risk limits, feed-silence N, context window size, muted authors, channels, symbol map (C85), missing-underlying proximity % and look-back days (C84), staleness threshold (FR-1c), catch-up backlog size, retry limit (FR-1e), identity price tolerance and adjacent-strike ratio (FR-11, FR-13), routing thresholds, Jev on/off, LLM model chains, prices and per-vendor concurrency, note-guard switch (default on), LLM monthly budget, and the **trading mode** (shadow | paper | live; default shadow). Initial values are tuned in the shadow and paper stages [C69].
   - Runtime configuration is stored in the database with an audited change history. Money values have no defaults: until every one is set, entry cards are disabled with the reason "config incomplete".
   - Cutoffs 1 and 2 are expressed as minutes before the session close, so half days work.
 - Seed ranges from the user's history. These are observed ranges only; the user sets the final values:
@@ -417,7 +415,6 @@ Every record below is persisted with a timestamp, and the whole audit trail is i
 | Option cost basis closed per day | p50 ~$10.4k, p90 ~$24.8k, max ~$43.7k |
 | Daily realized P&L | p5 ≈ −$2.3k, p10 ≈ −$1.3k, worst day ≈ −$28.1k |
 
-- Tier amounts must buy at least one contract at typical premiums (see §7.4).
 - Operator runbooks are required for recovery, reconciliation mismatches, password recovery, and the kill switch.
 
 ## 19. Cost
@@ -482,8 +479,9 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
 - AC-12. All stage gates in §17 are passed in order before real money is used.
 - AC-13. The advisory note can never change a card's fields or actions. A note containing a number not present in the validated fields or source messages is hidden (if the note guard is confirmed).
 - AC-14. A signal with a missing underlying always produces a review card that requires explicit confirmation of the underlying. Confirming re-validates and re-decides the signal: the card gets its size, price and card type, the provider position the pipeline skipped is opened, and the provider's later follow-ups link to it. The card keeps its validity window, and a second confirmation is refused.
-- AC-15. "Trim half" on a 1-contract lot produces an exit card with a blank quantity and the "lot too small to trim" label. No order is sent until the user enters a quantity.
-- AC-16. Bracket TP legs never exceed the order quantity. With fewer contracts than TP levels, contracts are assigned from TP1 onward.
+- AC-15. Every entry, add, trim and exit card starts with an empty quantity. "Trim half" shows "Provider said half" and nothing else. No order is sent until the user enters a whole number of shares or contracts, the backend rejects an approval without one, and the broker receives exactly that number [C105].
+- AC-16. Bracket TP legs never exceed the order quantity the user typed. With fewer contracts than TP levels, contracts are assigned from TP1 onward.
+- AC-24. A quantity that exceeds buying power, exposure, daily loss, the lot or the broker's holding blocks the approval with the reason. The quantity is never reduced to fit. A quantity edit after approval is refused (409); a changed quantity before approval is a new card version and needs a new approval [C105].
 - AC-17. "SPX" resolves to SPXW contracts through the symbol map. A missing-underlying suggestion is never approvable without explicit confirmation, even when the strike matches one underlying's live price.
 - AC-18. Given the messages A1 "Bought GOOGL 357.5C @ 1.67", B2 "Bought TSLA 400C @ 2.10", A3 "Take half off @ 2.10" and B4 "Stop 1.50", delivered back to back:
   - A3 links to provider A's GOOGL position, and B4 links to provider B's TSLA position;
@@ -502,7 +500,7 @@ C1 single user, own money · C2 Discord, multiple channels · C3 trusted provide
 · C80 LLM interprets only + advisory free-text note (provider-only context) · C81 chain + quote identity check with wide tolerance; scale normalization by quote.
 · C82 fraction rounding to 0 → blank qty + "lot too small to trim" label · C83 TP legs = min(levels, qty), assigned from TP1, editable · C84 missing-underlying suggestion by live-price proximity, never a fixed strike threshold · C85 configurable symbol map, "SPX" → SPXW · C86 no ticker whitelist; validate against optionable list + live chain · C87 trade-history exports kept out of git and model context; only aggregates in docs.
 · C88 per-provider ordered processing by post time; providers in parallel; approvals never block a provider · C89 out-of-order arrival → "late" flag + re-check → review card · C90 validity clocks start at post time; stale entries get no card, late exits still carded; catch-up mode · C91 message API must redeliver ≥ 10 min or offer backfill; gap detection · C92 no silent drops; poison → raw review card + alert · C93 RPO ≈ 0 for approvals/orders/fills/ledger, RTO ≤ 5 min; DB HA off the app host · C94 no Kafka/Redis; PostgreSQL is sole source of truth and queue; adopt only on measured triggers.
-· C39 (revised 2026-09-29) email + password allowlist, no passkeys, no roles, no self-registration; append-only audit log.
+· C105 (2026-10-11) the user types the quantity on every buy and sell card: no tiers, no fractions, no equity percent, no LLM or signal-stated quantity; a full exit is a dedicated Close card; backend enforces; supersedes C15, C51, C76, C82 · C39 (revised 2026-09-29) email + password allowlist, no passkeys, no roles, no self-registration; append-only audit log.
 · C95 (2026-09-30) Discord is read by a user-account listener in the backend, alongside the optional message API webhook; both feed one inbox; token in secret storage; ToS risk accepted, open item (h) · C96 (2026-09-28) provider-position scope = per author; channel is metadata · C97 (2026-09-29) shadow mode simulates fills at the live quote; it never calls a broker · C98 (2026-09-29) off-hours held messages start their validity/staleness clocks at the 9:30 ET release (amends C90 for held messages) · C99 (2026-09-29) bracket stop and TPs share an OCO group; invariant counts max(stop qty, Σ TP qty); system-managed linkage sits inside the bracket approval · C100 (2026-09-29) exit re-price floor = `exit_floor_pct` below the mid at exit start, never below one tick · C101 (2026-09-29) underlying stops trigger on the last trade (calls/long stock `last ≤ level`, puts `last ≥ level`) · C102 (2026-09-29) kill switch disables entry/add cards and entries; exit and stop cards still created · C103 (2026-09-29) flatten exits tracked lots only; foreign lots untouched (an explicit manual exit can still sell one) · C104 (2026-10-02) context, provider book and links are scoped to the lane = (channel, author); threads belong to their parent channel; @mentions are not context; another author's reply parent is read-only (supersedes C96).
 
 ## Appendix B — Evidence

@@ -5,6 +5,7 @@ import { Alert } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner as SpinnerIcon } from "@/components/ui/spinner"
+import { userFacingMessage } from "@/lib/api/errors"
 
 export type SubmitState = { phase: "idle" | "pending" } | { phase: "failed"; message: string }
 
@@ -23,7 +24,7 @@ export function useSubmit() {
       await action()
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Something went wrong. Try again."
+      const message = userFacingMessage(error)
       setState({ phase: "failed", message })
       return false
     }

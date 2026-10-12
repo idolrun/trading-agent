@@ -25,12 +25,12 @@ def test_set_then_show(owner_engine: object) -> None:
     assert result.returncode == 0, result.stderr
     shown = json.loads(cli("show").stdout)
     assert shown["version"] == 1
-    assert "option_tiers" in shown["missing_for_entries"]
+    assert "entry_chase_pct" in shown["missing_for_entries"]
 
 
 def test_invalid_file_rejected(owner_engine: object, tmp_path: Path) -> None:
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"option_tiers": {"default": "0"}}))
+    bad.write_text(json.dumps({"entry_chase_pct": "0"}))
     result = cli("set", "--file", str(bad), "--reason", "x")
     assert result.returncode == 2
-    assert "option_tiers" in result.stderr
+    assert "entry_chase_pct" in result.stderr

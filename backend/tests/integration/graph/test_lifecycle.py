@@ -147,7 +147,7 @@ async def follow(
         author=author,
     )
     await w.h.process(msg, processor=w.processor)
-    action = CardAction.EXIT if msg_type == "full_exit" else CardAction.TRIM
+    action = CardAction.CLOSE if msg_type == "full_exit" else CardAction.TRIM
     async with w.h.factory() as db:
         card = await db.scalar(
             select(Card)
@@ -278,12 +278,12 @@ async def test_full_lifecycle_entry_trim_exit_closed(lw: World) -> None:
     await agreed(w)
     first = await lot(w)
 
-    # "Take half off" -> a trim card on the same provider position, qty by the trim rule (4 / 2)
+    # "Take half off" -> a trim card on the same provider position; the user types the quantity
     trim = await follow(w, env, "trim", "Take half off", 30, exit_fraction="half")
     assert trim.lot_id == first.lot_id and trim.provider_position_id == opened_position(env)
-    assert trim.proposal["qty"] == 2
+    assert trim.proposal["qty"] is None and trim.proposal["labels"] == ["provider_fraction:half"]
     assert await orders_of(w, trim) == []  # approval required: nothing sent yet
-    await w.decide(trim.card_id)
+    await w.decide(trim.card_id, qty=2)
     await w.exits_done()
     await filled_exit(w, trim, 2)
     half = await lot(w)
@@ -359,10 +359,10 @@ async def test_one_contract_trim_requires_a_quantity(lw: World) -> None:
     await w.decide(card.card_id, qty=1)
     await w.consume()
     trim = await follow(w, env, "trim", "Take half off", 30, exit_fraction="half")
-    assert trim.proposal["qty"] is None and "lot_too_small" in trim.proposal["labels"]  # AC-15
+    assert trim.proposal["qty"] is None  # AC-15
     assert await orders_of(w, trim) == []
-    with pytest.raises(DecisionInvalid):  # approving with no quantity is refused
-        await w.decide(trim.card_id)
+    with pytest.raises(DecisionInvalid, match="qty required"):  # no quantity: refused (C105)
+        await w.decide(trim.card_id, bare=True)
     assert await orders_of(w, trim) == [] and (await lot(w)).qty == 1
     await w.decide(trim.card_id, qty=1)  # the user types it
     await w.exits_done()
@@ -374,12 +374,28 @@ async def test_exit_cannot_exceed_the_lot(lw: World) -> None:
     env, card = await entry_card(w)
     await w.decide(card.card_id, qty=2)
     await w.consume()
-    out = await follow(w, env, "full_exit", "all out", 30)
-    with pytest.raises(DecisionInvalid):  # more than the lot holds
+    out = await follow(w, env, "trim", "trimming some", 30)
+    with pytest.raises(DecisionInvalid, match="qty_exceeds_lot"):  # more than the lot holds
         await w.decide(out.card_id, qty=3)
     sold = sum(o.qty for o in await rows(w, Order) if o.side == "sell" and o.kind == "exit")
     assert sold == 0 and (await lot(w)).qty == 2
     await agreed(w)
+
+
+async def test_a_full_exit_is_a_close_card_that_takes_no_quantity(lw: World) -> None:
+    w = lw
+    env, card = await entry_card(w)
+    await w.decide(card.card_id, qty=4)
+    await w.consume()
+    close = await follow(w, env, "full_exit", "all out", 30)
+    assert close.action == CardAction.CLOSE and close.proposal["qty"] == 4
+    with pytest.raises(DecisionInvalid, match="no quantity"):
+        await w.decide(close.card_id, qty=2)  # a partial exit is a trim the user sizes
+    assert [o for o in await rows(w, Order) if o.kind == "exit"] == []
+    await w.decide(close.card_id, bare=True)  # the dedicated close sells the whole lot
+    await w.exits_done()
+    await filled_exit(w, close, 4)
+    assert (await lot(w)).status == LotStatus.CLOSED
 
 
 async def test_cross_provider_exit_is_blocked(lw: World) -> None:
@@ -395,7 +411,7 @@ async def test_cross_provider_exit_is_blocked(lw: World) -> None:
     )
     await w.h.process(other, processor=w.processor)
     async with w.h.factory() as db:
-        exits = (await db.scalars(select(Card).where(col(Card.action) == CardAction.EXIT))).all()
+        exits = (await db.scalars(select(Card).where(col(Card.action) == CardAction.CLOSE))).all()
     assert [(c.card_type, c.lot_id) for c in exits] == [
         (CardType.REVIEW, None)
     ]  # B never gets A's lot

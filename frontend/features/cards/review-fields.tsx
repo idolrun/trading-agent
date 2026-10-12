@@ -58,8 +58,6 @@ export function reviewEdits(card: Card, draft: ReviewDraft) {
   return { edits, complete }
 }
 
-const inputClass = "h-11 rounded-md border border-input bg-background px-2"
-
 /** 7.1 step 5: one input per missing field. Nothing is preselected: the user supplies each answer. */
 export function ReviewFields({
   card,
@@ -80,16 +78,26 @@ export function ReviewFields({
         switch (field) {
           case "underlying_confirmation":
             return proposal.suggestedUnderlying ? (
-              <Label key={field} className="min-h-11 gap-3 font-normal leading-normal select-text">
-                <Checkbox
-                  checked={draft.underlyingConfirmed}
-                  onCheckedChange={(value) => set({ underlyingConfirmed: value === true })}
-                />
-                <span>
-                  I confirm the underlying is <strong>{proposal.suggestedUnderlying}</strong>
-                </span>
-              </Label>
-            ) : null
+              <div key={field} className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">
+                  {proposal.suggestedUnderlying} is suggested, not validated. Confirming it sets the underlying and the
+                  card is revalidated. It does not approve the trade.
+                </p>
+                <Label className="min-h-11 gap-3 font-normal leading-normal select-text">
+                  <Checkbox
+                    checked={draft.underlyingConfirmed}
+                    onCheckedChange={(value) => set({ underlyingConfirmed: value === true })}
+                  />
+                  <span>
+                    I confirm the underlying is <strong>{proposal.suggestedUnderlying}</strong>
+                  </span>
+                </Label>
+              </div>
+            ) : (
+              <p key={field} className="text-sm text-muted-foreground">
+                No suggested underlying is available, so this review cannot be completed here.
+              </p>
+            )
           case "chosen_position_id":
             return proposal.candidatePositions.length === 0 ? null : (
               <fieldset key={field} className="flex flex-col gap-2">

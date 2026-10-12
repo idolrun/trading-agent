@@ -118,7 +118,11 @@ async def test_cards_positions_lots(seeded: tuple[Api, Harness]) -> None:
     assert entry["providerId"] == str(PROVIDER_A)  # Discord ids as strings
     assert uuid.UUID(entry["signalId"])  # F059: re-link needs the signal
     assert entry["underlying"] == "GOOGL" and entry["contract"]["strike"] == "357.5"
-    assert entry["proposal"]["qty"] == 13 and entry["proposal"]["price"] == "0.74"
+    assert (
+        entry["proposal"]["qty"] is None
+        and entry["proposal"]["tpLevels"] == []
+        and entry["proposal"]["price"] == "0.74"
+    )
     assert entry["sourceMessages"][0]["text"] == "Bought GOOGL 357.5C 10/2 @ 0.71"
     text = entry["sourceMessages"][0]["text"]
     spans = {s["field"]: text[s["start"] : s["end"]] for s in entry["sourceMessages"][0]["spans"]}
@@ -130,7 +134,7 @@ async def test_cards_positions_lots(seeded: tuple[Api, Harness]) -> None:
         "entry_price": "0.71",
     }
     assert entry["state"] == "invalidated"  # superseded by the trim (7.2)
-    assert by_action["trim"]["proposal"]["qty"] == 2 and by_action["trim"]["lotId"]
+    assert by_action["trim"]["proposal"]["qty"] is None and by_action["trim"]["lotId"]
 
     detail = (await c.get(f"/api/v1/cards/{entry['id']}")).json()
     assert [e["reasonCode"] for e in detail["events"]] == ["created", "superseded"]
@@ -154,6 +158,20 @@ async def test_cards_positions_lots(seeded: tuple[Api, Harness]) -> None:
     assert lot["avgPriceLabel"] == "system average"
     ldetail = (await c.get(f"/api/v1/lots/{lot['id']}")).json()
     assert [o["clientOrderId"] for o in ldetail["orders"]] == ["cta-test"]
+
+
+async def test_cards_carry_the_provider_display_name(seeded: tuple[Api, Harness]) -> None:
+    api, h = seeded
+    before = (await api.client.get("/api/v1/cards")).json()["items"]
+    assert {card["providerName"] for card in before} == {None}  # no message carried a name yet
+    # The name rides on any later message from the provider, even one that makes no card.
+    await h.message(
+        "chat", None, at=T0 + timedelta(seconds=20), author=PROVIDER_A, author_name="Alpha Trades"
+    )
+    after = (await api.client.get("/api/v1/cards")).json()["items"]
+    assert {card["providerName"] for card in after} == {"Alpha Trades"}
+    detail = (await api.client.get(f"/api/v1/cards/{after[0]['id']}")).json()
+    assert detail["providerName"] == "Alpha Trades"
 
 
 async def test_feed_orders_fills_health(seeded: tuple[Api, Harness]) -> None:

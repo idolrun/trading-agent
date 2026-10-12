@@ -3,6 +3,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { describe, expect, it, vi } from "vitest"
+import { matchesFeed, emptyFeedView } from "@/features/feed/filter"
 import { FeedScreen } from "@/features/feed/feed-screen"
 import type { FeedItem } from "@/features/feed/types"
 import { applyEvent } from "@/features/live/event-map"
@@ -65,8 +66,11 @@ describe("feed item", () => {
     expect(first.getAllByText("Failed")).toHaveLength(2) // label and status
     expect(first.getByText("Stale")).toBeInTheDocument()
     expect(within(screen.getAllByRole("article")[3]).getByText("Stale")).toBeInTheDocument() // status
-    expect(screen.getAllByText("Type: Entry").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Provider 111222333444555666").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Interpreted as Entry").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Provider …5666").length).toBeGreaterThan(0)
+    expect((await screen.findAllByText("alerts")).length).toBeGreaterThan(0)
+    await userEvent.click(screen.getAllByRole("button", { name: "Message details" })[0])
+    expect(screen.getByText("111222333444555666")).toBeInTheDocument()
     expect(screen.getAllByRole("list", { name: "Status and labels" })).toHaveLength(5)
     expect(document.querySelector("time")).toHaveAttribute("title", "Sep 29, 2026, 10:00:00 AM ET")
   })
@@ -198,5 +202,44 @@ describe("feed screen", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
     expect(await screen.findByText("third")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "New messages" })).not.toBeInTheDocument()
+  })
+
+  it("message search filters loaded rows and is not sent to the server", async () => {
+    const seen: URLSearchParams[] = []
+    server.use(
+      http.get("*/api/v1/feed", ({ request }) => {
+        seen.push(new URL(request.url).searchParams)
+        return HttpResponse.json({
+          items: [item({ messageId: "1", text: "BTO SPY 550c" }), item({ messageId: "2", text: "STC QQQ 400p" })],
+          nextCursor: null,
+        })
+      }),
+    )
+    renderWithQuery(<FeedScreen />)
+    await screen.findByText("STC QQQ 400p")
+    await userEvent.type(screen.getByLabelText("Message"), "qqq")
+    expect(screen.queryByText("BTO SPY 550c")).not.toBeInTheDocument()
+    expect(screen.getByText("STC QQQ 400p")).toBeInTheDocument()
+    expect(seen.every((params) => !params.has("text") && !params.has("q"))).toBe(true)
+  })
+
+  it("has-a-card keeps only messages that created a card", async () => {
+    serve([item({ messageId: "1", text: "with card", cardIds: [feedFixture.cardIds[0]] }), item({ messageId: "2", text: "no card", cardIds: [] })])
+    renderWithQuery(<FeedScreen />)
+    await screen.findByText("no card")
+    await userEvent.click(screen.getByLabelText("Has a card"))
+    expect(screen.getByText("with card")).toBeInTheDocument()
+    expect(screen.queryByText("no card")).not.toBeInTheDocument()
+  })
+})
+
+describe("matchesFeed", () => {
+  it("matches problems from status or labels and ignores unrelated text", () => {
+    const stale = item({ status: "done", labels: ["late"], text: "hello" })
+    expect(matchesFeed(stale, { ...emptyFeedView, problems: true })).toBe(true)
+    expect(matchesFeed(item({ status: "done", labels: [], text: "hello" }), { ...emptyFeedView, problems: true })).toBe(false)
+    expect(matchesFeed(stale, { ...emptyFeedView, text: "nope" })).toBe(false)
+    expect(matchesFeed(stale, { ...emptyFeedView, classification: "type:entry" })).toBe(true)
+    expect(matchesFeed(stale, { ...emptyFeedView, hasCard: true })).toBe(true)
   })
 })

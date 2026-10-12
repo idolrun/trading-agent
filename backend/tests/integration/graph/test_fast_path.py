@@ -97,6 +97,21 @@ async def test_entry_and_replied_trim_never_call_jev(h: Harness, db_session: Asy
     assert "fast" in stages and "jev" not in stages
 
 
+async def test_a_watch_message_makes_no_card_and_never_calls_jev(
+    h: Harness, db_session: AsyncSession
+) -> None:
+    client = ScriptedJev()
+    env = await h.message(
+        "Watching NVDA 200C, might get in if it holds 198", None, at=T0, author=PROVIDER_A
+    )
+    await h.process(env, processor=pipeline(h, client))
+
+    assert client.calls == 0
+    assert (await db_session.scalars(select(Card))).all() == []
+    [sig] = (await db_session.scalars(select(Signal))).all()
+    assert (sig.interpreter, sig.msg_type) == ("fast", "watch")
+
+
 async def test_an_unresolved_trim_goes_to_jev(h: Harness, db_session: AsyncSession) -> None:
     client = ScriptedJev(
         response(

@@ -6,22 +6,23 @@ import { useEffect, useRef, useState } from "react"
 import type { FormEvent } from "react"
 import { LoadMore } from "@/components/load-more"
 import { QueryState } from "@/components/query-state"
-import { Badge } from "@/components/badge"
 import { Button } from "@/components/ui/button"
 import { words } from "@/features/cards/types"
 import { LabelEditor } from "@/features/labels/label-editor"
 import { useLabelProgress, useLabelQueue } from "@/features/labels/queries"
 import { keyIgnored } from "@/features/labels/types"
 import type { LabelProgress } from "@/features/labels/types"
-import { formatTime } from "@/lib/format"
+import { formatTime, providerLabel } from "@/lib/format"
 
 
 function Counter({ name, value, min }: { name: string; value: number; min: number }) {
   return (
-    <div className="flex flex-col gap-1 text-sm">
-      <span>{name} {value} / {min}</span>
-      <div role="progressbar" aria-label={name} aria-valuenow={value} aria-valuemin={0} aria-valuemax={min} className="h-2 rounded-md bg-muted">
-        <div className="h-2 rounded-md bg-foreground" style={{ width: `${Math.min(100, (value / Math.max(min, 1)) * 100)}%` }} />
+    <div className="flex min-w-36 flex-1 flex-col gap-1">
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {name} {value} / {min}
+      </span>
+      <div role="progressbar" aria-label={name} aria-valuenow={value} aria-valuemin={0} aria-valuemax={min} className="h-1 rounded-sm bg-muted">
+        <div className="h-1 rounded-sm bg-primary" style={{ width: `${Math.min(100, (value / Math.max(min, 1)) * 100)}%` }} />
       </div>
     </div>
   )
@@ -29,7 +30,7 @@ function Counter({ name, value, min }: { name: string; value: number; min: numbe
 
 function Progress({ data }: { data: LabelProgress }) {
   return (
-    <section aria-label="Progress toward the replay gate" className="grid gap-3 sm:grid-cols-3">
+    <section aria-label="Progress toward the replay gate" className="flex flex-wrap gap-4">
       <Counter name="actionable" value={data.actionable} min={data.minActionable} />
       <Counter name="non-actionable" value={data.nonActionable} min={data.minNonActionable} />
       <Counter name="providers" value={data.providers} min={data.minProviders} />
@@ -79,46 +80,64 @@ export function LabelQueue() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {progress.data ? <Progress data={progress.data} /> : null}
       <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Provider ID
-          <Input value={providerText} onChange={(e) => setProviderText(e.target.value)} inputMode="numeric" autoComplete="off" aria-invalid={invalid} className="w-44" />
+          <Input
+            value={providerText}
+            onChange={(e) => setProviderText(e.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+            aria-invalid={invalid}
+            className="h-9 w-44"
+          />
         </label>
-        <Button type="submit" variant="outline" className="h-11" disabled={invalid}>Filter</Button>
-        {invalid ? <p role="alert" className="w-full text-sm text-destructive">Provider ID is a number.</p> : null}
+        <Button type="submit" variant="outline" className="h-9" disabled={invalid}>
+          Filter
+        </Button>
+        {invalid ? (
+          <p role="alert" className="w-full text-sm text-destructive">
+            Provider ID is a number.
+          </p>
+        ) : null}
       </form>
       <QueryState
         query={query}
         isEmpty={(data) => data.items.length === 0}
         loadingLabel="Loading queue"
         emptyTitle="Queue empty"
+        emptyLayout="line"
         emptyDescription={providerId ? "Nothing left to label for this provider." : "Every message is labeled."}
       >
         {(data) => (
-          <>
-            {current ? <LabelEditor key={current.eventKey} item={current} onDone={advance} /> : null}
-            <ul aria-label="Queue" className="flex max-h-72 flex-col gap-1 overflow-y-auto">
-              {data.items.map((item) => (
-                <li key={item.eventKey}>
-                  <button
-                    type="button"
-                    aria-current={item.eventKey === current?.eventKey ? "true" : undefined}
-                    onClick={() => setSelected(item.eventKey)}
-                    className="flex min-h-11 w-full flex-col items-start rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted aria-[current=true]:border-foreground aria-[current=true]:bg-muted"
-                  >
-                    <span className="flex w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      Provider {item.providerId} · {formatTime(item.postedAt)}
-                      <Badge>{item.prelabel ? (item.prelabel.signals.map((s) => words(s.msgType)).join(", ") || "No signal") : "No prelabel"}</Badge>
-                    </span>
-                    <span className="line-clamp-2 break-words">{item.text}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <LoadMore query={query} />
-          </>
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="min-w-0">{current ? <LabelEditor key={current.eventKey} item={current} onDone={advance} /> : null}</div>
+            <div className="flex flex-col gap-2">
+              <ul aria-label="Queue" className="flex max-h-80 flex-col divide-y divide-border overflow-y-auto rounded-md border border-border">
+                {data.items.map((item) => (
+                  <li key={item.eventKey}>
+                    <button
+                      type="button"
+                      aria-current={item.eventKey === current?.eventKey ? "true" : undefined}
+                      onClick={() => setSelected(item.eventKey)}
+                      className="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-muted aria-[current=true]:bg-muted"
+                    >
+                      <span className="flex w-full flex-wrap items-center gap-x-2 text-xs text-muted-foreground tabular-nums">
+                        {providerLabel(item.providerId)} · {formatTime(item.postedAt)}
+                        <span className="font-medium text-foreground">
+                          {item.prelabel ? item.prelabel.signals.map((s) => words(s.msgType)).join(", ") || "No signal" : "No prelabel"}
+                        </span>
+                      </span>
+                      <span className="line-clamp-2 break-words">{item.text}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <LoadMore query={query} />
+            </div>
+          </div>
         )}
       </QueryState>
     </div>

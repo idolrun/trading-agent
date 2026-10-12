@@ -241,3 +241,51 @@ async def test_providers_stay_isolated(w: World) -> None:
     got = {c.provider_id: c.proposal["signal_price"] for c in await released_cards(w)}
     assert got == {PROVIDER_A: "1.75", PROVIDER_B: "1.78"}
     assert b.provider_id == PROVIDER_B
+
+
+MONDAY_PREMARKET = datetime(2026, 10, 12, 11, 38, tzinfo=UTC)  # 07:38 ET
+MONDAY_OPEN = datetime(2026, 10, 12, 13, 30, tzinfo=UTC)
+
+
+async def test_premarket_saturday_expiry_is_held_then_reviewed_at_the_open(w: World) -> None:
+    """10/17/2026 is a Saturday: no chain has it, so the released card is a review."""
+    at(w, MONDAY_PREMARKET)
+    env = await w.h.message(
+        "Bought SPY 670C 10/17 @ 1.20",
+        [option_entry("SPY", "670", "670C", "10/17", "1.20")],
+        at=MONDAY_PREMARKET,
+        author=PROVIDER_A,
+    )
+    await w.h.process(env, processor=w.processor)
+    assert await cards(w) == []
+    [timer] = await release_timers(w)
+    assert timer.due_at == MONDAY_OPEN
+
+    at(w, MONDAY_OPEN)
+    assert await timer_service(w).run_due() == 1
+    [card] = await cards(w)
+    assert card.action == CardAction.ENTRY
+    assert card.proposal["review_reasons"] == ["contract_not_in_chain"]
+
+
+async def test_a_failed_release_retries_with_its_message(w: World) -> None:
+    """The retry timer must still name the held message, or the card is never created."""
+    await entry_at(w, EVENING)
+    timers = timer_service(w)
+    release = timers._handlers[TimerKind.OFFHOURS_RELEASE]
+    calls = 0
+
+    async def flaky(timer: Timer) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("boom")
+        await release(timer)
+
+    timers.register(TimerKind.OFFHOURS_RELEASE, flaky)
+    at(w, TUESDAY_OPEN)
+    await timers.run_due()
+    assert await cards(w) == []
+    at(w, TUESDAY_OPEN + timedelta(seconds=6))
+    await timers.run_due()
+    assert len(await cards(w)) == 1

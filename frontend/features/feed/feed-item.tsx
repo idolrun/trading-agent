@@ -1,9 +1,13 @@
+"use client"
+
+import { ChevronDown } from "lucide-react"
 import Link from "next/link"
-import { Badge } from "@/components/badge"
-import { Card, CardContent } from "@/components/ui/card"
+import { useState } from "react"
 import { labelBadge } from "@/features/cards/labels"
 import { words } from "@/features/cards/types"
+import { feedStatusLabel, feedTypeLabel } from "@/features/feed/present"
 import type { FeedItem as Item } from "@/features/feed/types"
+import { providerLabel } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const ET = new Intl.DateTimeFormat("en-US", {
@@ -20,51 +24,50 @@ function bodyText(item: Item): string {
   return item.eventType === "delete" ? "(deleted, no text)" : "(no text)"
 }
 
-export function FeedItem({ item }: { item: Item }) {
+export function FeedItem({ item, channelName }: { item: Item; channelName?: string | null }) {
+  const [open, setOpen] = useState(false)
   const posted = new Date(item.postedAt)
   const muted = item.labels.includes("muted")
+  const who = providerLabel(item.providerId)
+  const where = channelName || (item.channelId.length > 6 ? `Channel …${item.channelId.slice(-4)}` : `Channel ${item.channelId}`)
 
   return (
-    <Card role="article" data-message-id={item.messageId} className={cn("gap-0 py-0", muted && "opacity-70")}>
-      <CardContent className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="min-w-0 font-medium break-words">Provider {item.providerId}</p>
+    <article
+      data-message-id={item.messageId}
+      className={cn("border-b border-border py-2.5", muted && "opacity-70")}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 text-sm">
+          <span className="font-medium">{where}</span>
+          <span className="text-muted-foreground"> · </span>
+          <span>{who}</span>
+        </p>
         <time
           dateTime={item.postedAt}
           title={`${ET.format(posted)} ET`}
-          className="text-xs text-muted-foreground tabular-nums"
+          className="shrink-0 text-xs text-muted-foreground tabular-nums"
         >
           {LOCAL.format(posted)}
         </time>
       </div>
       {item.replyToId ? (
-        <p className="text-xs text-muted-foreground break-all">Reply to message {item.replyToId}</p>
+        <p className="mt-1 text-xs text-muted-foreground break-all">Reply to message {item.replyToId}</p>
       ) : null}
-      <p className={cn("text-sm break-words whitespace-pre-wrap", !item.text && "text-muted-foreground italic")}>
+      <p className={cn("mt-1 text-sm break-words whitespace-pre-wrap", !item.text && "text-muted-foreground italic")}>
         {bodyText(item)}
       </p>
-      <ul aria-label="Status and labels" className="flex flex-wrap gap-1.5">
-        {EVENT_BADGE[item.eventType] ? (
-          <Badge asChild>
-            <li>{EVENT_BADGE[item.eventType]}</li>
-          </Badge>
-        ) : null}
-        <Badge asChild>
-          <li>{item.status ? words(item.status) : "Not queued"}</li>
-        </Badge>
+      <ul aria-label="Status and labels" className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+        {EVENT_BADGE[item.eventType] ? <li className="font-medium text-foreground">{EVENT_BADGE[item.eventType]}</li> : null}
+        <li>{feedStatusLabel(item.status)}</li>
         {item.labels.map((label) => (
-          <Badge key={label} asChild>
-            <li>{labelBadge(label)}</li>
-          </Badge>
+          <li key={label}>{labelBadge(label)}</li>
         ))}
         {item.msgTypes.map((type) => (
-          <Badge key={`type:${type}`} asChild>
-            <li>{`Type: ${words(type)}`}</li>
-          </Badge>
+          <li key={`type:${type}`}>{feedTypeLabel(type)}</li>
         ))}
       </ul>
       {item.cardIds.length > 0 ? (
-        <ul aria-label="Cards from this message" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <ul aria-label="Cards from this message" className="mt-1 flex flex-wrap gap-x-3 text-sm">
           {item.cardIds.map((id) => (
             <li key={id}>
               <Link href={`/cards/${id}`} className="underline underline-offset-2">
@@ -74,7 +77,38 @@ export function FeedItem({ item }: { item: Item }) {
           ))}
         </ul>
       ) : null}
-      </CardContent>
-    </Card>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {open ? "Hide details" : "Message details"}
+        <ChevronDown aria-hidden className={cn("size-3.5", open && "rotate-180")} />
+      </button>
+      {open ? (
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-l border-border pl-3 text-xs text-muted-foreground">
+          <dt>Provider ID</dt>
+          <dd className="font-mono break-all text-foreground">{item.providerId}</dd>
+          <dt>Channel ID</dt>
+          <dd className="font-mono break-all text-foreground">{item.channelId}</dd>
+          <dt>Message ID</dt>
+          <dd className="font-mono break-all text-foreground">{item.messageId}</dd>
+          <dt>Event</dt>
+          <dd className="text-foreground">
+            {words(item.eventType)} · seq {item.eventSeq}
+          </dd>
+          <dt>Inbox status</dt>
+          <dd className="text-foreground">{item.status ?? "not queued"}</dd>
+          <dt>Posted</dt>
+          <dd className="text-foreground">{ET.format(posted)} ET</dd>
+        </dl>
+      ) : null}
+      {open ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Received, interpreted, and card created are separate from approval and fills. This row does not show an order.
+        </p>
+      ) : null}
+    </article>
   )
 }

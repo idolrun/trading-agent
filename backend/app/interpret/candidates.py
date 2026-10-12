@@ -83,7 +83,9 @@ STOP_WORDS = frozenset(
 
 def find_candidates(text: str) -> Candidates:
     expiry = _spans(EXPIRY, text)
-    numbers = [s for s in _spans(NUMBER, text) if not _inside(s, expiry)]
+    numbers = [
+        s for s in _spans(NUMBER, text) if not _inside(s, expiry) and not _is_label_digit(s, text)
+    ]
     tickers = [
         s
         for s in _spans(TICKER, text)
@@ -102,6 +104,14 @@ Span = tuple[int, int, str]
 
 def _spans(pattern: re.Pattern[str], text: str) -> list[Span]:
     return [(m.start(), m.end(), m.group()) for m in pattern.finditer(text)]
+
+
+def _is_label_digit(span: Span, text: str) -> bool:
+    """The `1` of "TP1" / the `2` of "T2": a bare 1-2 digit integer glued to a letter names a
+    level, it is not a quantity or a price. Offering it to the model sends every
+    "Entry / SL / TP1 / TP2" signal to review, because the model is never sure what it is."""
+    start, _, raw = span
+    return start > 0 and text[start - 1].isalpha() and raw.isdigit() and len(raw) <= 2
 
 
 def _inside(span: Span, others: list[Span]) -> bool:

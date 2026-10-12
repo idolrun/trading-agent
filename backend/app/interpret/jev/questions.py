@@ -70,9 +70,7 @@ def _yes(instructions: str) -> Noul:
     return Noul(instructions=instructions)
 
 
-def build_questions(
-    ctx: ProviderContext, candidates: Candidates, tiers: list[str]
-) -> dict[str, Question]:
+def build_questions(ctx: ProviderContext, candidates: Candidates) -> dict[str, Question]:
     """One request answers everything (TRD §4.3): independent questions over the same state."""
     q: dict[str, Question] = {
         "msg_type": Choice(
@@ -134,11 +132,6 @@ def build_questions(
             "candidates.expiry_tokens",
             {"not_stated": "No expiry is stated."},
         ),
-        "size_tier": Choice(
-            instructions=f"Which position size does {MESSAGE} ask for? "
-            "Use `provider_profile` for the provider's own words.",
-            criteria={**{t: None for t in tiers}, "not_stated": "No size is stated."},
-        ),
         "links_to": Choice(
             instructions=f"Which position in `provider_book` does {MESSAGE} act on?",
             criteria={
@@ -163,7 +156,7 @@ def _pick(instructions: str, found: list[Any], path: str, no_match: dict[str, st
 
 
 def _fingerprint() -> str:
-    """The catalog over a fixed sample (one candidate of each kind, one position, one tier)."""
+    """The catalog over a fixed sample (one candidate of each kind, one position)."""
     text = "spy 9/28 770c .95 half"
     sample = ProviderContext(
         now_et="2026-01-02 10:00:00 ET",
@@ -180,7 +173,7 @@ def _fingerprint() -> str:
         recent_author_messages=[],
         provider_book=[BookEntry(id=uuid.UUID(int=1), summary="<position>")],
     )
-    catalog = build_questions(sample, find_candidates(text), ["<tier>"])
+    catalog = build_questions(sample, find_candidates(text))
     doc = {
         qid: q.model_dump(mode="json") if isinstance(q, Choice | Noul | Score) else dict(q)
         for qid, q in sorted(catalog.items())

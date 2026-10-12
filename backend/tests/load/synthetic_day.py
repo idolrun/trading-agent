@@ -107,7 +107,7 @@ def _entry(rng: random.Random, c: Contract, with_stop: bool) -> tuple[str, dict[
     }
     if with_stop:
         stop = _stop(c[1], c[2])
-        signal |= {"stop_level": _f(stop), "stop_basis": "underlying", "size_tier": _f("lotto")}
+        signal |= {"stop_level": _f(stop), "stop_basis": "underlying"}
         return f"{name} {c[1]}{c[2]} 10/2 {c[3]} lotto, sl {stop} {name}", signal, _target(c)
     return f"Bought {name} {c[1]}{c[2]} 10/2 @ {c[3]}", signal, _target(c)
 

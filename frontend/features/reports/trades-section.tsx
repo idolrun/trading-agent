@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow, TableHead } from "@
 import { CoverageNote } from "@/features/reports/coverage-note"
 import type { ReportFilters } from "@/features/reports/filters"
 import { duration, money, price, stamp } from "@/features/reports/format"
-import { useTrades, type TradeParams } from "@/features/reports/queries"
+import { useSectionParams, useTrades, type TradeParams } from "@/features/reports/queries"
 import { TradeSheet } from "@/features/reports/trade-sheet"
 import { Notice, OutcomeBadge, Pager, Pnl, Section, SortHead, StatusBadge, Unavailable } from "@/features/reports/ui"
 
@@ -16,7 +16,7 @@ const PAGE_SIZE = 25
 const DEFAULTS: TradeParams = { page: 1, state: "", outcome: "", search: "", sort: "opened_at", order: "desc" }
 
 export function TradesSection({ filters }: { filters: ReportFilters }) {
-  const [params, setParams] = useState<TradeParams>(DEFAULTS)
+  const [params, setParams] = useSectionParams<TradeParams>(filters, DEFAULTS)
   const [typed, setTyped] = useState("")
   const [open, setOpen] = useState<string | null>(null)
   const query = useTrades(filters, { ...params, pageSize: PAGE_SIZE })

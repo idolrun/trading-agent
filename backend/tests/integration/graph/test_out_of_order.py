@@ -105,7 +105,7 @@ async def test_relink_approval_runs_the_normal_flow_for_the_users_lot(w: World) 
             )
         )
     assert trim is not None and trim.state == CardState.PENDING
-    assert trim.proposal["qty"] == 2 and trim.lot_id is not None
+    assert trim.proposal["qty"] is None and trim.lot_id is not None
     assert await w.thread_next(trim.card_id) == ("await_approval",)
 
 

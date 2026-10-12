@@ -1,4 +1,4 @@
-import { cardOnDesk, CUTOFF_1, CUTOFF_2, expect, lit, optionEntry, PROVIDER_A, test } from "./support/driver"
+import { approveWith, cardOnDesk, CUTOFF_1, CUTOFF_2, expect, lit, optionEntry, PROVIDER_A, test } from "./support/driver"
 
 // AC-6 / 7.6: a lot expiring today gets an urgent close card at cutoff 1 (close - 30 min);
 // unanswered, cutoff 2 (close - 10 min) cancels its protective orders and force-closes it.
@@ -12,7 +12,7 @@ test("0DTE lot unanswered: cutoff-1 card, then forced close at cutoff 2", async 
       tp_levels: ["4.00", "5.00"].map((v) => lit(v)),
     }),
   ])
-  await cardOnDesk(page, PROVIDER_A, "entry", "GOOGL").getByRole("button", { name: "Approve" }).click()
+  await approveWith(cardOnDesk(page, PROVIDER_A, "entry", "GOOGL"), 2)
   const lot = await driver.lotOf(PROVIDER_A, "GOOGL")
   const protective = await driver.waitFor(
     () => driver.orders(),
@@ -29,7 +29,7 @@ test("0DTE lot unanswered: cutoff-1 card, then forced close at cutoff 2", async 
   expect(close.proposal).toMatchObject({ qty: lot.qty, labels: ["urgent"] })
   const onDesk = page.getByRole("article").filter({ has: page.getByRole("listitem").filter({ hasText: "Urgent" }) })
   await expect(onDesk).toHaveCount(1)
-  await expect(onDesk.getByRole("button", { name: "Approve" })).toBeEnabled()
+  await expect(onDesk.getByRole("button", { name: /Close entire position/ })).toBeEnabled()
   expect((await driver.orders()).filter((o) => o.kind === "exit")).toEqual([])
 
   await driver.clockTo(CUTOFF_2) // nobody answered

@@ -4,6 +4,15 @@ import type { CardProposal } from "@/features/cards/types"
 
 type Legs = CardProposal["tpLegs"]
 
+/** The equal split of the user's quantity over the stated take-profits (remainder from TP1; mirrors the server). */
+export function splitLegs(levels: string[], qty: number | null): Legs {
+  if (qty == null || levels.length === 0) return []
+  const n = Math.min(levels.length, qty)
+  const base = Math.floor(qty / n)
+  const extra = qty % n
+  return levels.slice(0, n).map((level, index) => ({ level, qty: base + (index < extra ? 1 : 0) }))
+}
+
 /** Whole contracts >= 1: the input's own rule. Whether a split is acceptable stays with the server. */
 export function parseLegs(values: string[]): number[] | null {
   const legs = values.map((value) => (/^\d+$/.test(value.trim()) ? Number(value) : NaN))

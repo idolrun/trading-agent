@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { QueryState } from "@/components/query-state"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
@@ -10,7 +9,7 @@ import { CountBars, GroupedBars, SERIES } from "@/features/reports/charts"
 import { CoverageNote } from "@/features/reports/coverage-note"
 import { isReady, toParams, type ReportFilters } from "@/features/reports/filters"
 import { count, money, percent, price, stamp, words } from "@/features/reports/format"
-import { useOrders, type OrderParams } from "@/features/reports/queries"
+import { useOrders, useSectionParams, type OrderParams } from "@/features/reports/queries"
 import type { OrdersReport, TimeseriesReport } from "@/features/reports/types"
 import { ChartFrame, EmptyNote, Pager, Section, Stat, Stats, StatusBadge, Unavailable } from "@/features/reports/ui"
 
@@ -139,12 +138,13 @@ function Charts({ r, filters }: { r: OrdersReport; filters: ReportFilters }) {
       <ChartFrame
         title="Executed quantity by instrument"
         description="Filled quantity and quantity-weighted average price"
-        summary={r.bySymbol.slice(0, 5).map((s) => `${s.symbol}: bought ${s.buyQty}, sold ${s.sellQty}`).join("; ") || "No fills."}
+        summary={r.bySymbol.slice(0, 5).map((s) => `${s.symbol} ${words(s.instrument)}: bought ${s.buyQty}, sold ${s.sellQty}`).join("; ") || "No fills."}
         table={
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Symbol</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead className="text-right">Bought</TableHead>
                 <TableHead className="text-right">Avg buy</TableHead>
                 <TableHead className="text-right">Sold</TableHead>
@@ -153,8 +153,9 @@ function Charts({ r, filters }: { r: OrdersReport; filters: ReportFilters }) {
             </TableHeader>
             <TableBody>
               {r.bySymbol.map((s) => (
-                <TableRow key={s.symbol}>
+                <TableRow key={`${s.symbol}:${s.instrument}`}>
                   <TableCell>{s.symbol}</TableCell>
+                  <TableCell>{words(s.instrument)}</TableCell>
                   <TableCell className="text-right tabular-nums">{s.buyQty}</TableCell>
                   <TableCell className="text-right tabular-nums">{price(s.avgBuyPrice)}</TableCell>
                   <TableCell className="text-right tabular-nums">{s.sellQty}</TableCell>
@@ -166,7 +167,7 @@ function Charts({ r, filters }: { r: OrdersReport; filters: ReportFilters }) {
         }
       >
         <GroupedBars
-          data={r.bySymbol.slice(0, 12).map((s) => ({ bucket: s.symbol, bought: s.buyQty, sold: s.sellQty }))}
+          data={r.bySymbol.slice(0, 12).map((s) => ({ bucket: `${s.symbol} ${words(s.instrument)}`, bought: s.buyQty, sold: s.sellQty }))}
           series={[
             { key: "bought", label: "Bought", color: SERIES.a },
             { key: "sold", label: "Sold", color: SERIES.b },
@@ -178,7 +179,7 @@ function Charts({ r, filters }: { r: OrdersReport; filters: ReportFilters }) {
 }
 
 export function ExecutionSection({ filters }: { filters: ReportFilters }) {
-  const [params, setParams] = useState<OrderParams>({ page: 1, side: "", status: "" })
+  const [params, setParams] = useSectionParams<OrderParams>(filters, { page: 1, side: "", status: "" })
   const query = useOrders(filters, { ...params, pageSize: PAGE_SIZE })
   const set = (patch: Partial<OrderParams>) => setParams({ ...params, page: 1, ...patch })
   return (

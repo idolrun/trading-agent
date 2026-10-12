@@ -1,13 +1,10 @@
-"""Pure sizing, exit and bracket arithmetic (TRD §6, C15, C51, C56, C76, C82, C83). No I/O."""
+"""Pure price and bracket arithmetic (TRD §6, C56, C83). No I/O, and no quantity: the user
+enters it (C105)."""
 
 from decimal import ROUND_FLOOR, Decimal
 
 from app.decide.types import DecisionInputs, TpLeg
 from app.interpret.models import MsgType
-from app.interpret.signal import ExitFraction
-from app.ledger.lots import OPTION_MULTIPLIER
-
-DIVISOR = {"half": 2, "third": 3, "quarter": 4}  # integer math: Decimal(1)/3 * 3 < 1
 
 
 def floor_to_tick(price: Decimal, tick: Decimal) -> Decimal:
@@ -19,23 +16,9 @@ def entry_limit(price: Decimal, chase_pct: Decimal, tick: Decimal) -> Decimal:
     return floor_to_tick(price * (1 + chase_pct / 100), tick)
 
 
-def size(tier_usd: Decimal, limit: Decimal, *, option: bool) -> int:
-    """Whole contracts/shares the tier buys at `limit`; never rounded up (0 = cannot buy one)."""
-    per_unit = limit * OPTION_MULTIPLIER if option else limit
-    return int((tier_usd / per_unit).to_integral_value(ROUND_FLOOR))
-
-
-def exit_qty(fraction: ExitFraction | None, lot_qty: int) -> int | None:
-    """Pre-filled exit qty; None = blank, the user enters it (C26). May return 0 (C82)."""
-    if fraction == "all":
-        return lot_qty
-    if fraction in DIVISOR:
-        return lot_qty // DIVISOR[fraction]
-    return None
-
-
 def tp_legs(levels: list[Decimal], qty: int | None) -> list[TpLeg]:
-    """min(levels, qty) legs, equal split, remainder from TP1 (5/3 -> 2/2/1; 2/3 -> 1/1)."""
+    """Legs for the qty the user entered: min(levels, qty), equal split, remainder from TP1
+    (5/3 -> 2/2/1; 2/3 -> 1/1)."""
     if not qty or not levels:
         return []
     n = min(len(levels), qty)

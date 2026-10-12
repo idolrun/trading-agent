@@ -68,7 +68,7 @@ class CardExecutor:
             levels = [leg.level for leg in proposal.tp_legs]
             return await self.brackets.protect(target.lot_id, card.card_id, tp_levels=levels)
         if proposal.action in SELLS:  # F043: reduce protection, mid, re-price, restore
-            qty = proposal.qty or (target.lot_qty if proposal.action == CardAction.CLOSE else None)
+            qty = proposal.qty  # C105: the approved quantity (a close: the lot, set at approval)
             if self.exit is None or target.lot_id is None or qty is None:
                 raise ExecutionBlocked("exit needs an open lot and a qty")
             try:

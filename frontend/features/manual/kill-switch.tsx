@@ -1,5 +1,6 @@
 "use client"
 
+import { Power } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { Dialog } from "@/components/dialog"
 import { Button } from "@/components/ui/button"
@@ -35,7 +36,7 @@ function KillSwitchDialog({ turnOn, onClose }: { turnOn: boolean; onClose: () =>
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <Field label="Reason">{(id) => <Input id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
-        <FormError error={toggle.error} />
+        <FormError error={toggle.error} order />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
@@ -62,8 +63,16 @@ export function KillSwitch() {
         size="sm"
         variant={active ? "default" : "destructive"}
         disabled={!health.data}
+        title={
+          health.data
+            ? active
+              ? "Allow new entries again"
+              : "Block new entries. Open lots and stops are not touched."
+            : "Waiting for system status"
+        }
         onClick={() => setOpen(true)}
       >
+        <Power aria-hidden />
         {active ? "Kill switch on: turn off" : "Kill switch"}
       </Button>
       {open ? <KillSwitchDialog turnOn={!active} onClose={() => setOpen(false)} /> : null}

@@ -1,6 +1,5 @@
-import axios, { type AxiosError } from "axios"
-import { ApiError } from "@/lib/api/errors"
-import type { Schemas } from "@/lib/api/types"
+import axios from "axios"
+import { apiErrorFrom, type ApiError } from "@/lib/api/errors"
 import { stableFilters } from "@/lib/query/keys"
 
 // Same-origin: next.config.ts proxies /api/* to the backend, so the session
@@ -8,8 +7,6 @@ import { stableFilters } from "@/lib/query/keys"
 const http = axios.create({
   headers: { Accept: "application/json" },
 })
-
-type ErrorBody = Partial<Schemas["ErrorBody"]>
 
 type ErrorHandler = (error: ApiError) => void
 
@@ -26,15 +23,7 @@ export function onStepUpRequired(handler: ErrorHandler | undefined) {
 }
 
 function toApiError(error: unknown): ApiError {
-  if (!axios.isAxiosError(error)) {
-    return new ApiError("Network error", 0, "network")
-  }
-  const axiosError = error as AxiosError<ErrorBody>
-  if (!axiosError.response) {
-    return new ApiError(axiosError.message || "Network error", 0, "network")
-  }
-  const { status, data } = axiosError.response
-  return new ApiError(data?.message || axiosError.message, status, data?.code)
+  return apiErrorFrom(error)
 }
 
 function fail(error: unknown, notifyUnauthorized: boolean): never {

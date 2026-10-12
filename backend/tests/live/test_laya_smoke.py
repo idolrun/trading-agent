@@ -14,7 +14,7 @@ from app.interpret.jev.questions import build_questions
 from app.interpret.laya.client import load_agent
 from app.interpret.laya.convert import to_answers, to_laya_questions
 from app.interpret.laya.state import build_laya_state, trim_context
-from tests.jev_helpers import CFG, EXAMPLE
+from tests.jev_helpers import EXAMPLE
 from tests.llm_helpers import ctx
 
 pytestmark = [
@@ -27,7 +27,7 @@ def test_the_real_model_answers_every_jev_question() -> None:
     agent = load_agent("aac6fef/laya-mlx")
     context = trim_context(ctx(EXAMPLE))
     candidates = find_candidates(EXAMPLE)
-    questions = build_questions(context, candidates, sorted(CFG.option_tiers or {}))
+    questions = build_questions(context, candidates)
     started = time.monotonic()
     out = agent.system_one(build_laya_state(context), to_laya_questions(questions))
     answers = to_answers(out["answers"])

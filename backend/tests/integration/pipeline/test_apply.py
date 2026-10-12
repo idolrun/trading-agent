@@ -121,7 +121,9 @@ async def test_ac18_links_stay_within_each_provider(h: Harness, db_session: Asyn
     cards = {c.provider_position_id: c for c in (await db_session.scalars(select(Card))).all()}
     assert set(cards) == {pa, pb}  # entries only: the user holds no lots, follow-ups feed only
     entry = cards[pa]
-    assert entry.action == CardAction.ENTRY and entry.proposal["qty"] == 13  # 1000 / 74
+    assert (
+        entry.action == CardAction.ENTRY and entry.proposal["qty"] is None
+    )  # C105: the user enters it
     # 7.2: a newer provider message on the same position invalidates the pending entry card
     assert {c.state for c in cards.values()} == {CardState.INVALIDATED}
     timers = (await db_session.scalars(select(Timer))).all()
@@ -208,7 +210,7 @@ async def test_trim_with_a_lot_gets_an_exit_card(h: Harness, db_session: AsyncSe
     )
     await h.process(a3)
     trim = (await db_session.scalars(select(Card).where(col(Card.action) == "trim"))).one()
-    assert trim.proposal["qty"] == 2 and trim.lot_id is not None and trim.state == "pending"
+    assert trim.proposal["qty"] is None and trim.lot_id is not None and trim.state == "pending"
 
 
 async def test_literal_span_mismatch_gives_raw_review(h: Harness, db_session: AsyncSession) -> None:

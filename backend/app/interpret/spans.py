@@ -11,7 +11,7 @@ from typing import Any
 
 from app.interpret.signal import F, LiteralSpan, ParsedSignals, SignalFields
 
-TEXT_FIELDS = {"underlying", "expiry_token", "size_tier"}
+TEXT_FIELDS = {"underlying", "expiry_token"}
 DECIMAL_FIELDS = {
     "strike",
     "entry_price",

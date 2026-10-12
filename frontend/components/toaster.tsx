@@ -3,9 +3,9 @@
 import { toast as sonnerToast } from "sonner"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 
-/** Announce a short message. Same call shape as before; Sonner dismisses it. */
+/** Announce a short message. The same text replaces a toast that is still showing. */
 export function toast(message: string, ms = 6_000) {
-  sonnerToast(message, { duration: ms })
+  sonnerToast(message, { duration: ms, id: message })
 }
 
 export function Toaster() {

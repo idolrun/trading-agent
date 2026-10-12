@@ -9,15 +9,14 @@ describe("screens against the real contract shapes", () => {
     renderWithQuery(<CardInbox />)
     expect(await screen.findByText("SPY")).toBeInTheDocument()
     expect(screen.getByText("Signal is 4 minutes old")).toBeInTheDocument()
-    expect(screen.getByLabelText("Quantity")).toHaveValue(2)
+    expect(screen.getByLabelText("Quantity")).toHaveValue(null) // the user types it
     expect(screen.getByText("Price").nextElementSibling).toHaveTextContent("$1.25")
-    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled() // until a quantity is typed
   })
 
-  it("renders desk panels: feed health, orders, alerts, book", async () => {
+  it("renders desk panels: orders, alerts, book", async () => {
     renderWithQuery(<DeskScreen />)
-    expect(await screen.findByText("Feed healthy")).toBeInTheDocument()
-    expect(await screen.findByText("partially filled")).toBeInTheDocument()
+    expect(await screen.findByText("Partially filled")).toBeInTheDocument()
     expect(await screen.findByText("Feed silent for 300s")).toBeInTheDocument()
     expect(await screen.findByText("SPY 2026-10-16 550 call")).toBeInTheDocument()
     expect(await screen.findByText("1 @ 1.25")).toBeInTheDocument()

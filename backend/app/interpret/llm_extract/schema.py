@@ -47,7 +47,6 @@ class LlmSignal(_Out):
     entry_price: LlmField | None = None
     entry_price_low: LlmField | None = None
     entry_price_high: LlmField | None = None
-    size_tier: LlmField | None = None
     qty_stated: LlmField | None = None
     stop_level: LlmField | None = None
     tp_levels: list[LlmField] = []
@@ -87,7 +86,6 @@ _LITERAL_FIELDS = (
     "entry_price",
     "entry_price_low",
     "entry_price_high",
-    "size_tier",
     "qty_stated",
     "stop_level",
 )

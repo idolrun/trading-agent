@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.alerts.models import AlertKind, Severity
 from app.alerts.service import AlertService
 from app.db import in_transaction, listen_forever
+from app.inbox.envelope import EventKey
 from app.markettime import Clock
 from app.timers import repo
 from app.timers.models import Timer, TimerKind
@@ -22,6 +23,12 @@ logger = logging.getLogger(__name__)
 Handler = Callable[[Timer], Awaitable[None]]
 RETRY_DELAY = timedelta(seconds=5)
 MAX_SLEEP_S = 1.0
+
+
+def _event(timer: Timer) -> EventKey | None:
+    if timer.message_id is None or timer.event_type is None or timer.event_seq is None:
+        return None
+    return EventKey(timer.message_id, timer.event_type, timer.event_seq)
 
 
 class TimerService:
@@ -54,10 +61,18 @@ class TimerService:
         card_id: uuid.UUID | None = None,
         lot_id: uuid.UUID | None = None,
         order_id: uuid.UUID | None = None,
+        event: EventKey | None = None,
     ) -> bool:
         async with in_transaction(self._sessions, db) as session:
             return await repo.schedule(
-                session, kind, due_at, dedupe_key, card_id=card_id, lot_id=lot_id, order_id=order_id
+                session,
+                kind,
+                due_at,
+                dedupe_key,
+                card_id=card_id,
+                lot_id=lot_id,
+                order_id=order_id,
+                event=event,
             )
 
     async def cancel(self, dedupe_key: str, *, db: AsyncSession | None = None) -> bool:
@@ -129,6 +144,7 @@ class TimerService:
                     card_id=timer.card_id,
                     lot_id=timer.lot_id,
                     order_id=timer.order_id,
+                    event=_event(timer),  # an off-hours release finds its message by this
                 )
             await self._alerts.raise_(
                 AlertKind.TIMER_FAILED,

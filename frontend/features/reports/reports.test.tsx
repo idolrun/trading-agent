@@ -212,6 +212,18 @@ describe("Trading report: trade history", () => {
     expect(last("trades")?.get("page")).toBe("1") // a filter returns to the first page
   })
 
+  it("returns to the first page when the report period changes", async () => {
+    const { last } = backend({ trades: trades([tradeRow], 60) })
+    renderWithQuery(<ReportsScreen />)
+    await userEvent.click(await screen.findByRole("tab", { name: "Trades" }))
+    expect(await screen.findByText("1–25 of 60")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
+    await waitFor(() => expect(last("trades")?.get("page")).toBe("2"))
+    await userEvent.click(screen.getByRole("radio", { name: /^1D/ }))
+    await waitFor(() => expect(last("trades")?.get("period")).toBe("1d"))
+    expect(last("trades")?.get("page")).toBe("1")
+  })
+
   it("pages through a long list", async () => {
     backend()
     server.use(

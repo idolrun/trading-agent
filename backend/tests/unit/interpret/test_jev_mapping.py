@@ -39,7 +39,6 @@ def test_trd_example_assembles_literal_fields_from_candidates() -> None:
     assert f.stop_basis == "underlying"
     assert f.underlying is not None and f.underlying.value == "spy"
     assert f.right is not None and f.right.value == "call"
-    assert f.size_tier is not None and f.size_tier.value == "lotto"
     assert f.expiry_token is None
     by_candidate = {
         "strike": "n1",
@@ -113,7 +112,6 @@ def test_an_uncertain_exit_fraction_blocks_an_exit_but_not_an_entry() -> None:
         "msg_type": c("trim"),
         "ticker": c("not_stated"),
         "right": c("not_stated"),
-        "size_tier": c("not_stated"),
         "exit_fraction": c("half", 0.5),
     }
     assert run("sold half", **exit_answers)[1].path == "slow_path"
@@ -191,7 +189,7 @@ def test_jev_unavailable_routes_to_slow_path() -> None:
 
 def test_questions_cover_every_number_candidate_with_no_match_options() -> None:
     context, candidates = ctx(EXAMPLE), find_candidates(EXAMPLE)
-    q = build_questions(context, candidates, ["default", "lotto", "small"])
+    q = build_questions(context, candidates)
     assert {f"role_{x.id}" for x in candidates.numbers} <= q.keys()
     role = q["role_n1"]
     assert isinstance(role, Choice) and set(role.criteria) == set(NUMBER_ROLES)
@@ -212,7 +210,7 @@ def test_links_to_offers_only_the_resolvers_candidates() -> None:
     context = ctx("trim half", book=[(keep, "SPY 765P"), (drop, "QQQ 745P")])
     assert [b.id for b in context.link_candidates] == [keep, drop]  # default: the whole book
     narrowed = context.model_copy(update={"link_candidates": context.provider_book[:1]})
-    q = build_questions(narrowed, find_candidates("trim half"), [])["links_to"]
+    q = build_questions(narrowed, find_candidates("trim half"))["links_to"]
     assert isinstance(q, Choice)
     assert set(q.criteria) == {str(keep), "new_position", "ambiguous"}
 
@@ -221,7 +219,6 @@ EXIT_ANSWERS = {
     "msg_type": c("trim", 0.93),
     "ticker": c("not_stated"),
     "right": c("not_stated"),
-    "size_tier": c("not_stated"),
     "exit_fraction": c("half", 0.95),
 }
 
@@ -253,14 +250,6 @@ def test_an_exit_fraction_the_text_does_not_say_is_a_judgment() -> None:
     assert isinstance(decision.parsed.signals[0].field_sources["exit_fraction"], ModelSource)
 
 
-def test_a_size_tier_not_in_the_text_is_a_model_judgment_not_code() -> None:
-    """Before F071 it was labelled `resolved` (computed by code), which it is not."""
-    _, decision = run("spy 770c .95, sl 769 spy")
-    assert decision.parsed is not None
-    tier = decision.parsed.signals[0].fields.size_tier
-    assert tier is not None and isinstance(tier.source, ModelSource)
-
-
 def test_the_c52_soft_exit_rule_is_code() -> None:
     text = "might take some here"
     answers = example_answers(
@@ -268,7 +257,6 @@ def test_the_c52_soft_exit_rule_is_code() -> None:
         exit_intent=score(2.1),
         ticker=c("not_stated"),
         right=c("not_stated"),
-        size_tier=c("not_stated"),
     )
     mapped = map_answers(answers, ctx(text), find_candidates(text), CFG)
     assert mapped.msg_type is MsgType.SOFT_EXIT and mapped.parsed is not None
@@ -283,7 +271,6 @@ def test_a_link_outside_the_candidates_is_ambiguous_not_a_crash() -> None:
         msg_type=c("trim"),
         ticker=c("not_stated"),
         right=c("not_stated"),
-        size_tier=c("not_stated"),
         exit_fraction=c("half"),
         links_to=c(str(uuid.uuid4()), 0.99),
     )
@@ -319,7 +306,6 @@ def test_back_in_with_several_earlier_positions_is_a_review_not_a_model_question
         msg_type=c("entry", 0.92),
         ticker=c("not_stated"),
         right=c("not_stated"),
-        size_tier=c("not_stated"),
         expiry=c("not_stated"),
     )
     answers = {k: v for k, v in answers.items() if not k.startswith("role_")}
@@ -356,7 +342,7 @@ def gate(text: str, **answers: object):  # type: ignore[no-untyped-def]
     return result, route(result, CFG)
 
 
-NO_CONTRACT = {"ticker": c("not_stated"), "right": c("not_stated"), "size_tier": c("not_stated")}
+NO_CONTRACT = {"ticker": c("not_stated"), "right": c("not_stated")}
 
 
 def test_if_spy_holds_770_then_calls_is_a_conditional_setup() -> None:
@@ -366,7 +352,6 @@ def test_if_spy_holds_770_then_calls_is_a_conditional_setup() -> None:
         has_prose_condition=n(0.95),
         ticker=c("t1", 0.95),
         right=c("call", 0.9),
-        size_tier=c("not_stated"),
     )
     assert decision.path == "assemble" and result.slow_reasons == ()
     assert result.parsed is not None and result.parsed.signals[0].msg_type == "conditional"
@@ -411,7 +396,7 @@ def test_a_doubtful_condition_on_an_entry_is_not_assembled() -> None:
 def test_every_catalog_question_has_a_consumer() -> None:
     from app.interpret.jev.mapping import CONSUMED
 
-    q = build_questions(ctx(EXAMPLE), find_candidates(EXAMPLE), ["lotto"])
+    q = build_questions(ctx(EXAMPLE), find_candidates(EXAMPLE))
     fixed = {k for k in q if not k.startswith("role_")}
     assert fixed == set(CONSUMED)
     assert "correction_target" not in q and "is_add" not in q  # no reader: dropped (F080)
@@ -421,4 +406,46 @@ def test_the_question_set_version_is_the_catalog_fingerprint() -> None:
     """A wording, option or routing change must move this on purpose (and replay first)."""
     from app.interpret.jev.questions import VERSION
 
-    assert VERSION == "jev_questions@d71b0158e813"
+    assert VERSION == "jev_questions@e12e3dadf071"
+
+
+def test_an_entry_sl_tp1_tp2_signal_assembles_without_review() -> None:
+    """The 1 of TP1 and the 2 of TP2 are not offered as numbers any more, so the model has
+    nothing it can be unsure about: the signal becomes a trade card, not a review card."""
+    text = (
+        "@everyone\n\n$TSLA 400C 10/16/26\n\nEntry: 2.10\nSL: 1.50\nTP1: 3.00\nTP2: 4.00\n\n"
+        "Small size. Let's get it!"
+    )
+    _, decision = run(
+        text,
+        ticker=c("t1", 0.95),
+        expiry=c("e1", 0.95),
+        stop_basis=c("premium", 0.9),
+        role_n1=c("strike", 0.97),
+        role_n2=c("entry_price", 0.97),
+        role_n3=c("stop_level", 0.95),
+        role_n4=c("take_profit_level", 0.95),
+        role_n5=c("take_profit_level", 0.95),
+    )
+    assert decision.path == "assemble", decision.reasons
+    assert decision.parsed is not None
+    f = decision.parsed.signals[0].fields
+    assert [t.value for t in f.tp_levels] == [Decimal("3.00"), Decimal("4.00")]
+    assert f.stop_level is not None and f.stop_level.value == Decimal("1.50")
+    assert f.entry_price is not None and f.entry_price.value == Decimal("2.10")
+
+
+def test_a_confidence_doubt_leaves_a_draft_carrying_the_low_confidence() -> None:
+    """With no LLM to settle it, the user decides on Jev's own reading."""
+    result, decision = run(candle_close=n(0.21))
+    assert decision.path == "slow_path" and decision.parsed is None
+    assert result.draft is not None
+    sig = result.draft.signals[0]
+    assert sig.fields.stop_level is not None and sig.fields.candle_close is False
+    assert sig.field_confidence["candle_close"] < CFG.t_field
+
+
+def test_a_doubt_about_what_the_message_says_leaves_no_draft() -> None:
+    assert run(has_prose_condition=n(0.9))[0].draft is None
+    assert run(signal_count=c("multiple"))[0].draft is None
+    assert run(role_n1=c("strike", 0.6), ticker=c("not_stated"))[0].draft is None

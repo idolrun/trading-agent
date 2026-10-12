@@ -43,6 +43,16 @@ def test_create_maps_to_envelope() -> None:
     assert env.mentioned_author_ids == (PROVIDER_A + 1,)
 
 
+def test_author_name_travels_in_the_payload_and_is_optional() -> None:
+    named = mapping.create_payload(message(author=NS(id=PROVIDER_A, bot=False, display_name="Jev")))
+    assert named is not None
+    assert named["message"]["author"] == {"id": PROVIDER_A, "name": "Jev"}
+    assert to_envelope(named, NOW).provider_id == PROVIDER_A
+    bare = mapping.create_payload(message())
+    assert bare is not None
+    assert bare["message"]["author"] == {"id": PROVIDER_A}
+
+
 def test_embed_text_is_appended() -> None:
     embed = NS(title="BTO SPY 600C", description="@ 2.10")
     payload = mapping.create_payload(message(content="", embeds=[embed]))

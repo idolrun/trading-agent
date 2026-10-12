@@ -42,7 +42,7 @@ ENTRY = re.compile(
     rf"(?:@\s*)?(?P<price>{_PRICE})"
     rf"(?:\s+(?:sl|stop)\s+(?P<stop>{_PRICE}))?"
     rf"(?:\s+(?:tps?|targets?)\s+(?P<tps>(?:{_PRICE})(?:\s*/\s*(?:{_PRICE}))*))?"
-    r"(?:\s+(?P<tier>[a-z]+))?$",
+    r"$",
     re.IGNORECASE,
 )
 _REST = r"all|rest|the\s+rest|runners|remaining|remainder"
@@ -70,17 +70,29 @@ REENTRY_MSG = re.compile(  # F072: the whole message is "back in [here] [@ price
     rf"(?:\s+(?:here|now))?(?:\s+@?\s*(?P<price>{_PRICE}))?$",
     re.IGNORECASE,
 )
+# "Watching NVDA 200C, might get in if it holds 198": a heads-up, never an order
+WATCH = re.compile(
+    r"^(?:watching|eyeing|eyeballing|looking\s+at|keeping\s+an\s+eye\s+on)"
+    rf"\s+(?P<ticker>{_TICKER})\b",
+    re.IGNORECASE,
+)
+# A word that makes a watch message an instruction (or a premium) goes to Jev, never a feed.
+_WATCH_ACTION = re.compile(
+    r"\b(?:bought|buy(?:ing)?|bto|sold|sell(?:ing)?|trim(?:med)?|took|stops?|sl|tps?|"
+    r"out|exit(?:ed)?|closed?)\b|@|\d*\.\d+",
+    re.IGNORECASE,
+)
 _TRIM_VERB_ONLY = re.compile(r"^(?:took|taking|sold|sell)", re.IGNORECASE)  # need a fraction
 
 
-def fast_parse(text: str, resolution: Resolution | None, tiers: list[str]) -> ParsedSignals | None:
+def fast_parse(text: str, resolution: Resolution | None) -> ParsedSignals | None:
     """None: not obvious enough; Jev (and its fallbacks) decide."""
     stripped = _PINGS.sub("", text.strip())
     if not stripped or "\n" in stripped:
         return None
     offset = text.index(stripped)
-    for rule in (_entry, _reentry, _trim_or_exit, _stop_breakeven):
-        signal = rule(stripped, offset, resolution, tiers)
+    for rule in (_entry, _reentry, _trim_or_exit, _stop_breakeven, _watch):
+        signal = rule(stripped, offset, resolution)
         if signal is not None:
             return ParsedSignals(signals=[signal], interpreter="fast")
     return None
@@ -98,15 +110,12 @@ def _lit(m: re.Match[str], group: str, offset: int, field: str) -> F[Any] | None
     return None if value is None else F(value=value, source=_span(m, group, offset))
 
 
-def _entry(text: str, offset: int, _r: Resolution | None, tiers: list[str]) -> ParsedSignal | None:
+def _entry(text: str, offset: int, _r: Resolution | None) -> ParsedSignal | None:
     m = ENTRY.match(text)
     if m is None or m.group("ticker").lstrip("$").lower() in STOP_WORDS:
         return None
     if m.group("exp1") and m.group("exp2"):
         return None
-    tier = m.group("tier")
-    if tier is not None and tier.lower() not in {t.lower() for t in tiers}:
-        return None  # an unexplained trailing word
     strike, right = _lit(m, "strike", offset, "strike"), _lit(m, "strike", offset, "right")
     price = _lit(m, "price", offset, "entry_price")
     if strike is None or right is None or price is None:
@@ -135,7 +144,6 @@ def _entry(text: str, offset: int, _r: Resolution | None, tiers: list[str]) -> P
         entry_price=price,
         stop_level=_lit(m, "stop", offset, "stop_level"),
         tp_levels=tps,
-        size_tier=_lit(m, "tier", offset, "size_tier"),
     )
     return ParsedSignal(
         msg_type="entry",
@@ -146,9 +154,7 @@ def _entry(text: str, offset: int, _r: Resolution | None, tiers: list[str]) -> P
     )
 
 
-def _reentry(
-    text: str, offset: int, r: Resolution | None, _tiers: list[str]
-) -> ParsedSignal | None:
+def _reentry(text: str, offset: int, r: Resolution | None) -> ParsedSignal | None:
     """F072: "back in" re-enters the lane's one position closed today (or today's one setup).
     The contract comes from that position, cited as context (its opening message), so the card
     is marked inferred; the price, if any, is the text's own. Several candidates: Jev/review."""
@@ -194,9 +200,7 @@ def _unique(r: Resolution | None) -> LinkHint | None:
     return LinkHint(target=r.position_id, confidence=Decimal(1))
 
 
-def _trim_or_exit(
-    text: str, offset: int, r: Resolution | None, _tiers: list[str]
-) -> ParsedSignal | None:
+def _trim_or_exit(text: str, offset: int, r: Resolution | None) -> ParsedSignal | None:
     hint = _unique(r)
     if hint is None:
         return None
@@ -231,9 +235,7 @@ def _trim_or_exit(
     )
 
 
-def _stop_breakeven(
-    text: str, _offset: int, r: Resolution | None, _tiers: list[str]
-) -> ParsedSignal | None:
+def _stop_breakeven(text: str, _offset: int, r: Resolution | None) -> ParsedSignal | None:
     hint = _unique(r)
     if hint is None or STOP_BE.match(text) is None:
         return None
@@ -260,6 +262,19 @@ def _ticker_names_a_position(m: re.Match[str], r: Resolution | None) -> bool:
     if word.lower() in STOP_WORDS or r is None:
         return False
     return word in {str(t).upper() for t in r.evidence.get("tickers", [])}
+
+
+def _watch(text: str, offset: int, _r: Resolution | None) -> ParsedSignal | None:
+    m = WATCH.match(text)
+    if m is None or m.group("ticker").lstrip("$").lower() in STOP_WORDS:
+        return None
+    if _WATCH_ACTION.search(text):
+        return None
+    return ParsedSignal(
+        msg_type="watch",
+        fields=SignalFields(underlying=_lit(m, "ticker", offset, "underlying")),
+        field_sources={"msg_type": _rule("watch")},
+    )
 
 
 def _rule(name: str) -> ResolvedSource:

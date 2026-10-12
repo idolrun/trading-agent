@@ -135,7 +135,7 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
                 card.card_id,
                 "approve",
                 card.version,
-                Edits(),
+                Edits(qty=2),
                 session_id=session_id,
                 consume_step_up=_never,
             )

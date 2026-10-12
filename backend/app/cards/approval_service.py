@@ -82,7 +82,10 @@ from app.system.models import FlagName
 from app.timers.models import Timer
 
 logger = logging.getLogger(__name__)
+UNREADABLE = "broker_position_unreadable"  # not a verdict on the quantity: left to revalidation
 DecisionKind = Literal["approve", "reject", "edit"]
+QTY_ACTIONS = ENTRY_ACTIONS | {CardAction.TRIM, CardAction.EXIT}  # the user types the quantity
+QTY_CHECKS = frozenset({"risk", "lot", "broker_position"})  # preflight checks the quantity moves
 
 
 class CardNotFound(Exception):
@@ -306,6 +309,10 @@ class ApprovalService:
             confirmed = None
             if decision == "edit" and edits.confirmed_underlying is not None:
                 confirmed = await self._confirmed_plan(card_id, edits.confirmed_underlying)
+            if decision == "approve":
+                await self._qty_gate(
+                    card_id, version, edits
+                )  # outside the card lock: it reads market data
             async with in_transaction(self._sessions, None) as db:
                 card = await cards.lock(db, card_id)
                 if card is None:
@@ -353,9 +360,11 @@ class ApprovalService:
     ) -> Approval:
         if extra := edits.given() - APPROVE_EDITS:
             raise DecisionInvalid(f"use an edit first for: {', '.join(sorted(extra))}")
-        approved = _edited(proposal, edits)
+        approved = _approve_qty(card, proposal, edits)
         lot = await db.get(Lot, card.lot_id) if card.lot_id else None
         lot_qty = lot.qty if lot is not None and lot.status == LotStatus.OPEN else None
+        if approved.action == CardAction.CLOSE:  # the dedicated full close: what the lot holds now
+            approved = approved.model_copy(update={"qty": lot_qty})
         if blockers := approval_blockers(approved, {}, lot_qty):  # AC-14, AC-15
             raise DecisionInvalid("not approvable: " + ", ".join(blockers))
         step_up = stepped_up
@@ -455,6 +464,30 @@ class ApprovalService:
             detail={"edits": edits.model_dump(mode="json", exclude_none=True)},
             proposal=edited.model_dump(mode="json"),
         )
+
+    async def _qty_gate(self, card_id: uuid.UUID, version: int, edits: Edits) -> None:
+        """C105: the quantity the user typed is checked against the position, the broker and the
+        risk limits BEFORE it is approved; a violation blocks with its reason and the number is
+        never reduced. Card state / version conflicts are left to the transaction that follows.
+        Manual cards (the form already took the quantity) and closes skip it."""
+        loaded = await self._load(card_id)
+        card = loaded.card
+        if card.state != CardState.PENDING or card.version != version:
+            return  # the transaction below answers with the conflict
+        if card.source == CardSource.MANUAL:
+            return
+        proposal = ProposedAction.model_validate(card.proposal)
+        if proposal.action not in QTY_ACTIONS or edits.qty is None:
+            return  # a missing quantity is refused by `_approve`
+        approved = _edited(proposal, edits)
+        pf = await self._preflight(loaded, approved, stop_on_fail=False)
+        for check in pf.checks:
+            if (
+                check.name in QTY_CHECKS
+                and check.status == "blocked"
+                and check.reason != UNREADABLE
+            ):
+                raise DecisionInvalid(f"quantity not allowed: {check.reason or check.name}")
 
     # --- approval graph steps (ApprovalSteps) --------------------------------------------
 
@@ -651,6 +684,9 @@ class ApprovalService:
         if p.action in SELLS and p.qty is not None and p.qty > (target.lot_qty or 0):
             add("lot", "blocked", "qty_exceeds_lot")
             return
+        if p.action == CardAction.CLOSE and p.qty != target.lot_qty:
+            add("lot", "blocked", "lot_qty_changed")  # C105: the user approved another lot size
+            return
         add("lot", "pass")
         if p.action in SELLS and p.qty is not None and self._broker is not None:
             held = await self._broker_qty(target.instrument)
@@ -658,7 +694,7 @@ class ApprovalService:
             add(
                 "broker_position",
                 "blocked" if short else "pass",
-                "broker_position_short" if short else None,
+                None if not short else "broker_position_short" if held is not None else UNREADABLE,
             )
 
     async def _broker_qty(self, instrument: Instrument) -> int | None:
@@ -841,6 +877,31 @@ class ApprovalService:
 
     def _cfg(self) -> RuntimeConfig:
         return self._config.get() or RuntimeConfig()
+
+
+def _approve_qty(card: Card, proposal: ProposedAction, edits: Edits) -> ProposedAction:
+    """The proposal as approved. C105: for a buy or sell the quantity is the one the user sent
+    with this approval, never the card's own; a close takes no quantity (it sells the lot)."""
+    if _unreadable(proposal):
+        raise DecisionInvalid("nothing to approve: this signal could not be read; dismiss it")
+    if proposal.action == CardAction.CLOSE:
+        if edits.qty is not None:
+            raise DecisionInvalid("a close sells the whole position: no quantity")
+    elif proposal.action in QTY_ACTIONS and card.source != CardSource.MANUAL:
+        if edits.qty is None:
+            raise DecisionInvalid("qty required: enter the number of shares or contracts")
+    return _edited(proposal, edits)
+
+
+def _unreadable(proposal: ProposedAction) -> bool:
+    """A review card for a signal the system could not read (raw review, unknown correction
+    target): it holds no trade and no re-link, so approving it would only look like a trade
+    was accepted. Re-link and position-choice cards carry a signal / candidate and stay."""
+    return (
+        proposal.action == CardAction.REVIEW
+        and proposal.relink_signal_id is None
+        and not proposal.candidate_position_ids
+    )
 
 
 def _edited(proposal: ProposedAction, edits: Edits) -> ProposedAction:

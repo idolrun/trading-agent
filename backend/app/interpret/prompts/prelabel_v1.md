@@ -11,7 +11,7 @@ Return `signals`, one entry per trading signal in `message` (an empty list if it
   out_of_scope_strategy or chatter. When unsure, choose a non-actionable type (watch, chatter).
 - `instrument`: option, stock or unclear, when it can be told.
 - `fields`: the plain values the message states, by name: underlying, expiry_token, strike, right
-  (call or put), entry_price, entry_price_low, entry_price_high, price_unit_hint, size_tier,
+  (call or put), entry_price, entry_price_low, entry_price_high, price_unit_hint,
   qty_stated, stop_level, stop_basis, candle_close, tp_levels, exit_fraction, breakeven_stop,
   stop_removed, is_add, prose_condition, correction_target_message_id. Copy values as written
   (expiry_token "10/2", not a computed date); leave out anything the message does not state.

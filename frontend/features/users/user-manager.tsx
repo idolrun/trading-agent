@@ -1,15 +1,15 @@
 "use client"
 
 import { useState } from "react"
-import { Badge } from "@/components/badge"
 import { Dialog } from "@/components/dialog"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import { TextField } from "@/features/auth/submit"
 import { useSession } from "@/features/auth/use-session"
 import { useUserMutations, useUsers, type UserWithPassword } from "@/features/users/api"
+import { formatStamp } from "@/lib/format"
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "never")
+const when = (iso: string | null) => (iso ? formatStamp(iso) : "never")
 
 function TemporaryPassword({ issued, onClose }: { issued: UserWithPassword | null; onClose: () => void }) {
   const [copiedFor, setCopiedFor] = useState<UserWithPassword | null>(null)
@@ -61,7 +61,7 @@ export function UserManager() {
   const error = add.error ?? setActive.error ?? resetPassword.error
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex max-w-3xl flex-col gap-3">
       <form
         className="flex flex-wrap items-end gap-3"
         onSubmit={(event) => {
@@ -84,8 +84,8 @@ export function UserManager() {
             onChange={(event) => setEmail(event.target.value)}
           />
         </div>
-        <Button type="submit" disabled={add.isPending}>
-          Add user
+        <Button type="submit" className="h-9" disabled={add.isPending}>
+          {add.isPending ? "Adding…" : "Add user"}
         </Button>
       </form>
       {error ? (
@@ -93,22 +93,30 @@ export function UserManager() {
           {error.message}
         </p>
       ) : null}
-      <QueryState query={query} isEmpty={(data) => data.length === 0} loadingLabel="Loading users" emptyTitle="No users">
+      <QueryState
+        query={query}
+        isEmpty={(data) => data.length === 0}
+        loadingLabel="Loading users"
+        emptyTitle="No users"
+        emptyLayout="line"
+      >
         {(users) => (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
             {users.map((user) => (
               <li
                 key={user.userId}
-                className="flex flex-col gap-2 rounded-lg border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="flex flex-col gap-0.5 text-sm">
-                  <span className="flex flex-wrap items-center gap-2 font-medium">
+                <div className="flex min-w-0 flex-col gap-0.5 text-sm">
+                  <span className="flex flex-wrap items-center gap-x-2 font-medium break-all">
                     {user.email}
-                    {user.email === me ? <Badge>You</Badge> : null}
-                    {!user.isActive ? <Badge>Inactive</Badge> : null}
-                    {user.mustChangePassword ? <Badge>Temporary password</Badge> : null}
+                    {user.email === me ? <span className="text-xs font-normal text-muted-foreground">You</span> : null}
+                    {!user.isActive ? <span className="text-xs font-normal text-muted-foreground">Inactive</span> : null}
+                    {user.mustChangePassword ? (
+                      <span className="text-xs font-normal text-warning-foreground">Temporary password</span>
+                    ) : null}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     Last sign-in {when(user.lastLoginAt)} · added {when(user.createdAt)}
                   </span>
                 </div>
@@ -125,7 +133,8 @@ export function UserManager() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={user.isActive ? "destructive" : "outline"}
+                    variant="outline"
+                    className={user.isActive ? "text-destructive hover:bg-destructive/10 hover:text-destructive" : undefined}
                     disabled={setActive.isPending || (user.isActive && user.email === me)}
                     onClick={() => setActive.mutate({ id: user.userId, active: !user.isActive })}
                   >

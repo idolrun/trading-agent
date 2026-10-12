@@ -89,7 +89,7 @@ async def test_confirmed_underlying_makes_the_review_card_tradable(w: World) -> 
         CardType.NORMAL,
     )
     assert confirmed.missing_fields == [] and confirmed.review_reasons == []
-    assert confirmed.qty == 10 and confirmed.limit_price is not None  # $1000 tier at ~0.94
+    assert confirmed.qty is None and confirmed.limit_price is not None  # the user types the qty
     assert confirmed.valid_until == proposal.valid_until  # the expiry timer's window
     assert card.provider_position_id == position_id
     async with w.h.factory() as db:

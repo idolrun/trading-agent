@@ -85,7 +85,8 @@ async def test_m2_webhook_to_card_to_shadow_order(live: tuple[Api, Path]) -> Non
     [card] = (await api.client.get("/api/v1/cards")).json()["items"]
     assert card["id"] == created["id"]
     assert (card["action"], card["cardType"], card["state"]) == ("entry", "normal", "pending")
-    assert card["proposal"]["qty"] == 13 and card["proposal"]["price"] == "0.74"
+    assert card["proposal"]["qty"] is None  # C105: the user types it
+    assert card["proposal"]["price"] == "0.74"
 
     # Shadow mode (default): the approved entry is recorded and simulated, never sent.
     async with in_transaction(api.app.state.session_factory, None) as db:

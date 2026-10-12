@@ -48,7 +48,7 @@ export function AdjustLot({ lot }: { lot: LotDetail }) {
       <Field label="Adjust reason">
         {(id) => <Input id={id} value={reason} onChange={(e) => setReason(e.target.value)} />}
       </Field>
-      <FormError error={adjust.error} />
+      <FormError error={adjust.error} order />
       <Button type="submit" variant="outline" disabled={!valid || adjust.isPending} className="self-start">
         {adjust.isPending ? "Adjusting…" : "Adjust quantity"}
       </Button>

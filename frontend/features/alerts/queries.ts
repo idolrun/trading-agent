@@ -9,7 +9,7 @@ export const alertKeys = domainKeys("alerts")
 export type AlertList = Schemas["Page_AlertOut_"]
 
 export function fetchAlertList(filters: AlertListFilters): Promise<AlertList> {
-  return apiGet<AlertList>("/api/v1/alerts", filters)
+  return apiGet<AlertList>("/api/v1/alerts", { ...filters, limit: 200 })
 }
 
 export function alertListQuery(filters: AlertListFilters) {

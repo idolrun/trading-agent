@@ -139,7 +139,7 @@ class LayaInterpreter:
         cfg = self._config()
         small = trim_context(ctx)
         state = build_laya_state(small, lot_ids)
-        questions = jev_questions.build_questions(small, candidates, sorted(cfg.option_tiers or {}))
+        questions = jev_questions.build_questions(small, candidates)
         request = {"questions": VERSION, "question_ids": sorted(questions), "state": state}
         started, t0 = self._clock.now(), time.monotonic()
         if self._slot.locked():

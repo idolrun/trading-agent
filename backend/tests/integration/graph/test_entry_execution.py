@@ -45,6 +45,37 @@ async def test_marketable_entry_fills_in_full(w: World) -> None:
     assert await timers(w).run_due() == 0  # nothing left to cancel: no timer was scheduled
 
 
+async def test_the_broker_gets_exactly_the_quantity_the_user_approved(w: World) -> None:
+    """C105: whatever the user types is the order; the card never held a number of its own."""
+    _, card_id = await w.entry()
+    assert (await w.card(card_id)).proposal["qty"] is None
+    await w.decide(card_id, qty=7)
+    [order] = await w.orders()
+    assert order.qty == 7 and order.limit_price == Decimal("0.74")
+    approved = await w.approvals._load(card_id)
+    assert approved.approval is not None and approved.approval.approved_proposal["qty"] == 7
+    await w.consume()
+    [lot] = await lots(w)
+    assert lot.qty == 7
+
+
+async def test_a_missing_or_changed_quantity_places_no_order(w: World) -> None:
+    from app.cards.approval_service import DecisionConflict, DecisionInvalid
+
+    _, card_id = await w.entry()
+    with pytest.raises(DecisionInvalid, match="qty required"):
+        await w.decide(card_id, bare=True)
+    await w.decide(card_id, "edit", 1, price=Decimal("0.75"))  # an edit: version 2, still pending
+    with pytest.raises(DecisionConflict):  # an approval of the old version is not this card
+        await w.decide(card_id, version=1, qty=3)
+    assert await w.orders() == []
+    await w.decide(card_id, version=2, qty=3)
+    with pytest.raises(DecisionConflict):  # approved: the quantity cannot be changed again
+        await w.decide(card_id, version=2, qty=9)
+    [order] = await w.orders()
+    assert order.qty == 3
+
+
 async def test_unfilled_entry_is_cancelled_after_m_seconds(w: World) -> None:
     _, card_id = await w.entry()
     w.h.md.set_quote(GOOGL, *NOT_MARKETABLE)

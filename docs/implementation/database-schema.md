@@ -275,7 +275,7 @@ UNIQUE `(message_id, event_type, event_seq, idx)`; UNIQUE `(signal_id, provider_
 | `provider_id` | bigint | NULL | |
 | `provider_position_id` | uuid | NULL | FK |
 | `lot_id` | uuid | NULL | FK (exit/stop/close cards) |
-| `proposal` | jsonb | NN | Pydantic `CardProposal`: qty (nullable), limit/stop prices, bracket legs, tp split, warnings, labels (`stale`,`late`,`suggestion`,`lot_too_small`, `backfilled`), missing fields, suggested underlying, candidate positions, breakeven options |
+| `proposal` | jsonb | NN | Pydantic `CardProposal`: qty (null until the user's approval writes it into `approvals.approved_proposal`, C105; a `close` card holds the lot's), limit/stop prices, `tp_levels` (stated take-profits) and `tp_legs` (the split of the user's qty), warnings, labels (`stale`,`late`,`suggestion`,`provider_fraction:<f>`, `backfilled`), missing fields, suggested underlying, candidate positions, breakeven options |
 | `posted_at` | timestamptz | NN | validity clock origin (C90) |
 | `valid_until` | timestamptz | NULL | entry: posted_at + N s; exit: timeout |
 | `disabled_reason` | text | NULL | required when `state='disabled'` |

@@ -46,18 +46,20 @@ export function cardDetailQuery(cardId: string) {
  * revalidated again after the click, whatever this showed. Under the card's detail key, so a
  * decision refetches it.
  */
-export function preflightQuery(cardId: string, enabled: boolean) {
+export function preflightQuery(cardId: string, enabled: boolean, qty: number | null = null) {
   return queryOptions({
-    queryKey: [...cardKeys.detail(cardId), "preflight"],
-    queryFn: () => apiGet<Preflight>(`/api/v1/cards/${encodeURIComponent(cardId)}/preflight`),
+    queryKey: [...cardKeys.detail(cardId), "preflight", qty],
+    queryFn: () =>
+      apiGet<Preflight>(`/api/v1/cards/${encodeURIComponent(cardId)}/preflight`, qty == null ? undefined : { qty }),
     enabled: enabled && cardId.length > 0,
     staleTime: 15_000,
     refetchInterval: 30_000, // each run reads the broker account and positions: keep it gentle
   })
 }
 
-export function usePreflight(cardId: string, enabled: boolean) {
-  return useQuery(preflightQuery(cardId, enabled))
+/** `qty`: what the user typed, so the checks judge that number (C105). */
+export function usePreflight(cardId: string, enabled: boolean, qty: number | null = null) {
+  return useQuery(preflightQuery(cardId, enabled, qty))
 }
 
 export function useCardList(filters: CardListFilters) {

@@ -214,6 +214,7 @@ cd frontend && pnpm dev                  # after F052
 | [F082](F082-replay-parity-corpus.md) | Replay parity (production resolver + resolve_link over label history), assistant labels for the 519-message corpus, before/after measurement | F048, F076, F077–F081 | PRD §17 |
 | [F083](F083-trading-reports.md) | Trading reports API: signal funnel, orders and fills, realized / unrealized P&L, instruments, trades, time series | F030, F040 | PRD FR-25 |
 | [F084](F084-frontend-trading-reports.md) | Trading Performance page (`/reports/trading`) | F083, F052 | PRD FR-25 |
+| [F085](F085-user-entered-quantity.md) | The user types the quantity on every buy and sell card: no tiers or fractions, backend enforces, full exit = Close card | F023, F036, F055 | PRD C105, FR-17, AC-15, AC-24 |
 
 ---
 

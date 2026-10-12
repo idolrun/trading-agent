@@ -99,7 +99,6 @@ def jev_answers(
         "exit_intent": score(intent),
         "ticker": c(ticker or "not_stated", 0.93),
         "expiry": c(e_id or "not_stated", 0.9),
-        "size_tier": c("lotto" if "size_tier" in s else "not_stated", 0.9),
         "correction_target": c("none"),
         "links_to": c(link, 0.93),
     }

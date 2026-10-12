@@ -1,7 +1,8 @@
 """`decide()`: pure decision engine (TRD §6). Same inputs -> same cards, no I/O.
 
-Models interpret, code decides: quantities, prices, legs and the card tier are computed here
-from validated values and config only. Confidence can only lower the tier (C31).
+Models interpret, code decides: prices, legs and the card tier are computed here from
+validated values and config only. Confidence can only lower the tier (C31). Quantity is never
+decided here (C105): entry, add, trim and exit cards leave `qty` blank for the user to enter.
 """
 
 from datetime import datetime, timedelta
@@ -31,27 +32,29 @@ FEED_ONLY = frozenset(
 FOLLOW_UP_ACTION = {
     MsgType.ADD: CardAction.ADD,
     MsgType.TRIM: CardAction.TRIM,
-    MsgType.FULL_EXIT: CardAction.EXIT,
-    MsgType.STOCK_EXIT: CardAction.EXIT,
+    MsgType.FULL_EXIT: CardAction.CLOSE,  # C105: the dedicated close path, no typed qty
+    MsgType.STOCK_EXIT: CardAction.CLOSE,
     MsgType.SOFT_EXIT: CardAction.EXIT,
     MsgType.STOP_SET: CardAction.STOP,
     MsgType.STOP_MOVE: CardAction.STOP,
     MsgType.STOP_CANCEL: CardAction.STOP,
     MsgType.TP_SET: CardAction.TP,
 }
-SIZED = frozenset({CardAction.ENTRY, CardAction.ADD})
-TIER_CANNOT_BUY = "tier cannot buy one contract"
+PRICED = frozenset({CardAction.ENTRY, CardAction.ADD})
 
 
 def decide(i: DecisionInputs) -> list[ProposedAction]:
     cards = _propose(i)
     for stage in (risk.apply_staleness, risk.apply_entry_gates, risk.apply_warnings):
         cards = stage(i, cards)
+    for card in cards:  # C105: the system never chooses a quantity; only a close holds the lot's
+        if card.qty is not None and card.action != CardAction.CLOSE:
+            raise AssertionError(f"decide() set a quantity on a {card.action} card")
     return cards
 
 
 def _propose(i: DecisionInputs) -> list[ProposedAction]:
-    """Sizing, exits, stops/TPs and the card tier (F023)."""
+    """Prices, exits, stops/TPs and the card tier (F023); never a quantity (C105)."""
     t = i.signal.msg_type
     v = i.validation
     if (
@@ -66,7 +69,7 @@ def _propose(i: DecisionInputs) -> list[ProposedAction]:
         on_setup = i.position is not None and i.position.status in SETUPS
         action = CardAction.ADD if linked and not on_setup else CardAction.ENTRY
     elif t == MsgType.TRIM and norm is not None and norm.exit_fraction == "all":
-        action = CardAction.EXIT
+        action = CardAction.CLOSE
     else:
         action = FOLLOW_UP_ACTION[t]
     valid_until = _valid_until(i, action)
@@ -127,7 +130,9 @@ def _propose(i: DecisionInputs) -> list[ProposedAction]:
 def _body(
     i: DecisionInputs, norm: NormalizedSignal, card: ProposedAction
 ) -> tuple[ProposedAction, list[str]]:
-    """Qty, price, stop and legs for a validated signal; returns (card, review reasons)."""
+    """Price, stop and legs for a validated signal; returns (card, review reasons).
+
+    Never a quantity for entry, add, trim or exit (C105). A close card sells the whole lot."""
     reasons: list[str] = []
     option = rules.is_option(i)
     if option and any(p.scale is None for p in premium_prices(norm)):
@@ -135,31 +140,27 @@ def _body(
     update: dict[str, object] = {}
     lot_qty = i.lot.qty if i.lot else None
 
-    if card.action in SIZED:
-        qty, limit, sizing_reasons, disabled = _size(i, norm, option)
-        reasons += sizing_reasons
+    if card.action in PRICED:
+        limit, price_reasons = _limit(i, norm)
+        reasons += price_reasons
         price = _signal_price(norm)
         update |= {
-            "qty": qty,
             "limit_price": limit,
             "signal_price": price.value if price else None,
-            "disabled_reason": disabled,
         }
         if norm.stop_level is not None:  # bracket at entry (C50)
             update["stop"] = _stop(norm.stop_basis, norm.stop_level.value, norm, option)
-        update["tp_legs"] = rules.tp_legs([p.value for p in norm.tp_levels], qty)
-    elif card.action in (CardAction.TRIM, CardAction.EXIT):
+        update["tp_levels"] = [p.value for p in norm.tp_levels]  # legs once the user enters qty
+    elif card.action in (CardAction.TRIM, CardAction.EXIT, CardAction.CLOSE):
         assert lot_qty is not None  # noqa: S101 — decide() returned [] without a lot
         labels: list[str] = []
         if i.signal.msg_type == MsgType.SOFT_EXIT:
-            qty, labels = None, ["suggestion"]  # C52: provider still holding
-        elif card.action == CardAction.EXIT:
-            qty = lot_qty
-        else:
-            qty = rules.exit_qty(norm.exit_fraction, lot_qty)
-            if qty == 0:
-                qty, labels = None, ["lot_too_small"]  # C82: exit all or skip
-        update |= {"qty": qty, "labels": labels}
+            labels = ["suggestion"]  # C52: provider still holding
+        elif card.action == CardAction.TRIM and norm.exit_fraction is not None:
+            labels = [f"provider_fraction:{norm.exit_fraction}"]  # information, never a qty
+        update["labels"] = labels
+        if card.action == CardAction.CLOSE:
+            update["qty"] = lot_qty  # the dedicated full close: the whole lot, shown on the card
     elif card.action == CardAction.STOP:
         if i.signal.msg_type == MsgType.STOP_CANCEL or norm.stop_removed:
             update["stop"] = StopProposal(cancel=True)
@@ -182,28 +183,18 @@ def _body(
     return card.model_copy(update=update), reasons
 
 
-def _size(
-    i: DecisionInputs, norm: NormalizedSignal, option: bool
-) -> tuple[int | None, Decimal | None, list[str], str | None]:
-    """(qty, limit, review reasons, disabled reason). Config gaps leave qty blank: F024
-    disables the card as "config incomplete"."""
+def _limit(i: DecisionInputs, norm: NormalizedSignal) -> tuple[Decimal | None, list[str]]:
+    """(limit, review reasons). A config gap leaves the limit blank: F024 disables the card
+    as "config incomplete"."""
     price = _signal_price(norm)
     if price is None:
-        return None, None, ["missing:entry_price"], None
-    tiers = i.config.option_tiers if option else i.config.stock_tiers
+        return None, ["missing:entry_price"]
     chase = i.config.entry_chase_pct
-    if tiers is None or chase is None:
-        return None, None, [], None
-    tier = norm.size_tier or "default"
-    if tier not in tiers:
-        return None, None, [f"unknown_size_tier:{tier}"], None
+    if chase is None:
+        return None, []
     if i.tick is None or i.tick <= 0:
-        return None, None, ["tick_unknown"], None  # OD-25: never assume a tick
-    limit = rules.entry_limit(price.value, chase, i.tick)
-    qty = rules.size(tiers[tier], limit, option=option)
-    if qty == 0:
-        return None, limit, [], TIER_CANNOT_BUY  # never rounded up (7.4)
-    return qty, limit, [], None
+        return None, ["tick_unknown"]  # OD-25: never assume a tick
+    return rules.entry_limit(price.value, chase, i.tick), []
 
 
 def _signal_price(norm: NormalizedSignal) -> Price | None:
@@ -226,7 +217,7 @@ def _stop(
 
 def _valid_until(i: DecisionInputs, action: CardAction) -> datetime | None:
     seconds = (
-        i.config.entry_validity_s if action in SIZED else i.config.exit_card_timeout_s
+        i.config.entry_validity_s if action in PRICED else i.config.exit_card_timeout_s
     )  # C22, measured from post time (C90)
     return None if seconds is None else i.posted_at + timedelta(seconds=seconds)
 

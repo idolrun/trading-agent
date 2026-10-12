@@ -78,7 +78,7 @@ export function StopForm({ lot }: { lot: LotDetail }) {
           )}
         </Field>
       ) : null}
-      <FormError error={stop.error} />
+      <FormError error={stop.error} order />
       <Button type="submit" variant="outline" disabled={!valid || stop.isPending} className="self-start">
         {stop.isPending ? "Submitting…" : "Submit stop change"}
       </Button>

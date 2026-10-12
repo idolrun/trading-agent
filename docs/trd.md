@@ -335,7 +335,7 @@ Without either, a Postgres outage loses messages (PRD FR-1d, C91).
     {"id": "P12", "summary": "QQQ 480P exp 2026-09-28, entered 1.20 at 09:48, trimmed 50%"}
   ],
   "provider_profile": {
-    "notes": ["writes cents without a leading zero ('.95' = $0.95)", "'lotto' = lotto tier"]
+    "notes": ["writes cents without a leading zero ('.95' = $0.95)"]
   },
   "candidates": {
     "tickers": [{"id": "t1", "text": "spy", "pos": 0}, {"id": "t2", "text": "spy", "pos": 26}],
@@ -354,13 +354,13 @@ Without either, a Postgres outage loses messages (PRD FR-1d, C91).
 
 ### 4.3 Questions
 The full catalog is in Appendix A. In summary:
-- **Signal context:** message type, instrument kind, number roles (one Choice per candidate number), ticker, call/put, expiry, size tier, exit fraction, stop basis, conditions, correction target.
+- **Signal context:** message type, instrument kind, number roles (one Choice per candidate number), ticker, call/put, expiry, exit fraction, stop basis, conditions, correction target.
 - **Provider-portfolio context:** which provider position this refers to, whether it is an add, strength of exit intent (Score), breakeven stop.
 
 ### 4.3a Deterministic fast path (F070, `interpret/fast.py`)
 
 Before Jev, code settles a message whose **whole text** is one obvious instruction, with no model call:
-- an option entry `TICKER STRIKE{c|p|calls|puts} [expiry] [@]PRICE [sl X] [tp A/B] [tier]`;
+- an option entry `TICKER STRIKE{c|p|calls|puts} [expiry] [@]PRICE [sl X] [tp A/B]`;
 - an exit (`out`, `all out`, `closed`, `sold all|rest|runners` [TICKER]);
 - a trim (`trim[med]`, `sold/took` + `half|third|quarter|1/2|N%` [TICKER]);
 - a breakeven stop (`stop to be`, `sl breakeven`, `moving stops to breakeven`).
@@ -547,8 +547,11 @@ decide(signal, provider_ledger, user_lots, config, quotes, now_et) -> list[Propo
 
 - **Pure function**, no I/O. Every PRD scenario is a unit test, and every live decision can be replayed.
 - **Card tier:** all literal/resolved and valid → normal; any context field → inferred; missing field or ambiguous link → review. Jev/LLM confidence can only lower the tier.
-- **Sizing:** `qty = floor(tier_max_usd / (limit_price × 100))` for options; stocks per C76. If `qty = 0` (the tier cannot buy one contract), the result is a **disabled card** with that reason. It is never rounded up.
-- **Fractional exits (C51, C82):** `qty = floor(fraction × lot_qty)`. If that is 0 (e.g. "trim half" on a 1-lot, which is 49% of the user's exits), the card has qty = blank and the label "lot too small to trim: exit all or skip", and it is not approvable until the user enters a qty.
+- **No sizing (C105):** `decide` never produces a quantity. Entry, add, trim and exit cards carry `qty = None`; a final guard in `decide()` fails if one leaves with a quantity. There are no tiers, fractions or equity percents, and a quantity or size word in the signal is untrusted text that nothing reads. The limit price (signal price × (1 + chase), floored to the tick) is still computed. The quantity enters at approval:
+  - `Edits.qty` is a strict integer ≥ 1 (so `2.5`, `"3"`, `true`, `0`, `-1` are 422). `ApprovalService._approve` requires it for a non-manual entry, add, trim or exit and snapshots exactly it into `approvals.approved_proposal`; the executor and the broker order read only that snapshot.
+  - Before the approval is written, `_qty_gate` runs the preflight on the typed quantity and refuses (422, with the reason) if buying power, exposure, daily loss, the lot (`qty_exceeds_lot`) or the broker's holding (`broker_position_short`) cannot take it. The quantity is never reduced. Revalidation after the approval runs the same checks again on fresh data.
+  - A quantity change is an `edit` (a new card version); an approval of an older version is a 409; an approved card cannot be edited.
+  - A full exit or "all" trim is a `CardAction.CLOSE` card. It takes no quantity: at approval its snapshot quantity is the open lot's, and revalidation blocks with `lot_qty_changed` if the lot differs when it executes. Flatten, the end-of-day forced close and underlying stops are unchanged.
 - **TP legs (C56, C83):**
   - `legs = min(len(tp_levels), qty)`;
   - split `qty` equally over the legs, then assign the remainder from TP1 onward;
@@ -766,10 +769,11 @@ The 50× and test 2 misses must be re-measured with real model latency and on th
 
 | Scenario | Expected |
 |---|---|
-| "trim half" on a 1-contract lot | Blank-qty card with the "lot too small" label; no order until the user enters a qty (AC-15). |
-| Entry of 2 contracts with 3 TPs | TP legs TP1 = 1, TP2 = 1; no TP3 (AC-16). |
-| Entry of 5 contracts with 3 TPs | Split 2/2/1. |
-| Tier $100 at a $2.50 premium | Disabled card: "tier cannot buy one contract". |
+| "trim half" on any lot | Blank-qty card labeled "Provider said half"; no order until the user enters a qty (AC-15). |
+| Entry with 3 TPs, user enters 2 contracts | TP legs TP1 = 1, TP2 = 1; no TP3 (AC-16). Before a qty exists the card holds only the levels. |
+| Entry with 3 TPs, user enters 5 contracts | Split 2/2/1. |
+| User enters more than buying power / the lot allows | 422 with the reason; the card stays pending; the number is not changed (AC-24). |
+| "all out" | Close card: whole lot, no qty field (C105). |
 | "spx 7775c 0dte" | Resolves to SPXW, today's expiry (AC-17). |
 | "1000c" with no ticker, provider recently traded MU near $1,000 | Review card with MU suggested; not approvable without confirmation. |
 | "1000c", two underlyings within ±10% | Review card with no suggestion. |
@@ -836,7 +840,7 @@ The original plan below was executed as the feature roadmap in `docs/implementat
 4. **Note guard:** recommend accept.
 5. **LLM + Jev cost ceiling:** suggest $200/month (updated for 2,500 msgs/session, §4.7).
 6. **Confirm the export's broker** (§16.3). If your current broker has no paper account, choose the paper-stage approach.
-7. **Seed config values** (PRD §18): tiers, max exposure and max daily loss are yours to set. The history only gives observed ranges.
+7. **Seed config values** (PRD §18): max exposure and max daily loss are yours to set. The history only gives observed ranges.
 8. **Transactions/order-history export** (PRD §22 f): needed to measure holding time.
 
 9. ~~**Provider position scope**~~ **Resolved 2026-09-28: per author.** `channel_id` is metadata only (PRD C96).
@@ -1002,8 +1006,8 @@ This is the fallback if the Jev bench fails its latency or accuracy targets. The
 | 3 | MU strikes ~900–1,010, SPXW 6,500–7,855 | **C84:** the missing-underlying suggestion uses **live-price proximity** (§6), not a fixed "strike > N means SPX" rule. It stays a suggestion that needs confirmation (C79). |
 | 4 | 45% 0DTE, 81 expired at $0 | Expiration management (cutoffs 1/2) is a core path and is tested first in the paper stage. |
 | 5 | Premium p10 $0.86 – p90 $9.41 | FR-12 scale normalization must handle "140/con" (per-contract $) vs "1.40" (per share), using the live quote. Add both forms to the Jev `role_<nX>` examples. |
-| 6 | **49% of exits are 1 contract** | **Decided, C82:** when `floor(fraction × lot)` = 0, the qty is left blank and the card is labeled "lot too small to trim: exit all or skip" (§6). |
-| 7 | Lots of 1–4 contracts | **Decided, C83:** TP legs = min(levels, qty), filled from TP1, editable (§6). A tier that cannot buy one contract gives a disabled card, never a round-up. |
+| 6 | **49% of exits are 1 contract** | **Decided, C82; superseded by C105:** the user types every quantity, so a 1-contract lot needs no special rounding rule (§6). |
+| 7 | Lots of 1–4 contracts | **Decided, C83:** TP legs = min(levels, qty), filled from TP1, editable (§6). The user types the quantity (C105). |
 | 8 | Up to 41 contracts/day, rows/day up to 109, volume tripling | Approval workload can reach 50–150 cards/day, so one-tap approve on the phone and card batching per position matter. PRD §12 has been updated to this level. |
 | 9 | Daily cost basis p90 ~$25k; daily P&L p5 ≈ −$2.3k | Observed ranges to **seed** the shadow-stage config for max exposure and max daily loss. The user sets the final values (C69). |
 | 10 | 18% wash-sale rows | Out of scope: the broker reports tax. C62 (a re-entry after a full exit is a new lot) matches this pattern. The system does not compute tax lots; its lot average price can differ from the broker's FIFO cost basis, and the UI labels which one it shows. |
@@ -1097,7 +1101,6 @@ All questions go in **one** request per message. `{…}` marks an option set bui
 | `ticker` | Choice | Which candidate is the traded underlying? | `{candidates.tickers}` + `not_stated` | FR-14 (`not_stated` → review). Candidates are generic, not whitelisted; the choice is validated against the optionable list (C86) after the symbol map (C85). |
 | `right` | Choice | Is the option a call or a put? | `call`, `put`, `not_stated` | |
 | `expiry` | Choice | Which token states the expiry? | `{candidates.expiry_tokens}` + `not_stated` | FR-15 (code resolves) |
-| `size_tier` | Choice | Which size did the provider signal? | `{config tier names}` + `not_stated` | C15 |
 | `exit_fraction` | Choice | How much of the position is being exited? | `all`, `half`, `third`, `quarter`, `other_stated`, `not_stated` | C51, C26 |
 | `stop_basis` | Choice | Is the stop on the option premium or on the underlying price? | `premium`, `underlying`, `not_applicable` | C49 |
 | `candle_close` | Noul | Does the stop depend on a candle closing beyond a level? | — | C49 (info only) |

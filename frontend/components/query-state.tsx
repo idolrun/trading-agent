@@ -3,6 +3,7 @@
 import type { ReactNode } from "react"
 import type { UseQueryResult } from "@tanstack/react-query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { userFacingMessage } from "@/lib/api/errors"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,12 +14,18 @@ type QueryStateProps<TData> = {
   loadingLabel: string
   emptyTitle: string
   emptyDescription?: string
+  /** Side panels: one inline line for empty, no "Up to date" row, a single loading bar. */
+  compact?: boolean
+  /** The caller renders the freshness line itself (see `freshnessOf` / `freshnessLabel`). */
+  hideFreshness?: boolean
+  /** `line` is a single sentence. The boxed empty panel is for places that need a destination. */
+  emptyLayout?: "panel" | "line"
   children: (data: TData) => ReactNode
 }
 
-type Freshness = "none" | "fresh" | "stale" | "refetching" | "placeholder" | "refetch-error"
+export type Freshness = "none" | "fresh" | "stale" | "refetching" | "placeholder" | "refetch-error"
 
-function freshnessOf<TData>(query: UseQueryResult<TData, Error>): Freshness {
+export function freshnessOf<TData>(query: UseQueryResult<TData, Error>): Freshness {
   if (query.data === undefined) return "none"
   if (query.isPlaceholderData) return "placeholder"
   if (query.isRefetching) return "refetching"
@@ -27,7 +34,7 @@ function freshnessOf<TData>(query: UseQueryResult<TData, Error>): Freshness {
   return "fresh"
 }
 
-const freshnessLabel: Record<Exclude<Freshness, "none">, string> = {
+export const freshnessLabel: Record<Exclude<Freshness, "none">, string> = {
   fresh: "Up to date",
   stale: "Stale",
   refetching: "Updating",
@@ -41,6 +48,9 @@ export function QueryState<TData>({
   loadingLabel,
   emptyTitle,
   emptyDescription,
+  compact = false,
+  hideFreshness = false,
+  emptyLayout = "panel",
   children,
 }: QueryStateProps<TData>) {
   const data = query.data
@@ -53,7 +63,7 @@ export function QueryState<TData>({
       return (
         <Alert data-query-phase="error" data-freshness="none" variant="destructive" className="flex flex-col items-start gap-3">
           <AlertTitle>Couldn&apos;t load this</AlertTitle>
-          <AlertDescription>{query.error.message}</AlertDescription>
+          <AlertDescription>{userFacingMessage(query.error)}</AlertDescription>
           <Button type="button" variant="outline" size="sm" onClick={retry}>
             Retry
           </Button>
@@ -64,8 +74,8 @@ export function QueryState<TData>({
     return (
       <div data-query-phase="loading" data-freshness="none" aria-busy="true" className="flex flex-col gap-2">
         <p className="text-sm text-muted-foreground">{loadingLabel}</p>
-        <Skeleton className="h-16 rounded-lg" />
-        <Skeleton className="h-16 rounded-lg" />
+        <Skeleton className="h-10 rounded-lg" />
+        {compact ? null : <Skeleton className="h-16 rounded-lg" />}
       </div>
     )
   }
@@ -79,18 +89,25 @@ export function QueryState<TData>({
       data-freshness={freshness}
       className="flex flex-col gap-3"
     >
-      <p className="min-h-5 text-xs text-muted-foreground" role="status" aria-live="polite">
-        {freshness === "none" ? "" : freshnessLabel[freshness]}
-      </p>
+      {hideFreshness || (compact && freshness === "fresh") ? null : (
+        <p className="min-h-5 text-xs text-muted-foreground" role="status" aria-live="polite">
+          {freshness === "none" ? "" : freshnessLabel[freshness]}
+        </p>
+      )}
       {query.isRefetchError ? (
         <Alert className="flex flex-row items-center justify-between gap-3">
-          <AlertDescription>{query.error.message}</AlertDescription>
+          <AlertDescription>{userFacingMessage(query.error)}</AlertDescription>
           <Button type="button" variant="outline" size="sm" onClick={retry}>
             Retry
           </Button>
         </Alert>
       ) : null}
-      {empty ? (
+      {empty && (compact || emptyLayout === "line") ? (
+        <p className="text-sm text-muted-foreground">
+          <span>{emptyTitle}</span>
+          {emptyDescription ? <span>. {emptyDescription}</span> : null}
+        </p>
+      ) : empty ? (
         <Empty className="border">
           <EmptyHeader>
             <EmptyTitle>{emptyTitle}</EmptyTitle>

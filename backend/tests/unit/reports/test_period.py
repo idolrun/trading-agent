@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from app.api.errors import ApiError
+from app.markettime import to_et
 from app.reports.period import Granularity, Period, et_midnight, resolve
 
 # Monday 2026-09-28 14:30 UTC = 10:30 ET (EDT, UTC-4)
@@ -48,6 +49,34 @@ def test_custom_includes_the_end_date_and_is_end_exclusive() -> None:
     w = resolve(Period.CUSTOM, date(2026, 9, 1), date(2026, 9, 3), NOW)
     assert w.start == et_midnight(date(2026, 9, 1))
     assert w.end == et_midnight(date(2026, 9, 4))
+
+
+def test_previous_window_steps_back_one_calendar_day_across_fall_back() -> None:
+    # 2026-11-01 is 25 hours. Elapsed time would round that up to two days.
+    w = resolve(Period.CUSTOM, date(2026, 11, 1), date(2026, 11, 1), NOW)
+    prev = w.previous
+    assert prev is not None
+    assert prev.start == et_midnight(date(2026, 10, 31))
+    assert prev.end == w.start
+
+
+def test_previous_window_keeps_the_end_wall_clock_across_fall_back() -> None:
+    # 15:00 ET after the clocks fall back. Shifting by the UTC midnight gap lands at 16:00.
+    now = datetime(2026, 11, 1, 20, 0, tzinfo=UTC)
+    w = resolve(Period.D1, None, None, now)
+    prev = w.previous
+    assert prev is not None and prev.start == et_midnight(date(2026, 10, 31))
+    prev_end, this_end = to_et(prev.end), to_et(w.end)
+    assert prev_end.date() == date(2026, 10, 31)
+    assert prev_end.timetz().replace(tzinfo=None) == this_end.timetz().replace(tzinfo=None)
+
+
+def test_previous_window_spans_the_fall_back_by_calendar_days() -> None:
+    w = resolve(Period.CUSTOM, date(2026, 10, 31), date(2026, 11, 2), NOW)
+    prev = w.previous
+    assert prev is not None
+    assert prev.start == et_midnight(date(2026, 10, 28))
+    assert prev.end == w.start
 
 
 def test_dst_day_is_23_or_25_hours_not_24() -> None:

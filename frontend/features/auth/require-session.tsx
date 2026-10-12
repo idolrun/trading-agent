@@ -2,12 +2,12 @@
 
 import { useRouter } from "next/navigation"
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react"
-import { ModeToggle } from "@/components/mode-toggle"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Spinner } from "@/features/auth/submit"
+import { UserMenu } from "@/features/auth/user-menu"
 import { loginUrl, useLogout, useSession } from "@/features/auth/use-session"
 import { onUnauthorized } from "@/lib/api/client"
 import { isApiError } from "@/lib/api/errors"
@@ -22,11 +22,14 @@ export function RequireSession({
   header,
   sidebar,
   actions,
+  menu,
 }: {
   children: ReactNode
   header?: ReactNode
   sidebar?: ReactNode
   actions?: ReactNode
+  /** Extra rows in the account menu (notifications). */
+  menu?: ReactNode
 }) {
   const router = useRouter()
   const session = useSession()
@@ -91,7 +94,7 @@ export function RequireSession({
   const bar = (
     <header
       ref={headerRef}
-      className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6"
+      className="sticky top-0 z-20 flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-background px-4 py-1.5 has-[[data-mode=live]]:border-t-4 has-[[data-mode=live]]:border-t-destructive sm:px-6"
     >
       {sidebar ? (
         <>
@@ -102,19 +105,9 @@ export function RequireSession({
       {header}
       <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
         {actions}
-        <ModeToggle />
-        <span title={session.data.email} className="max-w-32 truncate text-sm text-muted-foreground sm:max-w-48">
-          {session.data.email}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={logout.isPending}
-          onClick={() => logout.mutate()}
-        >
-          Sign out
-        </Button>
+        <UserMenu email={session.data.email} signingOut={logout.isPending} onSignOut={() => logout.mutate()}>
+          {menu}
+        </UserMenu>
       </div>
     </header>
   )

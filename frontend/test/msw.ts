@@ -14,12 +14,13 @@ export const cardFixture: Schemas["CardOut"] = {
   cardType: "normal",
   state: "pending",
   providerId: "1",
+  providerName: null,
   providerPositionId: null,
   lotId: null,
   underlying: "SPY",
   contract: { instrument: "option", underlying: "SPY", expiry: "2026-10-16", strike: "550", right: "call" },
   proposal: {
-    qty: 2,
+    qty: null, // the user types it
     price: "1.25",
     signalPrice: "1.20",
     warnings: ["Signal is 4 minutes old"],
@@ -27,6 +28,7 @@ export const cardFixture: Schemas["CardOut"] = {
     missingFields: [],
     reviewReasons: [],
     candidatePositions: [],
+    tpLevels: [],
     tpLegs: [],
     stop: null,
     breakevenOptions: null,
@@ -38,7 +40,7 @@ export const cardFixture: Schemas["CardOut"] = {
   note: null,
   noteHidden: false,
   postedAt: "2026-09-29T14:00:00Z",
-  validUntil: "2026-09-29T14:05:00Z",
+  validUntil: new Date(Date.now() + 5 * 60_000).toISOString(), // a live card: the inbox sorts past-deadline cards as stale
   version: 1,
 }
 
@@ -238,7 +240,6 @@ const configDocument = {
   ...defaultDocument(),
   channels: ["999888777666555444"],
   feed_silence_s: 60,
-  option_tiers: { default: "500", small: "250", lotto: "100" },
   entry_chase_pct: "2",
 }
 

@@ -53,6 +53,8 @@ process.env.E2E_INTERPRETATIONS_DIR = fixturesDir
 /** Environment of the E2E backend and of the console CLI run against its database. */
 export const backendEnv: Record<string, string> = {
   ENVIRONMENT: "test",
+  BROKER_ADAPTER: "fake", // the suite drives the scriptable fakes, whatever the developer's .env selects
+  MARKETDATA_ADAPTER: "fake",
   LOG_LEVEL: "WARNING",
   DATABASE_URL: onE2eDb(env("DATABASE_URL"), "DATABASE_URL"),
   DATABASE_OWNER_URL: onE2eDb(env("DATABASE_OWNER_URL"), "DATABASE_OWNER_URL"),

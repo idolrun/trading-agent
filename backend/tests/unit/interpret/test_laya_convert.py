@@ -37,7 +37,7 @@ def test_round_trip_of_every_answer_kind() -> None:
 
 def test_questions_become_plain_laya_dicts() -> None:
     context = ctx(EXAMPLE)
-    questions = to_laya_questions(build_questions(context, find_candidates(EXAMPLE), ["default"]))
+    questions = to_laya_questions(build_questions(context, find_candidates(EXAMPLE)))
     assert questions["msg_type"]["type"] == "choice"
     assert isinstance(questions["msg_type"]["criteria"], dict)
     assert questions["candle_close"]["type"] == "noul"

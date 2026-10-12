@@ -3,7 +3,6 @@
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { CheckField, ConfigField, FieldErrors, ScalarField, Section, useConfigForm } from "@/features/config/fields"
-import { llmError } from "@/features/config/types"
 
 export function ModelsSection() {
   const { draft, patch } = useConfigForm()
@@ -11,11 +10,10 @@ export function ModelsSection() {
   const setJev = (change: Partial<typeof jev>) => patch({ jev: { ...jev, ...change } })
   const { laya } = draft
   const setLaya = (change: Partial<typeof laya>) => patch({ laya: { ...laya, ...change } })
-  const jsonError = llmError(draft.llm)
   return (
-    <Section title="Models">
+    <Section title="Models and LLM" description="Interpreters, the LLM registry and spend limit.">
       <div className="flex flex-col gap-2 sm:col-span-2">
-        <h3 className="text-sm font-medium">Jev</h3>
+        <h4 className="text-sm font-medium">Jev (primary interpreter)</h4>
         <div className="grid gap-3 sm:grid-cols-2">
           <ConfigField name="jev_model" label="Jev model">
             {(control) => <Input {...control} value={jev.model} onChange={(event) => setJev({ model: event.target.value })} />}
@@ -36,11 +34,11 @@ export function ModelsSection() {
             )}
           </ConfigField>
         </div>
-        <CheckField label="Jev enabled" checked={jev.enabled} onChange={(enabled) => setJev({ enabled })} />
+        <CheckField name="jev_enabled" label="Jev enabled" checked={jev.enabled} onChange={(enabled) => setJev({ enabled })} />
         <FieldErrors name="jev" />
       </div>
       <div className="flex flex-col gap-2 sm:col-span-2">
-        <h3 className="text-sm font-medium">Laya (local fallback when Jev gives no usable answer)</h3>
+        <h4 className="text-sm font-medium">Laya (local fallback when Jev gives no usable answer)</h4>
         <div className="grid gap-3 sm:grid-cols-2">
           <ConfigField name="laya_timeout_ms" label="Laya timeout (ms)">
             {(control) => (
@@ -53,7 +51,7 @@ export function ModelsSection() {
             </ConfigField>
           ))}
         </div>
-        <CheckField label="Laya enabled" checked={laya.enabled} onChange={(enabled) => setLaya({ enabled })} />
+        <CheckField name="laya_enabled" label="Laya enabled" checked={laya.enabled} onChange={(enabled) => setLaya({ enabled })} />
         <FieldErrors name="laya" />
       </div>
       <ConfigField
@@ -72,15 +70,10 @@ export function ModelsSection() {
               value={draft.llm}
               onChange={(event) => patch({ llm: event.target.value })}
             />
-            {jsonError ? (
-              <p role="alert" className="text-xs text-destructive">
-                {jsonError}
-              </p>
-            ) : null}
           </>
         )}
       </ConfigField>
-      <CheckField label="Note guard enabled" checked={draft.note_guard_enabled} onChange={(note_guard_enabled) => patch({ note_guard_enabled })} />
+      <CheckField name="note_guard_enabled" label="Note guard enabled" checked={draft.note_guard_enabled} onChange={(note_guard_enabled) => patch({ note_guard_enabled })} />
       <ScalarField name="llm_monthly_budget_usd" label="LLM monthly budget (USD)" />
     </Section>
   )

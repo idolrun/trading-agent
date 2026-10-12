@@ -1,5 +1,6 @@
 "use client"
 
+import { X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -16,7 +17,7 @@ import {
 } from "@/features/labels/types"
 import type { LabelLink, LabelSignal, MsgType, QueueItem } from "@/features/labels/types"
 import { usePositionList } from "@/features/positions/queries"
-import { formatTime } from "@/lib/format"
+import { formatTime, providerLabel } from "@/lib/format"
 
 function FieldInput({ name, value, onChange }: { name: string; value: unknown; onChange: (value: unknown) => void }) {
   if (BOOLEAN_FIELDS.includes(name)) {
@@ -46,7 +47,7 @@ function SignalEditor({ signal, onChange, onRemove }: { signal: LabelSignal; onC
   const remaining = FIELD_NAMES.filter((name) => !names.includes(name))
   const setFields = (fields: Record<string, unknown>) => onChange({ ...signal, fields })
   return (
-    <fieldset className="flex flex-col gap-2 rounded-md border border-border p-3">
+    <fieldset className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
       <legend className="px-1 text-sm font-medium">Signal {signal.idx + 1}</legend>
       <div className="flex flex-wrap items-center gap-2">
         <NativeSelect aria-label={`Type ${signal.idx + 1}`} value={signal.msgType} onChange={(e) => onChange({ ...signal, msgType: e.target.value as MsgType })}>
@@ -56,13 +57,24 @@ function SignalEditor({ signal, onChange, onRemove }: { signal: LabelSignal; onC
           <NativeSelectOption value="">Instrument: none</NativeSelectOption>
           {INSTRUMENTS.map((instrument) => <NativeSelectOption key={instrument} value={instrument}>{instrument}</NativeSelectOption>)}
         </NativeSelect>
-        <Button type="button" variant="outline" className="ml-auto h-11" onClick={onRemove}>Remove signal {signal.idx + 1}</Button>
+        <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={onRemove}>
+          Remove signal {signal.idx + 1}
+        </Button>
       </div>
       {names.map((name) => (
         <div key={name} className="flex items-center gap-2 text-sm">
           <span className="w-40 shrink-0">{words(name)}</span>
           <FieldInput name={name} value={signal.fields[name]} onChange={(value) => setFields({ ...signal.fields, [name]: value })} />
-          <Button type="button" variant="ghost" className="h-11" aria-label={`Remove ${words(name)}`} onClick={() => setFields(Object.fromEntries(Object.entries(signal.fields).filter(([key]) => key !== name)))}>×</Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label={`Remove ${words(name)}`}
+            onClick={() => setFields(Object.fromEntries(Object.entries(signal.fields).filter(([key]) => key !== name)))}
+          >
+            <X aria-hidden className="size-4" />
+          </Button>
         </div>
       ))}
       <NativeSelect aria-label={`Add field ${signal.idx + 1}`} value="" onChange={(e) => e.target.value && setFields({ ...signal.fields, [e.target.value]: emptyValue(e.target.value) })} className="self-start">
@@ -155,16 +167,18 @@ export function LabelEditor({ item, onDone }: { item: QueueItem; onDone: () => v
   const context = [...parent, ...item.context.filter((m) => !m.isReplyParent)]
 
   return (
-    <div ref={root} className="flex flex-col gap-4">
+    <div ref={root} className="flex flex-col gap-3">
       <section aria-label="Message" className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">Provider {item.providerId} · {formatTime(item.postedAt)}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {providerLabel(item.providerId)} · <time dateTime={item.postedAt}>{formatTime(item.postedAt)}</time>
+        </p>
         {context.map((m) => (
-          <p key={m.id} className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm break-words whitespace-pre-wrap">
-            <span className="block text-xs text-muted-foreground">{m.isReplyParent ? "Replied to" : "Earlier"} · {m.atEt}</span>
+          <p key={m.id} className="border-l-2 border-border pl-3 text-sm break-words whitespace-pre-wrap text-muted-foreground">
+            <span className="block text-xs">{m.isReplyParent ? "Replied to" : "Earlier"} · {m.atEt}</span>
             {m.text}
           </p>
         ))}
-        <p data-testid="message-text" className="rounded-md border border-foreground/30 px-3 py-2 text-base break-words whitespace-pre-wrap">
+        <p data-testid="message-text" className="border-l-2 border-foreground/40 pl-3 text-sm break-words whitespace-pre-wrap">
           {highlightSpans(item.text, fieldSpans(item.text, signals))}
         </p>
       </section>
@@ -182,15 +196,27 @@ export function LabelEditor({ item, onDone }: { item: QueueItem; onDone: () => v
           }}
         />
       ))}
-      <Button type="button" variant="outline" className="h-11 self-start" onClick={() => setSignals([...signals, { idx: signals.length, msgType: "entry", fields: {} }])}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="self-start"
+        onClick={() => setSignals([...signals, { idx: signals.length, msgType: "entry", fields: {} }])}
+      >
         Add signal
       </Button>
       <LinkPicker item={item} link={link} count={signals.length} onChange={setLink} />
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" className="h-12 text-base" aria-keyshortcuts="C Enter" disabled={item.prelabel == null || save.isPending} onClick={confirm}>Confirm</Button>
-        <Button type="button" variant="outline" className="h-12 text-base" aria-keyshortcuts="N" disabled={save.isPending} onClick={noSignal}>No signal</Button>
-        <Button type="button" variant="outline" className="h-12 text-base" disabled={save.isPending} onClick={() => submit(cleanLabel(signals, link))}>Save correction</Button>
+        <Button type="button" className="h-11" aria-keyshortcuts="C Enter" disabled={item.prelabel == null || save.isPending} onClick={confirm}>
+          {save.isPending ? "Saving…" : "Confirm"}
+        </Button>
+        <Button type="button" variant="outline" className="h-11" aria-keyshortcuts="N" disabled={save.isPending} onClick={noSignal}>
+          No signal
+        </Button>
+        <Button type="button" variant="outline" className="h-11" disabled={save.isPending} onClick={() => submit(cleanLabel(signals, link))}>
+          Save correction
+        </Button>
       </div>
       <p className="text-xs text-muted-foreground">Keys: C or Enter confirm, N no signal, E edit fields, J / K next / previous.</p>
     </div>

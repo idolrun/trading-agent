@@ -130,7 +130,7 @@ def reentry(*priors: Prior) -> Resolution:
 
 
 def test_back_in_re_enters_the_one_position_closed_today() -> None:
-    parsed = fast_parse("back in @ 2.10 @everyone", reentry(prior(P_LIVE)), [])
+    parsed = fast_parse("back in @ 2.10 @everyone", reentry(prior(P_LIVE)))
     assert parsed is not None
     [s] = parsed.signals
     f = s.fields
@@ -151,12 +151,12 @@ def test_back_in_re_enters_the_one_position_closed_today() -> None:
 
 
 def test_back_in_with_two_candidates_or_an_incomplete_setup_is_not_settled_by_code() -> None:
-    assert fast_parse("back in", reentry(prior(P_LIVE), prior(P_OTHER)), []) is None
+    assert fast_parse("back in", reentry(prior(P_LIVE), prior(P_OTHER))) is None
     incomplete = prior(P_SETUP, status="watch", instrument=None, strike=None, right=None)
-    assert fast_parse("back in", reentry(incomplete), []) is None
-    assert fast_parse("back in", reentry(), []) is None
+    assert fast_parse("back in", reentry(incomplete)) is None
+    assert fast_parse("back in", reentry()) is None
 
 
 def test_back_in_on_a_complete_setup_opens_it_without_a_reentry_pointer() -> None:
-    parsed = fast_parse("reloading", reentry(prior(P_SETUP, status="conditional")), [])
+    parsed = fast_parse("reloading", reentry(prior(P_SETUP, status="conditional")))
     assert parsed is not None and "reentry_of" not in parsed.signals[0].field_sources

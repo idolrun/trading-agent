@@ -16,7 +16,7 @@ export function Field({
   return (
     <div className={cn("min-w-0", className)}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn("font-medium tabular-nums break-words", large ? "text-xl" : "text-sm")}>{children}</dd>
+      <dd className={cn("font-medium tabular-nums break-words", large ? "text-lg" : "text-sm")}>{children}</dd>
     </div>
   )
 }

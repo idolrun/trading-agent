@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { QueryState } from "@/components/query-state"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/badge"
@@ -8,7 +7,7 @@ import { InstrumentBars } from "@/features/reports/charts"
 import { CoverageNote } from "@/features/reports/coverage-note"
 import type { ReportFilters } from "@/features/reports/filters"
 import { percent, price, stamp, words } from "@/features/reports/format"
-import { useInstruments, type InstrumentParams } from "@/features/reports/queries"
+import { useInstruments, useSectionParams, type InstrumentParams } from "@/features/reports/queries"
 import { ChartFrame, EmptyNote, Notice, Pager, Pnl, Section, SortHead, Unavailable } from "@/features/reports/ui"
 
 const PAGE_SIZE = 25
@@ -61,7 +60,11 @@ export function InstrumentPnlChart({ filters }: { filters: ReportFilters }) {
 type Props = { filters: ReportFilters; onSelectSymbol: (symbol: string) => void }
 
 export function InstrumentsSection({ filters, onSelectSymbol }: Props) {
-  const [params, setParams] = useState<InstrumentParams>({ page: 1, sort: "net_pnl", order: "desc" })
+  const [params, setParams] = useSectionParams<InstrumentParams>(filters, {
+    page: 1,
+    sort: "net_pnl",
+    order: "desc",
+  })
   const query = useInstruments(filters, { ...params, pageSize: PAGE_SIZE })
   const sort = (key: InstrumentParams["sort"]) =>
     setParams({ page: 1, sort: key, order: params.sort === key && params.order === "desc" ? "asc" : "desc" })

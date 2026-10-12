@@ -43,7 +43,7 @@ from app.system.models import FlagName, SystemFlag
 from tests.integration.conftest import _url
 from tests.integration.interpret.test_jev_client import ScriptedJev, rate_limited, response
 from tests.integration.pipeline.harness import T0, Factory, Harness
-from tests.jev_helpers import EXAMPLE, c, example_answers
+from tests.jev_helpers import EXAMPLE, c, example_answers, n
 from tests.laya_helpers import FakeLaya
 from tests.llm_helpers import FakeChat, FakeRegistry, structured
 from tests.messages import PROVIDER_A, PROVIDER_B
@@ -56,7 +56,6 @@ ENTRY = {
     "strike": {"raw": "770c"},
     "right": {"raw": "770c"},
     "entry_price": {"raw": ".95"},
-    "size_tier": {"raw": "lotto"},
     "links_to": "new_position",
 }
 LLM = LlmConfig(
@@ -224,6 +223,20 @@ async def test_llm_is_optional_unsure_jev_goes_to_review_without_degrading(
     flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
     assert flag is None or not flag.active
     assert await db_session.scalar(select(func.count()).select_from(ModelCall.__table__)) == 1
+
+
+async def test_without_an_llm_a_doubtful_flag_is_an_entry_card_the_user_decides(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    """Jev read the entry but is unsure whether the stop waits for a candle close: the card
+    carries that reading as a review card the user can approve or reject, not a blank one."""
+    no_llm = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
+    env = await example(no_llm)
+    unsure = jev(no_llm, candle_close=n(0.21))
+    await no_llm.process(env, processor=no_llm.processor(fixture=False, jev=unsure))
+    [card] = await cards(db_session)
+    assert card.action == "entry" and card.card_type == "review"
+    assert "low_field_confidence:candle_close" in card.proposal["review_reasons"]
 
 
 async def test_llm_is_optional_jev_unavailable_is_a_review_card(

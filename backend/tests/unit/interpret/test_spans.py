@@ -47,7 +47,6 @@ def test_exact_spans_pass_and_offsets_are_filled() -> None:
         right=lit("call", "357.5C"),
         entry_price=lit(Decimal("1.67"), "1.67"),
         tp_levels=[lit(Decimal("2.10"), "2.10"), lit(Decimal("2.5"), "2.50")],
-        size_tier=lit("lotto", "lotto"),
         qty_stated=lit(3, "3x"),
     )
     assert verify_literal_spans(parsed, TEXT) == []

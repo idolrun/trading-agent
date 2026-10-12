@@ -27,6 +27,13 @@ def context_channel(channel: Any) -> tuple[int, int | None]:
     return (parent, channel.id) if parent else (channel.id, None)
 
 
+def _author(user: Any) -> dict[str, Any]:
+    """Id plus the name shown in Discord (server nickname, else global name, else username), so the
+    desk can label a provider; the id alone stays the identity."""
+    name = getattr(user, "display_name", None) or getattr(user, "name", None)
+    return {"id": user.id, "name": name} if isinstance(name, str) and name else {"id": user.id}
+
+
 def _body(message: discord.Message, **extra: Any) -> dict[str, Any]:
     reference = message.reference
     channel_id, thread_id = context_channel(message.channel)
@@ -36,7 +43,7 @@ def _body(message: discord.Message, **extra: Any) -> dict[str, Any]:
         "channel_id": channel_id,
         "thread_id": thread_id,
         "guild_id": guild.id if guild is not None else None,
-        "author": {"id": message.author.id},
+        "author": _author(message.author),
         "content": message_text(message),
         "reply_to_id": reference.message_id if reference else None,
         "mentions": [user.id for user in message.mentions],

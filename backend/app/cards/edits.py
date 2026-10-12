@@ -9,8 +9,9 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
+from app.decide import rules
 from app.decide.types import ProposedAction
 
 APPROVE_EDITS = frozenset({"qty", "tp_split", "breakeven_choice"})  # the rest need `edit` first
@@ -19,7 +20,7 @@ APPROVE_EDITS = frozenset({"qty", "tp_split", "breakeven_choice"})  # the rest n
 class Edits(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    qty: int | None = Field(default=None, ge=1)
+    qty: StrictInt | None = Field(default=None, ge=1)  # whole shares / contracts, user-typed
     price: Decimal | None = Field(default=None, gt=0)
     tp_split: list[int] | None = None
     breakeven_choice: Literal["user_avg", "provider_entry"] | None = None
@@ -50,12 +51,16 @@ def apply_edits(proposal: ProposedAction, edits: Edits) -> ProposedAction:
     update: dict[str, object] = {}
     if edits.qty is not None:
         update["qty"] = edits.qty
+        if edits.tp_split is None and proposal.tp_levels:  # C105: legs follow the user's qty
+            update["tp_legs"] = rules.tp_legs(proposal.tp_levels, edits.qty)
     if edits.price is not None:
         update["limit_price"] = edits.price
         if proposal.signal_price is None:
             update["signal_price"] = edits.price
     if edits.tp_split is not None:
         legs = proposal.tp_legs
+        if proposal.tp_levels:  # entry/add: legs exist only for the qty the user entered
+            legs = rules.tp_legs(proposal.tp_levels, edits.qty or proposal.qty)
         if len(edits.tp_split) != len(legs) or any(q < 1 for q in edits.tp_split):
             raise EditInvalid("tpSplit needs one qty >= 1 per take-profit leg")
         qty = edits.qty or proposal.qty

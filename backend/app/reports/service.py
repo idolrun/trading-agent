@@ -895,18 +895,20 @@ def _orders_with_fill(by_status: Counter[str]) -> int:
 def _symbol_fills(
     rows: list[tuple[str, str, str, int, int, Decimal, datetime]],
 ) -> list[out.SymbolFills]:
-    acc: dict[str, dict[str, list[Decimal]]] = defaultdict(
+    acc: dict[tuple[str, str], dict[str, list[Decimal]]] = defaultdict(
         lambda: {"buy": [ZERO, ZERO], "sell": [ZERO, ZERO]}
     )
-    for symbol, _ins, side, _n, qty, value, _last in rows:
-        acc[queries.underlying_of(symbol)][side][0] += qty
-        acc[queries.underlying_of(symbol)][side][1] += value
+    for symbol, instrument, side, _n, qty, value, _last in rows:
+        key = (queries.underlying_of(symbol), instrument)
+        acc[key][side][0] += qty
+        acc[key][side][1] += value
     result = []
-    for symbol, sides in acc.items():
+    for (symbol, instrument), sides in acc.items():
         buy, sell = sides["buy"], sides["sell"]
         result.append(
             out.SymbolFills(
                 symbol=symbol,
+                instrument=instrument,
                 buy_qty=int(buy[0]),
                 sell_qty=int(sell[0]),
                 avg_buy_price=buy[1] / buy[0] if buy[0] else None,

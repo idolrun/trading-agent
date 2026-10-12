@@ -138,3 +138,46 @@ describe("positions", () => {
     )
   })
 })
+
+describe("order list rows", () => {
+  const row = (extra: object) => ({ ...orderFixture, id: `o-${Math.random()}`, ...extra })
+
+  it("keeps submission and fills apart, and warns on an unknown status", async () => {
+    server.use(
+      http.get("*/api/v1/orders", () =>
+        HttpResponse.json({
+          items: [
+            row({ status: "intent", filledQty: 0, kind: "entry" }),
+            row({ status: "submitted", filledQty: 0, kind: "exit" }),
+            row({ status: "unknown", filledQty: 0, kind: "stop" }),
+            row({ status: "rejected", filledQty: 0, kind: "add" }),
+          ],
+          nextCursor: null,
+        }),
+      ),
+    )
+    renderWithQuery(<OrderList compact />)
+    expect(await screen.findByText("Intent created")).toBeInTheDocument()
+    expect(screen.getByText("Submitted")).toBeInTheDocument()
+    expect(screen.getByText("Rejected")).toBeInTheDocument()
+    expect(screen.getByText("Unknown: reconcile")).toBeInTheDocument()
+    expect(screen.getByText(/Broker status unknown/)).toBeInTheDocument()
+    expect(screen.getAllByText("filled 0/2")).toHaveLength(4) // submitted is not filled
+  })
+
+  it("shows fills on a partial fill and caps the compact panel with a link to history", async () => {
+    server.use(http.get("*/api/v1/orders", () => HttpResponse.json({ items: Array.from({ length: 8 }, (_, n) => row({ id: `many-${n}` })), nextCursor: null })))
+    renderWithQuery(<OrderList compact />)
+    expect((await screen.findAllByText("filled 1/2")).length).toBe(6)
+    expect(screen.getByRole("link", { name: "2 more in order history" })).toHaveAttribute("href", "/orders")
+    expect(screen.getByRole("link", { name: "Order history" })).toHaveAttribute("href", "/orders")
+  })
+
+  it("an empty compact panel is one line with the history link still present", async () => {
+    server.use(http.get("*/api/v1/orders", () => HttpResponse.json({ items: [], nextCursor: null })))
+    const { container } = renderWithQuery(<OrderList compact />)
+    expect(await screen.findByText("No orders")).toBeInTheDocument()
+    expect(container.querySelector("[data-slot=empty]")).toBeNull()
+    expect(screen.getByRole("link", { name: "Order history" })).toBeInTheDocument()
+  })
+})

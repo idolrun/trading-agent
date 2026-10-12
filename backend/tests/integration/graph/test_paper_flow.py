@@ -22,6 +22,7 @@ from sqlmodel import col
 
 from app.broker.fake import Behavior, FakeBroker, Script
 from app.broker.simulated import SimulatedBroker
+from app.cards.approval_service import DecisionInvalid
 from app.cards.models import Card, CardAction, CardEvent, CardReason, CardState, CardType
 from app.config import get_settings
 from app.execution.consumer import BrokerEventConsumer
@@ -70,7 +71,6 @@ def answers(**override: Any) -> dict[str, Any]:
         role_n1=c("strike", 0.97),
         role_n2=c("entry_price", 0.95),
         stop_basis=c("not_applicable", 0.95),
-        size_tier=c("default", 0.9),
         **override,
     )
 
@@ -231,7 +231,7 @@ async def test_jev_settles_the_signal_and_laya_is_not_called(p: Paper) -> None:
         CardType.NORMAL,
         CardState.PENDING,
     )
-    assert card.proposal["qty"] == 13 and card.proposal["limit_price"] == "0.74"
+    assert card.proposal["qty"] is None and card.proposal["limit_price"] == "0.74"
 
 
 async def test_laya_answers_when_jev_is_down_and_the_card_is_the_same(p: Paper) -> None:
@@ -239,7 +239,7 @@ async def test_laya_answers_when_jev_is_down_and_the_card_is_the_same(p: Paper) 
     card = await p.signal(processor)
     assert p.laya.calls == 1
     assert (card.action, card.state) == (CardAction.ENTRY, CardState.PENDING)
-    assert card.proposal["qty"] == 13
+    assert card.proposal["qty"] is None
 
 
 async def test_an_unsure_jev_is_a_review_not_a_laya_question(p: Paper) -> None:
@@ -256,7 +256,11 @@ async def test_neither_model_settling_it_gives_a_review_card_and_no_order(p: Pap
     assert weak.calls == 1
     assert card.card_type == CardType.REVIEW
     assert await p.w.orders() == []
-    await p.w.decide(card.card_id)  # a review card can be acknowledged; it places nothing
+    with pytest.raises(DecisionInvalid, match="could not be read"):  # nothing to approve
+        await p.w.decide(card.card_id)
+    assert (await p.card(card.card_id)).state == CardState.PENDING
+    await p.w.decide(card.card_id, "reject")  # the user dismisses it
+    assert (await p.card(card.card_id)).state == CardState.REJECTED
     assert await p.w.orders() == []
     assert [c for c, _ in p.w.broker.calls if c == "submit"] == []
 
@@ -288,7 +292,7 @@ async def test_approved_signal_becomes_an_order_a_fill_a_lot_and_reconciles(p: P
 
 async def test_preflight_shows_the_numbers_the_decision_rests_on(p: Paper) -> None:
     card = await p.signal(await p.processor(jev_client(p), p.laya))
-    pf = await p.w.approvals.preflight(card.card_id)
+    pf = await p.w.approvals.preflight(card.card_id, qty=13)  # what the user typed
     assert pf.failure is None
     assert {c.name for c in pf.checks} >= {"hours", "validity", "quote_fresh", "price_band", "risk"}
     assert (pf.bid, pf.ask, pf.qty, pf.limit_price) == (
@@ -311,18 +315,30 @@ async def test_preflight_shows_the_numbers_the_decision_rests_on(p: Paper) -> No
 # --- risk: account, working orders, freshness ----------------------------------------------
 
 
-async def test_insufficient_buying_power_disables_the_card(p: Paper) -> None:
-    p.w.broker.buying_power = Decimal("500")  # the order costs 962
+async def test_a_quantity_the_account_cannot_afford_is_refused_not_reduced(p: Paper) -> None:
+    """C105: no quantity exists when the card is made, so the account cannot disable it then.
+    The user's number is judged when typed; the refusal names the reason and changes nothing."""
+    p.w.broker.buying_power = Decimal("500")  # 13 contracts cost 962
     card = await p.signal(await p.processor(jev_client(p), p.laya))
-    assert card.state == CardState.DISABLED
-    assert card.proposal["disabled_reason"] == "insufficient buying power"
+    assert card.state == CardState.PENDING and card.proposal["qty"] is None
+    with pytest.raises(DecisionInvalid, match="insufficient buying power"):
+        await p.w.decide(card.card_id, qty=13)
+    after = await p.card(card.card_id)
+    assert after.state == CardState.PENDING and after.proposal["qty"] is None
     assert await p.w.orders() == []
+    await p.w.decide(card.card_id, qty=5)  # 5 contracts cost 370: the user chooses, and it fits
+    assert [o.qty for o in await p.w.orders()] == [5]
 
 
 async def test_buying_power_lost_between_card_and_approval_places_nothing(p: Paper) -> None:
     card = await p.signal(await p.processor(jev_client(p), p.laya))
     p.w.broker.buying_power = Decimal("500")  # spent elsewhere in the meantime
-    await p.w.decide(card.card_id)
+
+    async def passed(*_: object) -> None:  # the approval-time check ran just before it went
+        return None
+
+    p.w.approvals._qty_gate = passed  # type: ignore[method-assign]
+    await p.w.decide(card.card_id)  # revalidation still refuses
     assert (await p.card(card.card_id)).state == CardState.INVALIDATED
     assert await p.w.orders() == []
     last = (await p.events(card.card_id))[-1]
@@ -353,9 +369,9 @@ async def test_a_working_order_counts_against_the_exposure_limit(resting: Paper)
     assert working.status in (OrderStatus.WORKING, OrderStatus.SUBMITTED)  # not filled: no lot yet
     assert await p.lots() == []
 
-    await p.w.decide(second.card_id)  # 962 working + 962 new > 1500
-    assert (await p.card(second.card_id)).state == CardState.INVALIDATED
-    assert (await p.events(second.card_id))[-1].detail["reason"] == "max exposure"
+    with pytest.raises(DecisionInvalid, match="max exposure"):  # 962 working + 962 new > 1500
+        await p.w.decide(second.card_id)
+    assert (await p.card(second.card_id)).state == CardState.PENDING  # nothing resized
     assert len(await p.w.orders()) == 1  # not a second order
 
 

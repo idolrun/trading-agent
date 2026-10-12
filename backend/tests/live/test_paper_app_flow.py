@@ -95,7 +95,6 @@ async def test_signal_to_alpaca_paper_fill_lot_and_reconciliation(
             factory,
             tmp_path,
             trading_mode=TradingMode.PAPER,
-            stock_tiers={"default": D("5000")},  # one share at a time is enough; the tier buys more
             quote_max_age_s=300,
         )
         h.clock = FixedClock(datetime.now(UTC))

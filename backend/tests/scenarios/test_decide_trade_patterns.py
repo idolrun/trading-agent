@@ -1,11 +1,11 @@
-"""F023: decide() on TRD §12 real-trade patterns (AC-14, AC-15, AC-16) and the tier rules."""
+"""F023/F085: decide() on TRD §12 real-trade patterns (AC-14); the user types every quantity."""
 
 import uuid
 from datetime import timedelta
 from typing import Any
 
 from app.cards.models import CardAction, CardType
-from app.decide.engine import TIER_CANNOT_BUY, decide
+from app.decide.engine import decide
 from app.decide.types import DecisionInputs, LotView
 from app.interpret.models import LinkMethod, LinkOutcome
 from app.interpret.signal import F, ParsedSignal, SignalFields
@@ -28,11 +28,16 @@ from tests.decide_helpers import (
 )
 
 
-def test_option_entry_sized_from_tier() -> None:
+def test_option_entry_has_price_but_no_quantity() -> None:
     card = entry()
     assert (card.action, card.card_type) == (CardAction.ENTRY, CardType.NORMAL)
-    assert (card.limit_price, card.qty) == (D("1.75"), 5)  # floor(1000 / 175)
+    assert (card.limit_price, card.qty) == (D("1.75"), None)  # C105: the user enters it
     assert card.valid_until == POSTED + timedelta(seconds=60)
+
+
+def test_signal_stated_quantity_is_ignored() -> None:
+    card = entry(qty_stated=5)
+    assert card.qty is None and card.disabled_reason is None and card.review_reasons == []
 
 
 def test_range_uses_top() -> None:
@@ -40,19 +45,11 @@ def test_range_uses_top() -> None:
     assert card.limit_price == D("1.89")
 
 
-def test_tier_cannot_buy_one_contract_is_disabled() -> None:
-    card = entry(size_tier="lotto", entry_price=px("2.50"))
-    assert card.card_type == CardType.DISABLED and card.disabled_reason == TIER_CANNOT_BUY
-    assert card.qty is None
-
-
-def test_bracket_legs_at_entry() -> None:
+def test_bracket_at_entry_keeps_levels_until_the_user_enters_a_quantity() -> None:
     tps = (px("2.10"), px("2.50"), px("3.00"))
     card = entry(stop_level=px("1.20"), tp_levels=tps)
-    assert [leg.qty for leg in card.tp_legs] == [2, 2, 1]  # 5 contracts, 3 TPs
+    assert card.tp_levels == [D("2.10"), D("2.50"), D("3.00")] and card.tp_legs == []
     assert card.stop is not None and (card.stop.level, card.stop.held_by) == (D("1.20"), "broker")
-    two = entry(entry_price=px("3.50"), tp_levels=tps)  # 1000 / 368 -> 2 contracts
-    assert two.qty == 2 and [leg.qty for leg in two.tp_legs] == [1, 1]  # AC-16
 
 
 def test_underlying_stop_is_system_held() -> None:
@@ -65,7 +62,7 @@ def test_underlying_stop_is_system_held() -> None:
     )
 
 
-def test_unknown_tick_or_tier_is_review() -> None:
+def test_unknown_tick_is_review() -> None:
     [card] = run(
         "entry",
         link=NEW,
@@ -77,7 +74,6 @@ def test_unknown_tick_or_tier_is_review() -> None:
         entry_price=px("1.67"),
     )
     assert card.card_type == CardType.REVIEW and card.review_reasons == ["tick_unknown"]
-    assert entry(size_tier="huge").review_reasons == ["unknown_size_tier:huge"]
 
 
 def test_unscaled_premium_is_review() -> None:
@@ -104,11 +100,11 @@ def test_missing_underlying_review_with_suggestion() -> None:
     assert card.qty is None
 
 
-def test_stock_entry_uses_stock_tier() -> None:
+def test_stock_entry_has_limit_but_no_quantity() -> None:
     [card] = run(
         "stock_entry", link=NEW, instrument="stock", underlying="GOOGL", entry_price=px("180.25")
     )
-    assert (card.action, card.qty, card.limit_price) == (CardAction.ENTRY, 26, D("189.26"))
+    assert (card.action, card.qty, card.limit_price) == (CardAction.ENTRY, None, D("189.26"))
 
 
 def test_stock_entry_without_price_not_actionable() -> None:
@@ -123,25 +119,26 @@ def test_entry_on_open_position_is_add_only_with_lot() -> None:
         "right": "call",
     }
     [card] = run("entry", lot_qty=2, entry_price=px("1.67"), **base)
-    assert card.action == CardAction.ADD and card.qty == 5
+    assert card.action == CardAction.ADD and card.qty is None
     assert run("entry", entry_price=px("1.67"), **base) == []  # OD-18: no lot -> feed only
 
 
-def test_trim_half_on_one_lot_blank_with_label() -> None:
+def test_trim_never_prefills_a_quantity() -> None:
     [card] = run("trim", lot_qty=1, exit_fraction="half", instrument=None)
-    assert (card.action, card.qty, card.labels) == (CardAction.TRIM, None, ["lot_too_small"])
-    assert card.card_type == CardType.NORMAL  # AC-15: not review, just needs a qty
+    assert (card.action, card.qty) == (CardAction.TRIM, None)
+    assert card.labels == ["provider_fraction:half"]  # information only
+    assert card.card_type == CardType.NORMAL  # not review, just needs a qty (AC-15)
     assert card.valid_until == POSTED + timedelta(seconds=600)
-
-
-def test_exit_quantities() -> None:
-    assert run("trim", lot_qty=5, exit_fraction="half", instrument=None)[0].qty == 2
+    assert run("trim", lot_qty=5, exit_fraction="half", instrument=None)[0].qty is None
     assert run("trim", lot_qty=5, exit_fraction="not_stated", instrument=None)[0].qty is None
-    [all_out] = run("trim", lot_qty=5, exit_fraction="all", instrument=None)
-    assert (all_out.action, all_out.qty) == (CardAction.EXIT, 5)
-    assert run("full_exit", lot_qty=3, instrument=None)[0].qty == 3
+
+
+def test_full_exit_is_a_close_card_holding_the_lot() -> None:
+    for t, kw in (("full_exit", {}), ("trim", {"exit_fraction": "all"})):
+        [close] = run(t, lot_qty=5, instrument=None, **kw)
+        assert (close.action, close.qty) == (CardAction.CLOSE, 5)
     [soft] = run("soft_exit", lot_qty=3, instrument=None)
-    assert (soft.qty, soft.labels) == (None, ["suggestion"])
+    assert (soft.action, soft.qty, soft.labels) == (CardAction.EXIT, None, ["suggestion"])
 
 
 def test_follow_up_without_lot_is_feed_only() -> None:

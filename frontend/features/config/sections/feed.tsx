@@ -4,7 +4,7 @@ import { ListField, ScalarField, Section } from "@/features/config/fields"
 
 export function FeedSection() {
   return (
-    <Section title="Feed">
+    <Section title="Discord feed" description="Which messages are read and when the feed is reported unhealthy.">
       <ListField name="channels" label="Channels" />
       <ListField name="muted_authors" label="Muted authors" />
       <ScalarField name="feed_silence_s" label="Feed silence alert (s)" />

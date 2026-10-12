@@ -50,6 +50,9 @@ async def seeded(signed_in: Api, tmp_path: Path) -> tuple[Api, dict[str, str]]:
         author=PROVIDER_A,
     )
     await h.process(a2)
+    signed_in.app.state.orders.broker_for_mode().seed_position(
+        GOOGL, 4, Decimal("0.74")
+    )  # the broker holds the lot
     items = (await signed_in.client.get("/api/v1/cards")).json()["items"]
     return signed_in, {c["action"]: c["id"] for c in items}
 
@@ -95,6 +98,52 @@ async def test_ac15_blank_qty_trim_not_approvable(seeded: tuple[Api, dict[str, s
     assert body["state"] != "pending"
 
 
+async def test_approval_without_a_quantity_is_refused_and_the_card_stays_pending(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    """C105: the backend, not the form, refuses. Nothing is approved, nothing is sent."""
+    api, ids = seeded
+    url = f"/api/v1/cards/{ids['trim']}/decision"
+    for edits in ({}, {"qty": None}):
+        r = await api.client.post(url, json={"decision": "approve", "version": 1, "edits": edits})
+        assert r.status_code == 422 and "qty required" in r.json()["message"]
+    card = (await api.client.get(f"/api/v1/cards/{ids['trim']}")).json()
+    assert card["state"] == "pending" and card["proposal"]["qty"] is None
+    async with api.app.state.session_factory() as db:
+        assert await db.scalar(select(func.count()).select_from(Approval)) == 0
+
+
+@pytest.mark.parametrize("qty", [0, -1, 2.5, "3", True, [1]])
+async def test_invalid_quantities_are_rejected_not_defaulted(
+    seeded: tuple[Api, dict[str, str]], qty: object
+) -> None:
+    api, ids = seeded
+    r = await api.client.post(
+        f"/api/v1/cards/{ids['trim']}/decision",
+        json={"decision": "approve", "version": 1, "edits": {"qty": qty}},
+    )
+    assert r.status_code == 422
+    assert (await api.client.get(f"/api/v1/cards/{ids['trim']}")).json()["state"] == "pending"
+
+
+async def test_the_approved_quantity_is_exactly_what_the_user_sent(
+    seeded: tuple[Api, dict[str, str]],
+) -> None:
+    api, ids = seeded
+    r = await api.client.post(
+        f"/api/v1/cards/{ids['trim']}/decision", json=decision("approve", qty=3)
+    )
+    assert r.status_code == 200
+    async with api.app.state.session_factory() as db:
+        approval = await db.scalar(select(Approval))
+    assert approval is not None and approval.approved_proposal["qty"] == 3
+    # an approved card cannot be re-sized: another request is a conflict, never a new quantity
+    again = await api.client.post(
+        f"/api/v1/cards/{ids['trim']}/decision", json=decision("approve", qty=4)
+    )
+    assert again.status_code == 409
+
+
 async def test_edit_bumps_version_then_old_version_conflicts(
     seeded: tuple[Api, dict[str, str]],
 ) -> None:
@@ -130,6 +179,35 @@ async def test_concurrent_approvals_record_one(seeded: tuple[Api, dict[str, str]
     assert count == 1
 
 
+async def test_an_unreadable_signal_card_cannot_be_approved_only_dismissed(signed_in: Api) -> None:
+    """A raw review card holds no trade: "Approve" used to mark it approved and place nothing,
+    which looked like an accepted trade with no quantity."""
+    proposal = ProposedAction(
+        action=CardAction.REVIEW,
+        card_type=CardType.REVIEW,
+        review_reasons=["needs_review: role_n4: confidence 0.30 < t_field"],
+    )
+    card = Card(
+        card_id=uuid.uuid4(),
+        dedupe_key="test:raw-review",
+        source=CardSource.SYSTEM,
+        action=CardAction.REVIEW,
+        card_type=CardType.REVIEW,
+        state=CardState.PENDING,
+        proposal=proposal.model_dump(mode="json"),
+        posted_at=T0,
+    )
+    async with in_transaction(signed_in.app.state.session_factory, None) as db:
+        await cards.insert(db, card)
+    url = f"/api/v1/cards/{card.card_id}/decision"
+    r = await signed_in.client.post(url, json=decision("approve"))
+    assert r.status_code == 422 and "could not be read" in r.json()["message"]
+    assert (await signed_in.client.get(f"/api/v1/cards/{card.card_id}")).json()[
+        "state"
+    ] == "pending"
+    assert (await signed_in.client.post(url, json=decision("reject"))).status_code == 200
+
+
 async def test_ac14_suggested_underlying_needs_confirmation(signed_in: Api) -> None:
     proposal = ProposedAction(
         action=CardAction.ENTRY,
@@ -153,7 +231,7 @@ async def test_ac14_suggested_underlying_needs_confirmation(signed_in: Api) -> N
     async with in_transaction(signed_in.app.state.session_factory, None) as db:
         await cards.insert(db, card)
     url = f"/api/v1/cards/{card.card_id}/decision"
-    r = await signed_in.client.post(url, json=decision("approve"))
+    r = await signed_in.client.post(url, json=decision("approve", qty=1))
     assert r.status_code == 422 and "underlying_confirmation" in r.json()["message"]
     wrong = await signed_in.client.post(url, json=decision("edit", confirmedUnderlying="GOOG"))
     assert wrong.status_code == 422

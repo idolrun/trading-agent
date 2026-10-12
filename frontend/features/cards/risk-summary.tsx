@@ -1,7 +1,5 @@
 import { AlertTriangle, Ban, Check } from "lucide-react"
 import type { ReactNode } from "react"
-import { Badge } from "@/components/badge"
-import { labelBadge } from "@/features/cards/labels"
 import { words } from "@/features/cards/types"
 import type { Card } from "@/features/cards/types"
 
@@ -53,7 +51,7 @@ export function RiskSummary({ card }: { card: Card }) {
   const flagged = proposal.warnings.length > 0 || proposal.labels.length > 0
 
   return (
-    <section aria-label="Risk" className="flex flex-col gap-1.5">
+    <section aria-label="Risk" className="flex flex-col gap-1">
       {proposal.disabledReason || card.cardType === "disabled" ? (
         <Row icon={<Ban className="text-destructive" />} title="Disabled">
           {proposal.disabledReason ? <span className="text-muted-foreground"> {proposal.disabledReason}</span> : null}
@@ -70,15 +68,6 @@ export function RiskSummary({ card }: { card: Card }) {
       {proposal.warnings.map((warning) => (
         <Row key={warning} icon={<AlertTriangle className="text-warning-foreground" />} title={warning} />
       ))}
-      {proposal.labels.length > 0 ? (
-        <ul aria-label="Labels" className="flex flex-wrap gap-1.5">
-          {proposal.labels.map((label) => (
-            <Badge key={label} asChild>
-              <li>{labelBadge(label)}</li>
-            </Badge>
-          ))}
-        </ul>
-      ) : null}
     </section>
   )
 }

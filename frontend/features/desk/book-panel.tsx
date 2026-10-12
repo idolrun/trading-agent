@@ -13,17 +13,18 @@ export function BookPanel() {
   const positions = usePositionList({})
 
   return (
-    <section className="flex flex-col gap-4">
-      <h2 className="text-lg font-medium">Book</h2>
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold tracking-wide uppercase">Book</h2>
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Lots</h3>
-          <Link href="/positions" className="text-sm underline underline-offset-2">
+          <h3 className="text-xs font-medium text-muted-foreground">Open lots</h3>
+          <Link href="/positions" className="text-xs underline underline-offset-2">
             All positions
           </Link>
         </div>
         <p className="text-xs text-muted-foreground">Average price is the {AVG_LABEL}.</p>
         <QueryState
+          compact
           query={lots}
           isEmpty={(data) => data.items.length === 0}
           loadingLabel="Loading lots"
@@ -52,8 +53,9 @@ export function BookPanel() {
         </QueryState>
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium text-muted-foreground">Provider positions</h3>
+        <h3 className="text-xs font-medium text-muted-foreground">Provider positions</h3>
         <QueryState
+          compact
           query={positions}
           isEmpty={(data) => data.items.length === 0}
           loadingLabel="Loading positions"

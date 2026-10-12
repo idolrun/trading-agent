@@ -63,7 +63,7 @@ sequenceDiagram
     VD->>MD: chain SPY today, quote 770C
     MD-->>VD: contract exists, ask 0.97
     VD->>VD: scale .95 per share OK, adjacent-strike check OK
-    VD->>VD: decide: qty = floor(lotto_max / (0.95 x 100)), risk limits OK, TP legs from TP1
+    VD->>VD: decide: limit price + TP levels, qty blank (the user types it, C105)
     VD-->>G: NORMAL entry + bracket card proposal
     G->>DB: apply txn: signals, message_links, provider_positions P-new, cards pending, timers expiry, inbox done
     DB-->>G: committed
@@ -105,11 +105,11 @@ sequenceDiagram
         G->>DB: apply: link + provider position trimmed
         Note over G: feed only, no card
     else lot of 1 contract
-        VD-->>G: floor(0.5 x 1) = 0, qty blank, 'lot too small to trim'
-        G->>DB: apply: link + ledger + EXIT card (not approvable until qty entered)
+        VD-->>G: qty blank, label "Provider said half"
+        G->>DB: apply: link + ledger + TRIM card (not approvable until the user enters a qty)
     else lot of 4 contracts
-        VD-->>G: qty = 2 (editable)
-        G->>DB: apply: link + ledger + EXIT card pending
+        VD-->>G: qty blank, label "Provider said half" (same card, the user types 2)
+        G->>DB: apply: link + ledger + TRIM card pending
     end
     G--)W: SSE + push
     G->>WP: release slot

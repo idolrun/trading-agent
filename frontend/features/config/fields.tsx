@@ -3,7 +3,9 @@
 import { createContext, useContext, useId, useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
+import { HelpTip } from "@/features/config/help-tip"
+import { snowflakeError } from "@/features/config/validate"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { INT_FIELDS, type Draft, type ListKey, type RowsKey, type ScalarKey, type ServerErrors } from "@/features/config/types"
@@ -15,6 +17,8 @@ type FormState = {
   /** Top-level keys the server says are unset (entries disabled), as of the last load/save. */
   missing: ReadonlySet<string>
   errors: ServerErrors
+  /** Client-side problems by control name (`validateDraft`); the server still has the last word. */
+  problems: Record<string, string>
 }
 
 const FormContext = createContext<FormState | null>(null)
@@ -28,24 +32,37 @@ export function useConfigForm(): FormState {
 
 export const UNSET_HINT = "not set: entries disabled"
 
-/** Per-field server errors (422), shown under the field they name. */
-export function FieldErrors({ name }: { name: string }) {
-  const { errors } = useConfigForm()
+/** Messages for one control: client check first, then whatever the server said (422). */
+function useFieldMessages(name: string): string[] {
+  const { errors, problems } = useConfigForm()
+  return [...(problems[name] ? [problems[name]] : []), ...(errors.fields[name] ?? [])]
+}
+
+/** Per-field errors, announced to screen readers and linked from the control by `id`. */
+export function FieldErrors({ name, id }: { name: string; id?: string }) {
+  const messages = useFieldMessages(name)
+  if (messages.length === 0) return null
   return (
-    <>
-      {(errors.fields[name] ?? []).map((message) => (
+    <div id={id} className="flex flex-col gap-0.5">
+      {messages.map((message) => (
         <p key={message} role="alert" className="text-xs text-destructive">
           {message}
         </p>
       ))}
-    </>
+    </div>
   )
 }
 
-type Control = { id: string; className: string; "aria-describedby"?: string; "aria-invalid"?: true; "data-unset"?: true }
+type Control = {
+  id: string
+  className: string
+  "aria-describedby"?: string
+  "aria-invalid"?: true
+  "data-unset"?: true
+}
 
 /**
- * Label + control + hint. A field the server lists as unset, and that is still empty,
+ * Label + help + control + hint. A field the server lists as unset, and that is still empty,
  * gets a warning border and the "not set: entries disabled" hint.
  */
 export function ConfigField({
@@ -64,29 +81,36 @@ export function ConfigField({
   children: (control: Control) => ReactNode
 }) {
   const id = useId()
-  const { missing, errors } = useConfigForm()
+  const { missing } = useConfigForm()
   const unset = empty && missing.has(name)
-  const invalid = (errors.fields[name]?.length ?? 0) > 0
-  const describedBy = unset ? `${id}-unset` : undefined
+  const invalid = useFieldMessages(name).length > 0
+  const describedBy = [unset && `${id}-unset`, hint && `${id}-hint`, invalid && `${id}-err`].filter(Boolean).join(" ") || undefined
   return (
     <div className={cn("flex flex-col gap-1 text-sm", className)}>
-      <Label htmlFor={id} className="leading-normal select-text">
-        {label}
-      </Label>
+      <div className="flex items-center gap-1.5">
+        <Label htmlFor={id} className="leading-normal select-text">
+          {label}
+        </Label>
+        <HelpTip name={name} label={label} />
+      </div>
       {children({
         id,
-        className: cn(invalid && "border-destructive", unset && "border-warning bg-warning/5"),
+        className: cn("scroll-mb-28", invalid && "border-destructive", unset && "border-warning bg-warning/5"),
         "aria-describedby": describedBy,
         ...(invalid ? { "aria-invalid": true as const } : {}),
         ...(unset ? { "data-unset": true as const } : {}),
       })}
       {unset ? (
-        <p id={describedBy} className="text-xs font-medium text-warning-foreground">
+        <p id={`${id}-unset`} className="text-xs font-medium text-warning-foreground">
           {UNSET_HINT}
         </p>
       ) : null}
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-      <FieldErrors name={name} />
+      {hint ? (
+        <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
+      <FieldErrors name={name} id={`${id}-err`} />
     </div>
   )
 }
@@ -111,12 +135,27 @@ export function ScalarField({ name, label, hint }: { name: ScalarKey; label: str
   )
 }
 
-export function CheckField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+/** A true on/off setting. `name` is the help key. */
+export function CheckField({
+  name,
+  label,
+  checked,
+  onChange,
+}: {
+  name: string
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  const id = useId()
   return (
-    <Label className="min-h-11 leading-normal select-text">
-      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
-      {label}
-    </Label>
+    <div className="flex min-h-11 items-center gap-2 text-sm">
+      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+      <Label htmlFor={id} className="leading-normal select-text">
+        {label}
+      </Label>
+      <HelpTip name={name} label={label} />
+    </div>
   )
 }
 
@@ -124,10 +163,15 @@ export function CheckField({ label, checked, onChange }: { label: string; checke
 export function ListField({ name, label }: { name: ListKey; label: string }) {
   const { draft, patch } = useConfigForm()
   const [text, setText] = useState("")
+  const [problem, setProblem] = useState<string | null>(null)
   const items = draft[name]
   const add = () => {
     const value = text.trim()
-    if (value && !items.includes(value)) patch({ [name]: [...items, value] })
+    if (!value) return
+    const bad = snowflakeError(value) ?? (items.includes(value) ? `${value} is already in the list.` : null)
+    setProblem(bad)
+    if (bad) return
+    patch({ [name]: [...items, value] })
     setText("")
   }
   return (
@@ -158,9 +202,13 @@ export function ListField({ name, label }: { name: ListKey; label: string }) {
               {...control}
               className={cn(control.className, "flex-1")}
               inputMode="numeric"
-              placeholder="Discord id"
+              placeholder="e.g. 123456789012345678"
+              aria-invalid={problem ? true : undefined}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                setText(event.target.value)
+                setProblem(null)
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault()
@@ -172,6 +220,11 @@ export function ListField({ name, label }: { name: ListKey; label: string }) {
               Add
             </Button>
           </div>
+          {problem ? (
+            <p role="alert" className="text-xs text-destructive">
+              {problem}
+            </p>
+          ) : null}
         </>
       )}
     </ConfigField>
@@ -230,7 +283,7 @@ export function RowsField({
               </Button>
             </div>
           ))}
-          <Button type="button" variant="outline" className="self-start" onClick={() => set([...rows, { name: "", value: "" }])}>
+          <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => set([...rows, { name: "", value: "" }])}>
             Add row
           </Button>
         </div>
@@ -239,17 +292,32 @@ export function RowsField({
   )
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+/** One settings group. `critical` marks trading-safety controls with a visible accent. */
+export function Section({
+  title,
+  description,
+  critical = false,
+  children,
+}: {
+  title: string
+  description?: string
+  critical?: boolean
+  children: ReactNode
+}) {
   const id = useId()
   return (
-    <Card aria-labelledby={id}>
+    <Card size="sm" aria-labelledby={id} className={cn(critical && "border-l-4 border-l-warning")}>
       <CardHeader>
         <CardTitle>
-          <h2 id={id}>{title}</h2>
+          <h3 id={id} className="flex items-center gap-2">
+            {title}
+            {critical ? <span className="rounded bg-warning/15 px-1.5 py-0.5 text-xs font-medium">Safety control</span> : null}
+          </h3>
         </CardTitle>
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2">{children}</div>
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">{children}</div>
       </CardContent>
     </Card>
   )

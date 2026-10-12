@@ -9,7 +9,6 @@ end-exclusive. Presets are calendar windows ending today, not rolling 24h spans:
   custom  startDate .. endDate, both ET dates and both included by the user
 """
 
-import math
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
@@ -56,13 +55,21 @@ class Window:
 
     @property
     def previous(self) -> "Window | None":
-        """The equally long window right before this one. None for `all`."""
+        """The equally long window right before this one. None for `all`.
+
+        Length is inclusive ET calendar days (the end instant is exclusive), and both
+        ends move back by that many wall-clock days so a DST transition does not
+        open a gap or an overlap at the boundary.
+        """
         if self.start is None or self.period is Period.ALL:
             return None
-        # shift both ends back by the window's whole ET days: equal length, same time of day
-        days = max(1, math.ceil((self.end - self.start) / timedelta(days=1)))
-        start = et_midnight(to_et(self.start).date() - timedelta(days=days))
-        return Window(self.period, start, self.end - (self.start - start), "previous")
+        days = calendar_days(self.start, self.end)
+        return Window(
+            self.period,
+            shift_et_days(self.start, -days),
+            shift_et_days(self.end, -days),
+            "previous",
+        )
 
     @property
     def granularity(self) -> Granularity:
@@ -81,6 +88,25 @@ class Window:
 def et_midnight(day: date) -> datetime:
     """00:00 ET of `day` as UTC (DST-safe: built from the local date, not by adding 24h)."""
     return datetime.combine(day, time(0), tzinfo=ET).astimezone(UTC)
+
+
+def calendar_days(start: datetime, end: datetime) -> int:
+    """ET calendar days from `start` through `end`. A midnight `end` is exclusive."""
+    start_day = to_et(start).date()
+    end_local = to_et(end)
+    end_day = end_local.date()
+    if end_local.time() == time.min:
+        end_day -= timedelta(days=1)
+    return max(1, (end_day - start_day).days + 1)
+
+
+def shift_et_days(ts: datetime, days: int) -> datetime:
+    """Move `ts` by whole ET calendar days, keeping the local wall-clock time."""
+    local = to_et(ts)
+    shifted = datetime.combine(local.date() + timedelta(days=days), local.time(), tzinfo=ET)
+    if local.fold:
+        shifted = shifted.replace(fold=1)
+    return shifted.astimezone(UTC)
 
 
 def resolve(

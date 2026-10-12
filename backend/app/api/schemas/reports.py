@@ -187,6 +187,7 @@ class OrderRow(CamelModel):
 
 class SymbolFills(CamelModel):
     symbol: str
+    instrument: str
     buy_qty: int
     sell_qty: int
     avg_buy_price: Num | None

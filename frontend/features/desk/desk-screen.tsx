@@ -1,31 +1,21 @@
-"use client"
-
-import { deskFrame, deskTitle } from "@/components/screen"
+import { deskFrame } from "@/components/screen"
 import { AlertList } from "@/features/alerts/alert-list"
 import { CardInbox } from "@/features/cards/card-inbox"
 import { BookPanel } from "@/features/desk/book-panel"
-import { FeedStatus } from "@/features/health/feed-status"
 import { OrderList } from "@/features/orders/order-list"
 
+/** The inbox is the workspace; orders, alerts and the book sit beside it on wide screens, below it on narrow ones. */
 export function DeskScreen() {
   return (
     <div className={deskFrame}>
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className={deskTitle}>Inbox</h1>
-          <p className="text-sm text-muted-foreground">
-            Proposed trades waiting on a decision.
-          </p>
-        </div>
-        <FeedStatus />
-      </header>
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
+      <h1 className="sr-only">Inbox</h1>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(17rem,1fr)]">
         <CardInbox />
-        <div className="flex flex-col gap-8">
-          <OrderList compact />
+        <aside aria-label="Orders and alerts" className="flex flex-col gap-5">
           <AlertList compact />
+          <OrderList compact />
           <BookPanel />
-        </div>
+        </aside>
       </div>
     </div>
   )

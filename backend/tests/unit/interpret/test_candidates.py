@@ -98,3 +98,18 @@ def test_offsets_are_exact(text: str) -> None:
     for group in (c.tickers, c.numbers, c.expiry_tokens, c.fraction_words):
         for cand in group:
             assert text[cand.start : cand.end] == cand.text
+
+
+TSLA = (
+    "@everyone\n\n$TSLA 400C 10/16/26\n\nEntry: 2.10\nSL: 1.50\nTP1: 3.00\nTP2: 4.00\n\n"
+    "Small size. Let's get it!"
+)
+
+
+def test_tp_labels_are_not_numbers() -> None:
+    """The 1 of "TP1" and the 2 of "TP2" used to be candidates the model was never sure about,
+    which sent every Entry / SL / TP1 / TP2 signal to review."""
+    numbers = [x.text for x in find_candidates(TSLA).numbers]
+    assert numbers == ["400C", "2.10", "1.50", "3.00", "4.00"]
+    assert [x.text for x in find_candidates("tp1 3 tp2 4 T3 5").numbers] == ["3", "4", "5"]
+    assert [x.text for x in find_candidates("sl1.50 spy 765p").numbers] == ["1.50", "765p"]

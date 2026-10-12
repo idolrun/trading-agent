@@ -47,7 +47,7 @@ const SCALARS: readonly ScalarKey[] = [...INT_FIELDS, ...DECIMAL_FIELDS]
 const isInt = (key: ScalarKey) => (INT_FIELDS as readonly string[]).includes(key)
 
 export type Row = { name: string; value: string }
-export type RowsKey = "option_tiers" | "stock_tiers" | "symbol_map"
+export type RowsKey = "symbol_map"
 export type ListKey = "channels" | "muted_authors"
 
 export type Draft = Record<ScalarKey, string> &
@@ -60,8 +60,6 @@ export type Draft = Record<ScalarKey, string> &
     note_guard_enabled: boolean
   }
 
-const OPTION_TIER_NAMES = ["default", "small", "lotto"]
-
 /** RuntimeConfig defaults (backend `runtime_config/schema.py`), for a config that was never saved. */
 export function defaultDocument(): ConfigDoc {
   const doc: ConfigDoc = Object.fromEntries(SCALARS.map((key) => [key, null]))
@@ -72,13 +70,12 @@ export function defaultDocument(): ConfigDoc {
     ...doc,
     stale_entry_s: 30,
     poison_retry_limit: 3,
+    context_recent_messages: 5,
     missing_underlying_proximity_pct: "10",
     t_chat: "0.9",
     t_field: "0.8",
     t_type: "0.8",
     t_link: "0.8",
-    option_tiers: null,
-    stock_tiers: null,
     symbol_map: { SPX: "SPXW" },
     jev: { model: "jev-1.13.0", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
     laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
@@ -122,8 +119,6 @@ export function toDraft(doc: ConfigDoc): Draft {
     trading_mode: String(doc.trading_mode ?? "shadow"),
     channels: ((doc.channels as unknown[]) ?? []).map(String),
     muted_authors: ((doc.muted_authors as unknown[]) ?? []).map(String),
-    option_tiers: toRows(doc.option_tiers, OPTION_TIER_NAMES),
-    stock_tiers: toRows(doc.stock_tiers),
     symbol_map: toRows(doc.symbol_map),
     jev: {
       model: jev.model ?? "",
@@ -148,13 +143,10 @@ export function toDraft(doc: ConfigDoc): Draft {
 const orNull = (text: string) => (text.trim() === "" ? null : text.trim())
 const toNumber = (text: string) => (text.trim() === "" ? null : Number(text))
 
-/**
- * Blank rows are dropped (nullable tiers: any row without a value, so the prefilled tier names
- * do not count); no rows at all is `null` (tiers) or `{}` (symbol map).
- */
-function fromRows(rows: Row[], nullable: boolean) {
-  const kept = rows.filter((row) => row.value.trim() !== "" || (!nullable && row.name.trim() !== ""))
-  return kept.length === 0 && nullable ? null : Object.fromEntries(kept.map((row) => [row.name.trim(), row.value.trim()]))
+/** Blank rows are dropped; no rows at all is `{}`. */
+function fromRows(rows: Row[]) {
+  const kept = rows.filter((row) => row.name.trim() !== "" || row.value.trim() !== "")
+  return Object.fromEntries(kept.map((row) => [row.name.trim(), row.value.trim()]))
 }
 
 /** Text that is not JSON is passed through as a string; the screen blocks saving before that reaches the wire. */
@@ -176,9 +168,7 @@ export function toDoc(draft: Draft): ConfigDoc {
     trading_mode: draft.trading_mode,
     channels: draft.channels,
     muted_authors: draft.muted_authors,
-    option_tiers: fromRows(draft.option_tiers, true),
-    stock_tiers: fromRows(draft.stock_tiers, true),
-    symbol_map: fromRows(draft.symbol_map, false),
+    symbol_map: fromRows(draft.symbol_map),
     jev: {
       model: orNull(draft.jev.model),
       timeout_ms: toNumber(draft.jev.timeout_ms),

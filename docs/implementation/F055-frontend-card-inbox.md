@@ -4,7 +4,7 @@
 The core screen: pending cards with everything needed to decide in seconds — author, source messages, highlighted inferred fields, quantity, price, bracket legs, warnings, labels, validity countdown, advisory note — with one-tap approve (inferred cards included), qty editing, review completion, and disabled cards shown with reasons.
 
 ## Requirements covered
-- PRD G3, 7.1 step 4–5 (author prominent, source messages, highlighted inferred fields, tier quantity, bracket legs, warnings; one click incl. inferred; review cards need missing fields), 7.2 (expiry shown), 7.3 (blank qty / "lot too small to trim: exit all or skip" / "suggestion, provider still holding"), 7.4 (TP split editable; breakeven choice), 7.5 (correction states), C29, C32, C57, C75 (disabled cards visible), C80 (note labeled "advisory"), FR-14/AC-14 (confirm underlying), AC-15, AC-16, §21 (one-tap approve on phone).
+- PRD G3, 7.1 step 4–5 (author prominent, source messages, highlighted inferred fields, an empty required Quantity (F085/C105), bracket levels, warnings; one click incl. inferred; review cards need missing fields), 7.2 (expiry shown), 7.3 (blank qty / "Provider said half" / "suggestion, provider still holding"; full exit = Close card), 7.4 (TP split editable; breakeven choice), 7.5 (correction states), C29, C32, C57, C75 (disabled cards visible), C80 (note labeled "advisory"), FR-14/AC-14 (confirm underlying), AC-15, AC-16, §21 (one-tap approve on phone).
 
 ## Dependencies
 - Depends on: F054 (backend F030, F036)
@@ -34,7 +34,7 @@ Approve button ≥ 44 px on phone, reachable with one thumb; countdown has `aria
 Modify `frontend/features/cards/{card-inbox.tsx,card-summary.tsx,card-actions.tsx,card-detail-screen.tsx,mutations.ts,queries.ts,types.ts}`; create `frontend/features/cards/{source-messages.tsx,bracket-legs.tsx,review-fields.tsx,breakeven-choice.tsx,advisory-note.tsx,countdown.tsx}` + `*.test.tsx`.
 
 ## Tests
-- Trim with blank qty shows "lot too small to trim: exit all or skip" and approve disabled until qty entered (AC-15 UI).
+- Every buy/sell card starts with an empty Quantity (shares or contracts) and Approve is disabled until a whole number ≥ 1 is typed; the approval always carries it (AC-15 UI, F085).
 - Suggested underlying requires explicit confirmation before approve is enabled (AC-14 UI).
 - TP editor prevents legs > qty (AC-16 UI).
 - Disabled card shows reason and no actions.

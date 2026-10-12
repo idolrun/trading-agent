@@ -495,6 +495,17 @@
             ],
             "title": "Providerid"
           },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providername"
+          },
           "providerPositionId": {
             "anyOf": [
               {
@@ -578,6 +589,7 @@
           "cardType",
           "state",
           "providerId",
+          "providerName",
           "providerPositionId",
           "lotId",
           "underlying",
@@ -732,6 +744,17 @@
             ],
             "title": "Providerid"
           },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providername"
+          },
           "providerPositionId": {
             "anyOf": [
               {
@@ -815,6 +838,7 @@
           "cardType",
           "state",
           "providerId",
+          "providerName",
           "providerPositionId",
           "lotId",
           "underlying",
@@ -1632,6 +1656,7 @@
           "qty": {
             "anyOf": [
               {
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -6223,6 +6248,13 @@
             "title": "Tplegs",
             "type": "array"
           },
+          "tpLevels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tplevels",
+            "type": "array"
+          },
           "warnings": {
             "items": {
               "type": "string"
@@ -6236,6 +6268,7 @@
           "price",
           "signalPrice",
           "stop",
+          "tpLevels",
           "tpLegs",
           "warnings",
           "labels",
@@ -6940,30 +6973,6 @@
             "title": "Note Guard Enabled",
             "type": "boolean"
           },
-          "option_tiers": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "anyOf": [
-                    {
-                      "exclusiveMinimum": 0.0,
-                      "type": "number"
-                    },
-                    {
-                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "minProperties": 1,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Option Tiers"
-          },
           "poison_retry_limit": {
             "default": 3,
             "exclusiveMinimum": 0.0,
@@ -6987,30 +6996,6 @@
             "exclusiveMinimum": 0.0,
             "title": "Stale Entry S",
             "type": "integer"
-          },
-          "stock_tiers": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "anyOf": [
-                    {
-                      "exclusiveMinimum": 0.0,
-                      "type": "number"
-                    },
-                    {
-                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                      "type": "string"
-                    }
-                  ]
-                },
-                "minProperties": 1,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stock Tiers"
           },
           "symbol_map": {
             "additionalProperties": {
@@ -7793,6 +7778,10 @@
             "title": "Buyqty",
             "type": "integer"
           },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
           "sellQty": {
             "title": "Sellqty",
             "type": "integer"
@@ -7804,6 +7793,7 @@
         },
         "required": [
           "symbol",
+          "instrument",
           "buyQty",
           "sellQty",
           "avgBuyPrice",

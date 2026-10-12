@@ -46,7 +46,7 @@ def check_exit(proposal: ProposedAction, position_closed: bool, now: datetime) -
     """Never by price (7.3 step 4)."""
     if proposal.valid_until is not None and now > proposal.valid_until:
         return CardReason.TIMEOUT
-    if position_closed and proposal.action in (CardAction.TRIM, CardAction.EXIT):
+    if position_closed and proposal.action in (CardAction.TRIM, CardAction.EXIT, CardAction.CLOSE):
         return CardReason.SUPERSEDED
     return None
 
@@ -61,10 +61,13 @@ def approval_blockers(
 ) -> list[str]:
     """What still prevents approval after the user's edits; [] = approvable.
 
-    Review cards need every missing field (7.1 step 5); blank-qty cards need 1 <= qty <= lot
-    for sells (C26, C52, C82, re-checked by submit_order); disabled cards never."""
+    Review cards need every missing field (7.1 step 5); every buy and sell needs the user's
+    1 <= qty (<= lot for sells; C105, re-checked by submit_order); a close needs an open lot
+    and no quantity; disabled cards never."""
     if proposal.disabled_reason is not None:
         return ["disabled"]
+    if proposal.action == CardAction.CLOSE and lot_qty is None:
+        return ["no_open_lot"]
     blockers = [f for f in proposal.missing_fields if edits.get(f) in (None, "")]
     needs_qty = proposal.action in ENTRY_ACTIONS | {CardAction.TRIM, CardAction.EXIT}
     qty = edits.get("qty", proposal.qty)

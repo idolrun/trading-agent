@@ -16,6 +16,15 @@ export function isDecidable(card: Card): boolean {
   return card.state === "pending" && card.cardType !== "disabled" && card.proposal.disabledReason == null
 }
 
+/**
+ * A review card for a signal the system could not read: it holds no trade and no re-link, so
+ * there is nothing to approve. The server refuses an approval; the card offers a dismissal only.
+ */
+export function isUnreadable(card: Card): boolean {
+  const { proposal } = card
+  return card.action === "review" && proposal.candidatePositions.length === 0 && proposal.missingFields.length === 0
+}
+
 /** A code from the server ("lot_too_small") as words, for codes the client has no copy for. */
 export function words(code: string): string {
   const text = code.replaceAll("_", " ").replaceAll(":", ": ")

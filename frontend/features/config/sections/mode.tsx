@@ -7,7 +7,7 @@ import { TRADING_MODES } from "@/features/config/types"
 export function ModeSection() {
   const { draft, patch } = useConfigForm()
   return (
-    <Section title="Mode">
+    <Section title="Trading mode" critical description="Decides where approved orders go. A change summary is shown before saving.">
       <ConfigField name="trading_mode" label="Trading mode">
         {(control) => (
           <NativeSelect {...control} value={draft.trading_mode} onChange={(event) => patch({ trading_mode: event.target.value })}>

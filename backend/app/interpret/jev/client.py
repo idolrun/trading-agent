@@ -164,7 +164,7 @@ class JevInterpreter:
             return JevFailed("disabled")
         cfg = self._config()
         bump("jev:requests")
-        questions = build_questions(ctx, candidates, sorted(cfg.option_tiers or {}))
+        questions = build_questions(ctx, candidates)
         try:
             state = build_jev_state(ctx, candidates, lot_ids)
         except ScopeViolation as exc:  # a bug upstream: nothing leaves the process

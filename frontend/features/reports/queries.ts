@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api/client"
 import { isReady, toParams, type ReportFilters } from "@/features/reports/filters"
@@ -33,6 +34,25 @@ export type InstrumentParams = TableParams & {
 }
 export type SignalParams = { page: number; engine: "" | "accepted" | "rejected" | "no_card" }
 export type OrderParams = TableParams & { side: "" | "buy" | "sell"; status: string }
+
+/** Table state for one report section. A new global filter set starts back at page 1. */
+export function useSectionParams<T extends { page: number }>(filters: ReportFilters, initial: T) {
+  const [params, setParams] = useState(initial)
+  const scope = [
+    filters.period,
+    filters.startDate,
+    filters.endDate,
+    filters.mode,
+    filters.symbol,
+    filters.instrument,
+  ].join("\0")
+  const [applied, setApplied] = useState(scope)
+  if (applied !== scope) {
+    setApplied(scope)
+    if (params.page !== 1) setParams({ ...params, page: 1 })
+  }
+  return [params, setParams] as const
+}
 
 /** Previous data stays on screen while a new period loads, so charts do not flash empty. */
 function section<T>(name: string, f: ReportFilters, extra: object, path: string) {

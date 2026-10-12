@@ -301,7 +301,7 @@ class _Nodes:
         resolution = (
             Resolution.model_validate(state["resolution"]) if state.get("resolution") else None
         )
-        parsed = fast_parse(env.text or "", resolution, sorted(self.d.cfg().option_tiers or {}))
+        parsed = fast_parse(env.text or "", resolution)
         if parsed is None:
             return {}
         await self._stage(state, ctx, Stage.FAST)
@@ -354,6 +354,11 @@ class _Nodes:
             "fallback": decision.kind,
             "hints": decision.hints,
             "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
+            "draft": (
+                result.draft.model_dump(mode="json")
+                if result.draft and decision.reasons == result.slow_reasons
+                else None
+            ),
             "interpreter": "jev",
             "model_call_id": result.model_call_id,
             "jev_answered": True,
@@ -414,6 +419,13 @@ class _Nodes:
             # The LLM is optional (4-8 s per call): without one the human decides, and the
             # card says why the local models did not. No degraded-parser flag: nothing failed.
             reasons = "; ".join(state["route_reasons"])
+            if state.get("draft") and not state["replay"]:
+                # Jev read it but was unsure: the card carries that reading, marked low
+                # confidence, and the user approves or rejects it.
+                return {
+                    "parsed": state["draft"],
+                    "trace": state["trace"] | {"llm": "not_configured", "draft": reasons[:200]},
+                }
             return {
                 "raw_reason": f"needs_review: {reasons}"[:200],
                 "trace": state["trace"] | {"llm": "not_configured"},

@@ -1,14 +1,15 @@
 import { cardOnDesk, expect, followUp, optionEntry, PROVIDER_A, test } from "./support/driver"
 
 // PRD 7.1 + 7.3 / AC-15: message -> card -> approve on the desk -> shadow fill -> lot; then a
-// "take half" on a 1-lot gets a blank-qty trim card ("lot too small") until the user types one.
+// "take half" gets a blank-qty trim card (the provider's fraction is information) until the user types one.
 test("entry -> approve -> fill -> trim half on a 1-lot", async ({ page, driver }) => {
   await driver.post("Bought GOOGL 357.5C 10/2 @ 0.71", [optionEntry("GOOGL", "357.5", "357.5C", "10/2", "0.71")])
 
   const entryCard = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL")
   await expect(entryCard).toBeVisible()
   const qty = entryCard.getByLabel("Quantity", { exact: true })
-  await expect(qty).toHaveValue("13") // $1000 tier / (0.74 * 100)
+  await expect(qty).toHaveValue("") // nothing sizes it: the user types it
+  await expect(entryCard.getByRole("button", { name: "Approve" })).toBeDisabled()
   await qty.fill("1")
   await entryCard.getByRole("button", { name: "Approve" }).click()
   await expect(entryCard).toBeHidden()
@@ -26,11 +27,10 @@ test("entry -> approve -> fill -> trim half on a 1-lot", async ({ page, driver }
   const trim = await driver.cardFor("trim", { state: "pending" })
   expect(trim.lotId).toBe(lot.id)
   expect(trim.proposal.qty).toBeNull()
-  expect(trim.proposal.labels).toContain("lot_too_small")
+  expect(trim.proposal.labels).toContain("provider_fraction:half")
 
   const trimCard = cardOnDesk(page, PROVIDER_A, "trim", "GOOGL")
-  await expect(trimCard.getByRole("listitem").filter({ hasText: "Lot too small" })).toBeVisible()
-  await expect(trimCard.getByText("Lot too small to trim: exit all or skip.")).toBeVisible()
+  await expect(trimCard.getByText("Provider said half. You choose the quantity.")).toBeVisible()
   await expect(trimCard.getByLabel("Quantity", { exact: true })).toHaveValue("")
   const approve = trimCard.getByRole("button", { name: "Approve" })
   await expect(approve).toBeDisabled()

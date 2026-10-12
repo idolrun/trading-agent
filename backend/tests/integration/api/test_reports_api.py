@@ -367,6 +367,7 @@ async def test_orders_report_separates_requested_from_filled(
     assert o["submitted"] == 9 and o["filled"] == 9 and o["orderToFillRate"] == "1"
     assert o["buyQtyRequested"] == o["buyQtyFilled"]
     by = {r["symbol"]: r for r in o["bySymbol"]}
+    assert by["GOOGL"]["instrument"] == "option"
     assert by["GOOGL"]["buyQty"] == 4 and by["GOOGL"]["avgBuyPrice"] == "1.25"
     sell = next(r for r in o["rows"] if r["side"] == "sell")
     assert sell["executedNotional"] is not None and sell["fees"] is None

@@ -76,7 +76,6 @@ def follow_up(msg_type: str, target: uuid.UUID, **over: Any) -> Any:
             msg_type=c(msg_type),
             ticker=c("not_stated"),
             right=c("not_stated"),
-            size_tier=c("not_stated"),
             links_to=c(str(target), 0.9),
             **over,
         )
@@ -119,7 +118,6 @@ async def test_interleaved_channels_and_authors_never_mix(
                 is_correction=n(0.95),
                 ticker=c("not_stated"),
                 right=c("call", 0.9),
-                size_tier=c("not_stated"),
                 role_n1=c("strike", 0.95),
             )
         ),

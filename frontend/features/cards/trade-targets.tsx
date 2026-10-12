@@ -17,13 +17,14 @@ function stopText(card: Card): string | null {
 }
 
 /**
- * "Targets $1.90 · $2.50" and "Stop $1.20", only for what the signal has. With `showLegs` off the
- * take-profit levels are in the editable split in the actions instead.
+ * "Targets $1.90 · $2.50" and "Stop $1.20", only for what the signal has. The stated levels are
+ * always shown; the split over the user's quantity is edited in the actions.
  */
 export function TradeTargets({ card, showLegs }: { card: Card; showLegs: boolean }) {
-  const { tpLegs } = card.proposal
+  const { tpLegs, tpLevels } = card.proposal
   const stop = stopText(card)
-  const levels = showLegs ? tpLegs : []
+  // the stated targets, until the user's quantity turns them into legs
+  const levels = showLegs && tpLegs.length > 0 ? tpLegs.map((leg) => leg.level) : tpLevels
   if (levels.length === 0 && stop == null) return null
 
   return (
@@ -32,7 +33,7 @@ export function TradeTargets({ card, showLegs }: { card: Card; showLegs: boolean
         <>
           <dt className="text-muted-foreground">Targets</dt>
           <dd className="font-medium tabular-nums">
-            {levels.map((leg) => money(leg.level)).join(" · ")}
+            {levels.map((level) => money(level)).join(" · ")}
           </dd>
         </>
       ) : null}

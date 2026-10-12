@@ -2,7 +2,7 @@
 
 Provisional JSON:
     {"type": "message.create" | "message.update" | "message.delete",
-     "message": {"id", "channel_id", "thread_id", "guild_id", "author": {"id"}, "content",
+     "message": {"id", "channel_id", "thread_id", "guild_id", "author": {"id", "name"?}, "content",
                  "timestamp",
                  "edited_timestamp", "deleted_timestamp", "reply_to_id", "mentions": [ids]}}
 """
@@ -23,6 +23,7 @@ class UnmappablePayload(ValueError):
 
 class _Author(BaseModel):
     id: PositiveInt
+    name: str | None = None  # display only; kept in the raw payload, read back for card labels
 
 
 class _Message(BaseModel):

@@ -22,6 +22,7 @@ class MessageState(TypedDict, total=False):
     jev_answered: bool  # Jev returned an answer (False: down, timed out, disabled)
     hints: dict[str, Any] | None  # Jev answers for the slow path
     parsed: dict[str, Any] | None  # ParsedSignals
+    draft: dict[str, Any] | None  # Jev's low-confidence reading: what a person decides on, no LLM
     interpreter: str | None  # fast | jev | laya | llm | none
     model_call_id: int | None
     raw_reason: str | None  # set -> raw review card
@@ -49,6 +50,7 @@ def initial_state(
         jev_answered=False,
         hints=None,
         parsed=None,
+        draft=None,
         interpreter=None,
         model_call_id=None,
         raw_reason=None,

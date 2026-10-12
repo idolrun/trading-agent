@@ -123,3 +123,43 @@ export function PreflightSummary({ cardId }: { cardId: string }) {
     </section>
   )
 }
+
+/**
+ * The face of a card: one line with the server's verdict, and only the checks that are not
+ * PASS. The full list and the numbers live in Details (`PreflightSummary`).
+ */
+export function PreflightVerdict({ cardId }: { cardId: string }) {
+  const { data: pf, isError, isPending } = usePreflight(cardId, true)
+  if (isPending) {
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        Checking quote, account and limits…
+      </p>
+    )
+  }
+  if (isError || !pf) {
+    return (
+      <p role="alert" className="text-xs text-warning-foreground">
+        Live checks unavailable. Approval is still revalidated on the server.
+      </p>
+    )
+  }
+  if (!pf.applicable) return null
+  const verdict = status(pf.verdict)
+  const issues = pf.checks.filter((check) => check.status !== "pass")
+  return (
+    <div aria-label="Risk check" role="group" className="flex flex-col gap-0.5 text-sm">
+      <p className="flex items-center gap-1.5">
+        <verdict.icon aria-hidden className={cn("size-4 shrink-0", TONE_CLASS[verdict.tone])} />
+        <span className="font-medium">Risk check</span>
+        <span className={cn("text-xs font-semibold", TONE_CLASS[verdict.tone])}>{verdict.label}</span>
+      </p>
+      {issues.map((check) => (
+        <p key={check.name} className="pl-5.5 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{CHECK_LABELS[check.name] ?? words(check.name)}</span>
+          {check.detail ?? check.reason ? `: ${check.detail ?? words(check.reason ?? "")}` : ""}
+        </p>
+      ))}
+    </div>
+  )
+}

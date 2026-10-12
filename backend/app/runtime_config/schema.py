@@ -14,7 +14,9 @@ PositiveDecimal = Annotated[Decimal, Field(gt=0)]
 Pct = Annotated[Decimal, Field(gt=0, le=100)]
 Probability = Annotated[Decimal, Field(ge=0, le=1)]
 Snowflake = Annotated[DiscordId, Field(gt=0)]  # serialized as string (JS precision)
-Tiers = Annotated[dict[str, PositiveDecimal], Field(min_length=1)]
+
+
+RETIRED_KEYS = frozenset({"option_tiers", "stock_tiers"})
 
 
 class TradingMode(StrEnum):
@@ -130,9 +132,6 @@ class RuntimeConfig(_Strict):
     # F073: one explicit window for production, replay, labeling and prelabel alike (was
     # None -> 0 messages live but 5 in evalkit). The lane author's own messages only (F068).
     context_recent_messages: PositiveInt = 5
-    # Sizing: tier name -> dollars (options: default/small/lotto, extensible)
-    option_tiers: Tiers | None = None
-    stock_tiers: Tiers | None = None
     # Entry validity (C22: X, N, M)
     entry_chase_pct: Pct | None = None
     entry_validity_s: PositiveInt | None = None
@@ -172,6 +171,16 @@ class RuntimeConfig(_Strict):
     llm: LlmConfig = LlmConfig()
     note_guard_enabled: bool = True  # OD-6 (TRD recommendation)
     llm_monthly_budget_usd: PositiveDecimal | None = None  # PRD open item (d)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_keys(cls, data: Any) -> Any:
+        """C105: sizing tiers are gone (the user types every quantity). Documents saved before
+        that still carry them; drop on read so stored config and history stay loadable.
+        ponytail: remove once no stored document or client can carry the keys."""
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if k not in RETIRED_KEYS}
+        return data
 
     @model_validator(mode="after")
     def _cutoff_1_before_cutoff_2(self) -> Self:

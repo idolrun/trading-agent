@@ -3,16 +3,16 @@
 Every field value carries its provenance (PRD §6, C31): `literal` (an exact span of the
 message, verified by code — spans.py), `context` (taken from a specific earlier message),
 `resolved` (computed by code, e.g. "friday" -> a date, or a fast-path rule) or `model` (a
-model's judgment with no span behind it, F071: message type, call/put basis, flags, a size tier
-read from the provider's lexicon). Plain fields (msg_type, instrument, exit_fraction,
-stop_basis, flags) record theirs in `ParsedSignal.field_sources`.
+model's judgment with no span behind it, F071: message type, call/put basis, flags). Plain
+fields (msg_type, instrument, exit_fraction, stop_basis, flags) record theirs in
+`ParsedSignal.field_sources`.
 """
 
 import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.interpret.models import MsgType
 
@@ -76,8 +76,7 @@ class SignalFields(_Contract):
     entry_price_low: F[Decimal] | None = None
     entry_price_high: F[Decimal] | None = None
     price_unit_hint: Literal["per_share", "per_contract"] | None = None  # "/con" seen (FR-12)
-    size_tier: F[str] | None = None
-    qty_stated: F[int] | None = None
+    qty_stated: F[int] | None = None  # untrusted: shown to nobody, never an order quantity (C105)
     stop_level: F[Decimal] | None = None
     stop_basis: Literal["premium", "underlying"] | None = None
     candle_close: bool = False
@@ -88,6 +87,15 @@ class SignalFields(_Contract):
     is_add: bool = False
     prose_condition: str | None = None  # shown, never enforced (C30)
     correction_target_message_id: int | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_size_tier(cls, data: Any) -> Any:
+        """C105: no size tier exists any more; signals stored before still carry one.
+        ponytail: remove once no stored signal can carry the key."""
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if k != "size_tier"}
+        return data
 
 
 class LinkHint(_Contract):

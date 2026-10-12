@@ -11,7 +11,7 @@ import { Field, FormError } from "@/features/manual/fields"
 
 type Instrument = EntryBody["instrument"]
 
-const EMPTY = { instrument: "option", underlying: "", expiry: "", strike: "", right: "call", qty: "1", limitPrice: "" }
+const EMPTY = { instrument: "option", underlying: "", expiry: "", strike: "", right: "call", qty: "", limitPrice: "" }
 
 /** Manual entry (step-up). The server runs the shared entry gates and its refusal is shown inline. */
 export function EntryForm() {
@@ -126,7 +126,7 @@ export function EntryForm() {
             />
           )}
         </Field>
-        <FormError error={entry.error} />
+        <FormError error={entry.error} order />
         <Button type="submit" disabled={!valid || entry.isPending} className="self-start">
           {entry.isPending ? "Submitting…" : "Submit entry"}
         </Button>

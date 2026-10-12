@@ -47,7 +47,7 @@ export function TradeIdentity({ card }: { card: Card }) {
   if (parts.length === 0) return null
 
   return (
-    <p role="group" aria-label="Contract" className="flex flex-wrap gap-x-2 text-base font-medium">
+    <p role="group" aria-label="Contract" className="mt-0.5 flex flex-wrap gap-x-2 text-sm font-medium text-muted-foreground">
       {parts.map((part, index) => (
         <span key={index} className="flex gap-2">
           {index > 0 ? <span aria-hidden className="text-muted-foreground">·</span> : null}

@@ -39,7 +39,6 @@ GOOD = {
             "strike": {"raw": "770c"},
             "right": {"raw": "770c"},
             "entry_price": {"raw": ".95"},
-            "size_tier": {"raw": "lotto"},
             "stop_level": {"raw": "769"},
             "stop_basis": "underlying",
             "links_to": "new_position",

@@ -1,5 +1,6 @@
 "use client"
 
+import { OctagonX } from "lucide-react"
 import Link from "next/link"
 import { useState, type FormEvent } from "react"
 import { Dialog } from "@/components/dialog"
@@ -12,10 +13,10 @@ import { words } from "@/features/cards/types"
 import { postFlatten, useManualMutation, type FlattenResult, type FlattenScope } from "@/features/manual/api"
 import { FormError } from "@/features/manual/fields"
 
-const SCOPES: { value: FlattenScope; label: string }[] = [
-  { value: "options", label: "Options only" },
-  { value: "stocks", label: "Stocks only" },
-  { value: "all", label: "Everything" },
+const SCOPES: { value: FlattenScope; label: string; effect: string }[] = [
+  { value: "options", label: "Options only", effect: "Exits every open option lot." },
+  { value: "stocks", label: "Stocks only", effect: "Exits every open stock lot." },
+  { value: "all", label: "Everything", effect: "Exits every open option and stock lot." },
 ]
 
 /** A refused lot is a normal part of the result (HTTP 200), not an error. */
@@ -86,7 +87,11 @@ function FlattenDialog({ onClose }: { onClose: () => void }) {
                 ))}
               </RadioGroup>
             </fieldset>
-            <FormError error={flatten.error} />
+            <p role="note" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+              {SCOPES.find((option) => option.value === scope)?.effect} Entries stay blocked until you turn the kill
+              switch off. Exit orders are market-risk actions and cannot be recalled once sent.
+            </p>
+            <FormError error={flatten.error} order />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
@@ -107,7 +112,15 @@ export function FlattenControl() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button type="button" size="sm" variant="destructive" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="border-destructive/60 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        title="Exit open lots in a chosen scope. Asks for a password check."
+        onClick={() => setOpen(true)}
+      >
+        <OctagonX aria-hidden />
         Flatten
       </Button>
       {open ? <FlattenDialog onClose={() => setOpen(false)} /> : null}

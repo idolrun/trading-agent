@@ -1,4 +1,4 @@
-import { cardOnDesk, expect, followUp, lit, optionEntry, PROVIDER_A, test } from "./support/driver"
+import { approveWith, cardOnDesk, expect, followUp, lit, optionEntry, PROVIDER_A, test } from "./support/driver"
 
 // Shadow lifecycle (PRD 7.1-7.4): signal -> card -> approve -> simulated fill -> lot + bracket ->
 // "take half off" -> trim card -> approve -> partial exit -> "exit" -> approve -> lot and
@@ -13,8 +13,8 @@ test("entry -> bracket -> trim -> exit -> closed", async ({ page, driver }) => {
 
   const entryCard = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL")
   await expect(entryCard).toBeVisible()
-  await expect(entryCard.getByLabel("Quantity", { exact: true })).toHaveValue("2")
-  await entryCard.getByRole("button", { name: "Approve" }).click()
+  await expect(entryCard.getByLabel("Quantity", { exact: true })).toHaveValue("")
+  await approveWith(entryCard, 2)
   await expect(entryCard).toBeHidden()
 
   // fill -> one lot linked to the provider position; stop for the lot, TPs never above it
@@ -38,11 +38,11 @@ test("entry -> bracket -> trim -> exit -> closed", async ({ page, driver }) => {
   await driver.post("Take half off", [followUp("trim", entry.providerPositionId, { exit_fraction: "half" })])
   const trim = await driver.cardFor("trim", { state: "pending" })
   expect(trim).toMatchObject({ lotId: lot.id, providerPositionId: entry.providerPositionId })
-  expect(trim.proposal.qty).toBe(1)
+  expect(trim.proposal.qty).toBeNull() // "half" is information: the user types the quantity
   expect((await driver.orders()).filter((o) => o.cardId === trim.id)).toEqual([]) // approval first
   const trimCard = cardOnDesk(page, PROVIDER_A, "trim", "GOOGL")
-  await expect(trimCard.getByLabel("Quantity", { exact: true })).toHaveValue("1")
-  await trimCard.getByRole("button", { name: "Approve" }).click()
+  await expect(trimCard.getByLabel("Quantity", { exact: true })).toHaveValue("")
+  await approveWith(trimCard, 1)
   await expect(trimCard).toBeHidden()
 
   await expect
@@ -63,10 +63,11 @@ test("entry -> bracket -> trim -> exit -> closed", async ({ page, driver }) => {
   // "Exit" -> sells the rest: lot and provider position close, nothing is left working
   await driver.advance(20)
   await driver.post("All out", [followUp("full_exit", entry.providerPositionId)])
-  const exit = await driver.cardFor("exit", { state: "pending" })
-  expect(exit.proposal.qty).toBe(1)
-  const exitCard = cardOnDesk(page, PROVIDER_A, "exit", "GOOGL")
-  await exitCard.getByRole("button", { name: "Approve" }).click()
+  const exit = await driver.cardFor("close", { state: "pending" })
+  expect(exit.proposal.qty).toBe(1) // the dedicated close: the whole lot, no quantity to type
+  const exitCard = cardOnDesk(page, PROVIDER_A, "close", "GOOGL")
+  await expect(exitCard.getByLabel("Quantity", { exact: true })).toHaveCount(0)
+  await exitCard.getByRole("button", { name: "Close entire position (1)" }).click()
   await expect(exitCard).toBeHidden()
 
   await expect

@@ -1,16 +1,12 @@
 """Recorded-shape Jev answers for tests (SDK answer models, no live calls)."""
 
-from decimal import Decimal
-
 from typesafe_sdk import ChoiceAnswer, NoulAnswer, ScoreAnswer
 
 from app.interpret.jev.mapping import Answer
 from app.runtime_config.schema import RuntimeConfig
 
 EXAMPLE = "spy 770c .95 lotto, sl 769 spy"  # TRD §4.2
-CFG = RuntimeConfig(
-    option_tiers={"default": Decimal(500), "small": Decimal(250), "lotto": Decimal(100)}
-)
+CFG = RuntimeConfig()
 
 
 def c(choice: str, confidence: float = 0.95, **others: float) -> ChoiceAnswer:
@@ -51,7 +47,6 @@ def example_answers(**overrides: Answer) -> dict[str, Answer]:
         "exit_intent": score(0),
         "ticker": c("t1", 0.93),
         "expiry": c("not_stated", 0.9),
-        "size_tier": c("lotto", 0.9),
         "links_to": c("new_position"),
         "role_n1": c("strike", 0.97),
         "role_n2": c("entry_price"),

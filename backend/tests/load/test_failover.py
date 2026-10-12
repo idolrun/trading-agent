@@ -186,7 +186,7 @@ async def open_lot(run: LoadRun, session_id: uuid.UUID) -> None:
         card.card_id,
         "approve",
         card.version,
-        Edits(),
+        Edits(qty=2),
         session_id=session_id,
         consume_step_up=_never,
     )

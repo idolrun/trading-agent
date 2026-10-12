@@ -348,7 +348,7 @@ async def test_5_kill_in_approval_graph(
                 card.card_id,
                 "approve",
                 card.version,
-                Edits(),
+                Edits(qty=2),
                 session_id=session_id,
                 consume_step_up=_never,
             )

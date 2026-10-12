@@ -1,4 +1,4 @@
-import { cardOnDesk, expect, optionEntry, PROVIDER_A, test } from "./support/driver"
+import { approveWith, cardOnDesk, expect, optionEntry, PROVIDER_A, test } from "./support/driver"
 
 // AC-5: an edit before the trade replaces the card with a new one that needs its own approval; a
 // correction after the trade is an alert only (no card, no order, the lot keeps its contract).
@@ -23,14 +23,14 @@ test("edit before trade: new card needing approval", async ({ page, driver }) =>
   const second = await driver.cardFor("entry", { state: "pending" })
   expect(second.id).not.toBe(first.id)
   expect(second.providerPositionId).toBe(first.providerPositionId) // the same position, corrected
-  expect(second.proposal).toMatchObject({ qty: 20, price: "0.49" })
+  expect(second.proposal).toMatchObject({ qty: null, price: "0.49" })
   expect((await driver.card(second.id)).approval).toBeNull()
   expect(await driver.orders()).toEqual([]) // nothing traded on either version
 
   const card = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL")
   await expect(card).toHaveCount(1)
   await expect(card.getByRole("group", { name: "Contract" })).toContainText(/\$360 Call\s*·\s*Oct 2, 2026/)
-  await card.getByRole("button", { name: "Approve" }).click() // the re-approval
+  await approveWith(card, 20) // the re-approval: the old quantity does not carry over
   const lot = await driver.lotOf(PROVIDER_A, "GOOGL")
   expect(lot).toMatchObject({ qty: 20, contract: { strike: "360" } })
   expect((await driver.orders()).map((o) => o.cardId)).toEqual([second.id])
@@ -40,7 +40,7 @@ test("correction after trade: alert only", async ({ page, driver }) => {
   const a1 = await driver.post("Bought GOOGL 357.5C 10/2 @ 0.71", [
     optionEntry("GOOGL", "357.5", "357.5C", "10/2", "0.71"),
   ])
-  await cardOnDesk(page, PROVIDER_A, "entry", "GOOGL").getByRole("button", { name: "Approve" }).click()
+  await approveWith(cardOnDesk(page, PROVIDER_A, "entry", "GOOGL"), 4)
   const lot = await driver.lotOf(PROVIDER_A, "GOOGL")
   const ordersBefore = await driver.orders()
 

@@ -15,11 +15,10 @@ UNIQUE = Resolution(outcome="unique", position_id=P, candidates=(P,), method="re
 # the resolver matched "SPY" in the text to the lane's position (reply / contract evidence)
 SPY_NAMED = UNIQUE.model_copy(update={"evidence": {"rule": "reply", "tickers": ["SPY"]}})
 AMBIGUOUS = Resolution(outcome="ambiguous", candidates=(P, uuid.uuid4()))
-TIERS = ["default", "lotto", "small"]
 
 
 def parse(text: str, r: Resolution | None = None) -> dict[str, object] | None:
-    parsed = fast_parse(text, r, TIERS)
+    parsed = fast_parse(text, r)
     if parsed is None:
         return None
     assert parsed.interpreter == "fast"
@@ -32,8 +31,6 @@ def parse(text: str, r: Resolution | None = None) -> dict[str, object] | None:
             out[name] = v.value
     if f.tp_levels:
         out["tps"] = [t.value for t in f.tp_levels]
-    if f.size_tier:
-        out["tier"] = f.size_tier.value
     if f.exit_fraction:
         out["fraction"] = f.exit_fraction
     if f.breakeven_stop:
@@ -61,13 +58,12 @@ def test_option_entries() -> None:
         "stop_level": Decimal(".80"),
         "tps": [Decimal("1.50"), Decimal("2.00")],
     }
-    assert parse("$QQQ 745 puts 1.36 lotto") == {
+    assert parse("$QQQ 745 puts 1.36") == {
         "type": "entry",
         "underlying": "qqq",
         "strike": Decimal(745),
         "right": "put",
         "entry_price": Decimal("1.36"),
-        "tier": "lotto",
     }
 
 
@@ -75,11 +71,10 @@ def test_option_entries() -> None:
     "text",
     [
         "SPY 765P .54 nice",  # an unexplained word
-        "SPY 765P .54 yolo",  # not a configured tier
+        "$QQQ 745 puts 1.36 lotto",  # a size word: no sizing words exist (C105)
         "buy 765p .54",  # no ticker
         "spy 770c .95 lotto, sl 769 spy",  # more than one clause
         "if SPY holds 770 then calls",  # a condition
-        "watching SPY 765P",
         "SPY 765P .54\nQQQ 745P .60",  # two lines
     ],
 )
@@ -122,12 +117,12 @@ def test_fast_path_provenance_is_code_or_the_text() -> None:
     """F071: a fast-path type is a code rule; a stated fraction is a literal span."""
     from app.interpret.signal import LiteralSpan, ResolvedSource
 
-    parsed = fast_parse("trim half", UNIQUE, TIERS)
+    parsed = fast_parse("trim half", UNIQUE)
     assert parsed is not None
     src = parsed.signals[0].field_sources
     assert isinstance(src["msg_type"], ResolvedSource) and src["msg_type"].rule == "fast:trim"
     assert isinstance(src["exit_fraction"], LiteralSpan) and src["exit_fraction"].raw == "half"
-    entry = fast_parse("SPY 765P .54", None, TIERS)
+    entry = fast_parse("SPY 765P .54", None)
     assert entry is not None
     instrument = entry.signals[0].field_sources["instrument"]
     assert isinstance(instrument, LiteralSpan) and instrument.raw == "765P"
@@ -226,3 +221,34 @@ def test_ticker_check_uses_the_resolvers_evidence() -> None:
     hagw = resolve("all out HAGW @everyone")
     assert (hagw.outcome, hagw.position_id) == ("unique", spy)  # the reply still decides
     assert parse("all out HAGW @everyone", hagw) is None  # but "HAGW" is not read as a ticker
+
+
+def test_verb_prefixed_entries_with_a_date() -> None:
+    """Shapes used when testing from Discord: the verb, a no-year date, a glued strike."""
+    assert parse("Bought SPY 670C 10/17 @ 1.20") == {
+        "type": "entry",
+        "underlying": "spy",
+        "expiry_token": "10/17",
+        "strike": Decimal(670),
+        "right": "call",
+        "entry_price": Decimal("1.20"),
+    }
+    assert parse("Bought GOOGL 357.5C @ 1.67") == {
+        "type": "entry",
+        "underlying": "googl",
+        "strike": Decimal("357.5"),
+        "right": "call",
+        "entry_price": Decimal("1.67"),
+    }
+
+
+def test_a_watch_message_is_a_feed_signal_never_a_card() -> None:
+    assert parse("Watching NVDA 200C, might get in if it holds 198") == {
+        "type": "watch",
+        "underlying": "nvda",
+    }
+    assert parse("watching SPY 765P @everyone") == {"type": "watch", "underlying": "spy"}
+    # an instruction or a premium in the text: Jev decides
+    assert parse("Watching SPY 765P, bought @ 1.20") is None
+    assert parse("watching SPY 765P .54") is None
+    assert parse("Bought it @ 1.20") is None

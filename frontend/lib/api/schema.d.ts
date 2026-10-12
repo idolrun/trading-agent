@@ -1113,6 +1113,8 @@ export interface components {
             proposal: components["schemas"]["ProposalOut"];
             /** Providerid */
             providerId: string | null;
+            /** Providername */
+            providerName: string | null;
             /** Providerpositionid */
             providerPositionId: string | null;
             /** Signalid */
@@ -1180,6 +1182,8 @@ export interface components {
             proposal: components["schemas"]["ProposalOut"];
             /** Providerid */
             providerId: string | null;
+            /** Providername */
+            providerName: string | null;
             /** Providerpositionid */
             providerPositionId: string | null;
             /** Signalid */
@@ -2896,6 +2900,8 @@ export interface components {
             suggestedUnderlying: string | null;
             /** Tplegs */
             tpLegs: components["schemas"]["TpLegOut"][];
+            /** Tplevels */
+            tpLevels: string[];
             /** Warnings */
             warnings: string[];
         };
@@ -3123,10 +3129,6 @@ export interface components {
              * @default true
              */
             note_guard_enabled: boolean;
-            /** Option Tiers */
-            option_tiers?: {
-                [key: string]: number | string;
-            } | null;
             /**
              * Poison Retry Limit
              * @default 3
@@ -3139,10 +3141,6 @@ export interface components {
              * @default 30
              */
             stale_entry_s: number;
-            /** Stock Tiers */
-            stock_tiers?: {
-                [key: string]: number | string;
-            } | null;
             /**
              * Symbol Map
              * @default {
@@ -3426,6 +3424,8 @@ export interface components {
             avgSellPrice: string | null;
             /** Buyqty */
             buyQty: number;
+            /** Instrument */
+            instrument: string;
             /** Sellqty */
             sellQty: number;
             /** Symbol */

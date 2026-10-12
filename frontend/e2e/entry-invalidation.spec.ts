@@ -1,4 +1,4 @@
-import { cardOnDesk, expect, followUp, lit, optionEntry, ORIGIN_HEADERS, PROVIDER_A, test, type Driver } from "./support/driver"
+import { approveWith, cardOnDesk, expect, followUp, lit, optionEntry, ORIGIN_HEADERS, PROVIDER_A, test, type Driver } from "./support/driver"
 
 // AC-4 / 7.2: an entry card that times out, whose price leaves the band before approval, or that
 // a newer provider message supersedes, ends expired / invalidated and places no order.
@@ -34,7 +34,7 @@ test("price band: the ask moved past the chase limit before approval", async ({ 
   const card = await pendingEntry(driver)
   await driver.market({ quotes: [{ contract: GOOGL_357_5C, bid: "0.78", ask: "0.80" }] }) // > 0.71 + 5 %
   const onDesk = cardOnDesk(page, PROVIDER_A, "entry", "GOOGL")
-  await onDesk.getByRole("button", { name: "Approve" }).click() // revalidated at approval (AC-4)
+  await approveWith(onDesk, 1) // revalidated at approval (AC-4)
   await expect(onDesk).toBeHidden()
 
   const after = await driver.waitFor(() => driver.card(card.id), (c) => (c.state === "invalidated" ? c : null), "invalidated")

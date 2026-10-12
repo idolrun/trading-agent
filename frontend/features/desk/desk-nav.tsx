@@ -1,5 +1,6 @@
 "use client"
 
+import { Fragment } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -23,6 +24,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -32,20 +34,41 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
-const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/", label: "Inbox", icon: Inbox },
-  { href: "/feed", label: "Feed", icon: Rss },
-  { href: "/positions", label: "Positions", icon: Briefcase },
-  { href: "/orders", label: "Orders", icon: ClipboardList },
-  { href: "/reports/trading", label: "Reports", icon: ChartNoAxesCombined },
-  { href: "/alerts", label: "Alerts", icon: Bell },
-  { href: "/health", label: "Health", icon: Activity },
-  { href: "/manual/entry", label: "Manual entry", icon: PenLine },
-  { href: "/discord", label: "Discord", icon: MessageSquare },
-  { href: "/config", label: "Config", icon: Settings },
-  { href: "/users", label: "Users", icon: Users },
-  { href: "/audit", label: "Audit", icon: ScrollText },
-  { href: "/labels", label: "Labels", icon: Tags },
+type DeskLink = { href: string; label: string; icon: LucideIcon }
+
+/** Primary book, then monitoring, then administration. Dividers mark the boundary. */
+const GROUPS: { id: string; label: string; links: DeskLink[] }[] = [
+  {
+    id: "trading",
+    label: "Trading",
+    links: [
+      { href: "/", label: "Inbox", icon: Inbox },
+      { href: "/feed", label: "Feed", icon: Rss },
+      { href: "/positions", label: "Positions", icon: Briefcase },
+      { href: "/orders", label: "Orders", icon: ClipboardList },
+      { href: "/reports/trading", label: "Reports", icon: ChartNoAxesCombined },
+    ],
+  },
+  {
+    id: "operations",
+    label: "Operations",
+    links: [
+      { href: "/alerts", label: "Alerts", icon: Bell },
+      { href: "/health", label: "Health", icon: Activity },
+      { href: "/manual/entry", label: "Manual entry", icon: PenLine },
+      { href: "/discord", label: "Discord", icon: MessageSquare },
+    ],
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    links: [
+      { href: "/config", label: "Config", icon: Settings },
+      { href: "/users", label: "Users", icon: Users },
+      { href: "/audit", label: "Audit", icon: ScrollText },
+      { href: "/labels", label: "Labels", icon: Tags },
+    ],
+  },
 ]
 
 export function DeskNav() {
@@ -59,25 +82,31 @@ export function DeskNav() {
       <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
       <SidebarContent>
         <nav aria-label="Desk">
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {LINKS.map(({ href, label, icon: Icon }) => {
-                  const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
-                  return (
-                    <SidebarMenuItem key={href}>
-                      <SidebarMenuButton asChild isActive={active} tooltip={label}>
-                        <Link href={href} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)}>
-                          <Icon />
-                          <span>{label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          {GROUPS.map((group, index) => (
+            <Fragment key={group.id}>
+              {index > 0 ? <SidebarSeparator /> : null}
+              <SidebarGroup>
+                <SidebarGroupLabel id={`desk-nav-${group.id}`}>{group.label}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu aria-labelledby={`desk-nav-${group.id}`}>
+                    {group.links.map(({ href, label, icon: Icon }) => {
+                      const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
+                      return (
+                        <SidebarMenuItem key={href}>
+                          <SidebarMenuButton asChild isActive={active} tooltip={label}>
+                            <Link href={href} aria-current={active ? "page" : undefined} onClick={() => setOpenMobile(false)}>
+                              <Icon />
+                              <span>{label}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </Fragment>
+          ))}
         </nav>
       </SidebarContent>
       <SidebarRail />

@@ -38,8 +38,7 @@ what it says, as structured output. You interpret; you never decide trades.
 - `entry_price` or `entry_price_low`/`entry_price_high` for a range; `stop_level` with
   `stop_basis` = `underlying` when the stop is a stock/index level, `premium` when it is an option
   price; `tp_levels` in order.
-- `size_tier` the sizing word as written ("lotto", "small", "full"); `qty_stated` only an
-  explicit contract/share count.
+- `qty_stated` only an explicit contract/share count (shown for information, never used to size).
 - `exit_fraction`: all, half, third, quarter, other_stated, not_stated.
 - `correction_target_message_id`: id of the earlier message a correction fixes.
 
@@ -47,7 +46,7 @@ what it says, as structured output. You interpret; you never decide trades.
 
 Message: `QQQ 480p 1.20 small size, stop 1.00`
 → one signal: msg_type entry, instrument option, underlying "QQQ", strike "480p", right
-"480p", entry_price "1.20", size_tier "small", stop_level "1.00", stop_basis premium,
+"480p", entry_price "1.20", stop_level "1.00", stop_basis premium,
 links_to new_position.
 
 Message: `trimming half here on the 480s` (provider_book has one QQQ 480P position `P1`)

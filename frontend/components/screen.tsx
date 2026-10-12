@@ -2,7 +2,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 
 /** One desk width and one vertical rhythm. Login stays narrower. */
-export const deskFrame = "mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6"
+export const deskFrame = "mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-4 sm:px-6"
 export const deskTitle = "font-heading text-2xl font-semibold tracking-tight"
 
 /** Page frame shared by the book screens: back link, h1, content. Server-renderable. */

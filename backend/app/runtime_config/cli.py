@@ -1,7 +1,7 @@
 """Console CLI for runtime config (actor `cli`).
 
 uv run python -m app.runtime_config.cli show
-uv run python -m app.runtime_config.cli set --file config.json --reason "initial tiers"
+uv run python -m app.runtime_config.cli set --file config.json --reason "initial config"
 """
 
 import argparse

@@ -73,7 +73,6 @@ class NormalizedSignal(BaseModel):
     stop_basis: Literal["premium", "underlying"] | None = None
     tp_levels: tuple[Price, ...] = ()
     price_unit_hint: Literal["per_share", "per_contract"] | None = None
-    size_tier: str | None = None
     qty_stated: int | None = None
     exit_fraction: ExitFraction | None = None
     candle_close: bool = False
@@ -155,7 +154,6 @@ def identify(
         stop_basis=f.stop_basis,
         tp_levels=tuple(Price(raw=t.value, value=t.value) for t in f.tp_levels),
         price_unit_hint=f.price_unit_hint,
-        size_tier=_v(f.size_tier),
         qty_stated=_v(f.qty_stated),
         exit_fraction=f.exit_fraction,
         candle_close=f.candle_close,

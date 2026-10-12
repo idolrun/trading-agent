@@ -22,6 +22,7 @@ def create(
     author: int = PROVIDER_A,
     channel: int = CHANNEL,
     seq: int = 0,
+    author_name: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     return {
@@ -29,7 +30,7 @@ def create(
         "message": {
             "id": str(snowflake(at, seq)),
             "channel_id": str(channel),
-            "author": {"id": str(author)},
+            "author": {"id": str(author)} | ({"name": author_name} if author_name else {}),
             "content": text,
             "timestamp": at.isoformat(),
             **extra,

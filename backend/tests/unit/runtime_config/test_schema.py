@@ -13,8 +13,6 @@ EXAMPLE = Path(__file__).parents[3] / "config.example.json"
 NO_DEFAULT = {
     "feed_silence_s",
     "catch_up_backlog_n",
-    "option_tiers",
-    "stock_tiers",
     "entry_chase_pct",
     "entry_validity_s",
     "entry_cancel_after_s",
@@ -38,8 +36,6 @@ COMPLETE = {
     "feed_silence_s": 600,
     "catch_up_backlog_n": 20,
     "context_recent_messages": 30,
-    "option_tiers": {"default": "500", "small": "250", "lotto": "100"},
-    "stock_tiers": {"default": "2000"},
     "entry_chase_pct": "5",
     "entry_validity_s": 60,
     "entry_cancel_after_s": 120,
@@ -85,6 +81,12 @@ def test_missing_for_entries_lists_each_unset_field() -> None:
         assert missing_for_entries(RuntimeConfig.model_validate(partial)) == [field]
 
 
+def test_retired_sizing_tiers_are_dropped_on_read() -> None:
+    """C105: documents saved before the user typed every quantity still load."""
+    config = RuntimeConfig.model_validate({"option_tiers": {"default": "500"}, "stock_tiers": {}})
+    assert not hasattr(config, "option_tiers") and "stock_tiers" not in config.model_dump()
+
+
 def test_unknown_keys_rejected() -> None:
     with pytest.raises(ValidationError):
         RuntimeConfig.model_validate({"tiers": {"default": "500"}})
@@ -95,9 +97,6 @@ def test_unknown_keys_rejected() -> None:
 @pytest.mark.parametrize(
     "bad",
     [
-        {"option_tiers": {"default": "0"}},
-        {"option_tiers": {"default": "-100"}},
-        {"option_tiers": {}},
         {"max_daily_loss_usd": "0"},
         {"entry_chase_pct": "101"},
         {"t_link": "1.5"},

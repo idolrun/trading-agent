@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { describe, expect, it } from "vitest"
 import { ConfigScreen } from "@/features/config/config-screen"
+import { HELP } from "@/features/config/help"
 import { defaultDocument, missingKeys } from "@/features/config/types"
 import { configFixture, server } from "@/test/msw"
 import { renderWithQuery } from "@/test/render"
@@ -31,9 +32,11 @@ const errorBody = (code: string, message: string) => HttpResponse.json({ code, m
 async function save(reason = "because") {
   await userEvent.type(screen.getByLabelText("Reason for this change"), reason)
   await userEvent.click(saveButton())
+  const confirm = screen.queryByRole("button", { name: "Confirm and save" })
+  if (confirm) await userEvent.click(confirm)
 }
 
-describe("ConfigScreen", () => {
+describe("ConfigScreen", { timeout: 20_000 }, () => {
   it("highlights unset fields and lists them in the summary", async () => {
     renderWithQuery(<ConfigScreen />)
 
@@ -62,7 +65,7 @@ describe("ConfigScreen", () => {
     await userEvent.type(screen.getByLabelText("Laya t_type (0 to 1)"), "0.95")
     await save("tighten the local fallback")
 
-    await screen.findByText("Version 4")
+    await screen.findByText(/Version 4/)
     expect(puts[0].document).toMatchObject({
       laya: { enabled: false, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.95", t_link: "0.9" }, // on by default: the click turns it off
     })
@@ -73,29 +76,25 @@ describe("ConfigScreen", () => {
     renderWithQuery(<ConfigScreen />)
     await screen.findByLabelText("Max daily loss (USD)")
 
-    expect(saveButton()).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Save config" })).not.toBeInTheDocument() // nothing edited
     await userEvent.type(screen.getByLabelText("Max daily loss (USD)"), "500")
-    await userEvent.clear(screen.getByLabelText("Option tiers USD 1"))
-    await userEvent.type(screen.getByLabelText("Option tiers USD 1"), "600")
     expect(saveButton()).toBeDisabled() // no reason yet
     await save("set risk limits")
 
-    await screen.findByText("Version 4")
+    await screen.findByText(/Version 4/)
     expect(puts).toHaveLength(1)
     expect(puts[0].expectedVersion).toBe(3)
     expect(puts[0].reason).toBe("set risk limits")
     expect(Object.keys(puts[0].document).sort()).toEqual(Object.keys(configFixture.document).sort())
     expect(puts[0].document).toMatchObject({
       max_daily_loss_usd: "500",
-      option_tiers: { default: "600", small: "250", lotto: "100" },
       channels: ["999888777666555444"],
-      stock_tiers: null,
       feed_silence_s: 60,
       jev: { model: "jev-1.13.0", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
     })
-    // dirty state reset: reason cleared, nothing to save
-    expect(screen.getByLabelText("Reason for this change")).toHaveValue("")
-    expect(saveButton()).toBeDisabled()
+    // dirty state reset: save bar gone, nothing to save
+    expect(screen.queryByLabelText("Reason for this change")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Save config" })).not.toBeInTheDocument()
   })
 
   it("on 409 refetches and offers reload or reapply", async () => {
@@ -127,10 +126,11 @@ describe("ConfigScreen", () => {
     expect(screen.queryByText(/now version 4/)).not.toBeInTheDocument()
     expect(screen.getByLabelText("Stale entry (s)")).toHaveValue(20)
     expect(screen.getByLabelText("Chat threshold")).toHaveValue(0.5) // server's change kept
-    await screen.findByText("Version 4")
+    await screen.findByText(/Version 4/)
 
     await userEvent.type(screen.getByLabelText("Reason for this change"), "retry")
     await userEvent.click(saveButton())
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm and save" })) // max_daily_loss_usd is high impact
     await waitFor(() => expect(puts).toHaveLength(2))
     expect(puts[1].expectedVersion).toBe(4)
     expect(puts[1].document).toMatchObject({ stale_entry_s: 20, t_chat: "0.5", max_daily_loss_usd: "500" })
@@ -189,16 +189,86 @@ describe("ConfigScreen", () => {
     expect(puts).toHaveLength(0)
   })
 
-  it("renders the change history", async () => {
+  it("renders the change history as expandable versions", async () => {
     renderWithQuery(<ConfigScreen />)
     const history = await screen.findByRole("heading", { name: "History" })
     const items = await within(history.parentElement!).findAllByRole("listitem")
     expect(items).toHaveLength(2)
-    expect(within(items[0]).getByText(/Version 3 · alice/)).toBeInTheDocument()
+    expect(within(items[0]).getByText("Version 3")).toBeInTheDocument()
+    expect(within(items[0]).getByText("alice")).toBeInTheDocument()
     expect(within(items[0]).getByText("tighten chase")).toBeInTheDocument()
+    expect(within(items[0]).getByText(/1 setting changed/)).toBeInTheDocument()
     expect(within(items[0]).getByText("entry_chase_pct")).toBeInTheDocument()
+    expect(within(items[0]).getByText(/"3"/)).toBeInTheDocument() // before
+    expect(within(items[1]).getByText(/2 settings changed/)).toBeInTheDocument()
     expect(within(items[1]).getByText("channels")).toBeInTheDocument()
     expect(within(items[1]).getByText("feed_silence_s")).toBeInTheDocument()
+  })
+
+  it("shows the version and last update in the header", async () => {
+    renderWithQuery(<ConfigScreen />)
+    expect((await screen.findAllByText(/Version 3/)).length).toBeGreaterThan(0)
+    expect(await screen.findByText(/by alice/)).toBeInTheDocument()
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText("Max daily loss (USD)"), "5")
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument()
+  })
+
+  it("has a help button on every control, with the five kinds of help", async () => {
+    renderWithQuery(<ConfigScreen />)
+    await screen.findByLabelText("Max daily loss (USD)")
+    const names = Object.keys(HELP)
+    // every entry says what it means, what it affects and gives an example
+    for (const name of names) {
+      expect(HELP[name].means.length).toBeGreaterThan(10)
+      expect(HELP[name].affects.length).toBeGreaterThan(10)
+      expect(HELP[name].example.length).toBeGreaterThan(3)
+    }
+    // one help button per documented control (the document has no control without help)
+    expect(screen.getAllByRole("button", { name: /^Help: / })).toHaveLength(names.length)
+    for (const name of ["max_total_exposure_usd", "catch_up_backlog_n"]) expect(HELP[name].risk).toBeTruthy()
+  })
+
+  it("opens help on click and closes it with Escape", async () => {
+    renderWithQuery(<ConfigScreen />)
+    await userEvent.click(await screen.findByRole("button", { name: "Help: Feed silence alert (s)" }))
+    expect(await screen.findByText("What it affects")).toBeInTheDocument()
+    expect(screen.getByText(/600 = 10 minutes/)).toBeInTheDocument()
+    await userEvent.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByText("What it affects")).not.toBeInTheDocument())
+  })
+
+  it("explains an invalid value next to the field and blocks saving", async () => {
+    const puts = capturePuts()
+    renderWithQuery(<ConfigScreen />)
+    const chase = await screen.findByLabelText("Chase limit (%)")
+    await userEvent.type(chase, "150")
+    expect(chase).toHaveAttribute("aria-invalid", "true")
+    expect(chase).toHaveAccessibleDescription(/at most 100/)
+    await userEvent.type(screen.getByLabelText("Reason for this change"), "x")
+    expect(saveButton()).toBeDisabled()
+    expect(puts).toHaveLength(0)
+  })
+
+  it("asks to confirm a high-impact change and shows before and after", async () => {
+    const puts = capturePuts()
+    renderWithQuery(<ConfigScreen />)
+    await userEvent.type(await screen.findByLabelText("Max daily loss (USD)"), "500")
+    await userEvent.type(screen.getByLabelText("Reason for this change"), "limit")
+    await userEvent.click(saveButton())
+    const list = await screen.findByRole("list", { name: "High-impact changes" })
+    expect(within(list).getByText("max_daily_loss_usd")).toBeInTheDocument()
+    expect(puts).toHaveLength(0) // nothing sent before confirming
+    await userEvent.click(screen.getByRole("button", { name: "Confirm and save" }))
+    await waitFor(() => expect(puts).toHaveLength(1))
+  })
+
+  it("discards edits back to the saved version", async () => {
+    renderWithQuery(<ConfigScreen />)
+    await userEvent.type(await screen.findByLabelText("Max daily loss (USD)"), "500")
+    await userEvent.click(screen.getByRole("button", { name: "Discard changes" }))
+    expect(screen.getByLabelText("Max daily loss (USD)")).toHaveValue(null)
+    expect(screen.queryByRole("button", { name: "Save config" })).not.toBeInTheDocument()
   })
 
   it("starts from defaults at version 0 when the config was never saved", async () => {
@@ -210,10 +280,10 @@ describe("ConfigScreen", () => {
     expect(screen.getByLabelText("Stale entry (s)")).toHaveValue(30)
     expect(screen.getByLabelText("Symbol map from 1")).toHaveValue("SPX")
     expect(screen.getByLabelText("Symbol map to 1")).toHaveValue("SPXW")
-    expect(screen.getByLabelText("Option tiers tier 1")).toHaveValue("default")
+    expect(screen.queryByLabelText("Option tiers tier 1")).not.toBeInTheDocument() // C105: no sizing tiers
 
     await save("initial config") // nothing edited: version 0 still saves
-    await screen.findByText("Version 1")
+    await screen.findByText(/Version 1/)
     expect(puts[0].expectedVersion).toBe(0)
     expect(puts[0].document).toEqual({ ...defaultDocument(), symbol_map: { SPX: "SPXW" } })
   })

@@ -3,7 +3,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -101,6 +101,8 @@ async def _outs(db: AsyncSession, cards: list[Card]) -> list[CardOut]:
     context_ids = {f.source_message_id for fs in inferred.values() for f in fs}
     messages = await _messages(db, keys, context_ids)
 
+    names = await _provider_names(db, {c.provider_id for c in cards if c.provider_id})
+
     out = []
     for card in cards:
         sig = signals.get(card.signal_id) if card.signal_id else None
@@ -125,6 +127,7 @@ async def _outs(db: AsyncSession, cards: list[Card]) -> list[CardOut]:
                 card_type=card.card_type,
                 state=card.state,
                 provider_id=card.provider_id,
+                provider_name=names.get(card.provider_id) if card.provider_id else None,
                 provider_position_id=card.provider_position_id,
                 lot_id=card.lot_id,
                 underlying=pos.underlying if pos else _value(fields, "underlying"),
@@ -148,6 +151,26 @@ async def _outs(db: AsyncSession, cards: list[Card]) -> list[CardOut]:
             )
         )
     return out
+
+
+async def _provider_names(db: AsyncSession, provider_ids: set[int]) -> dict[int, str]:
+    """Newest Discord display name per provider, from the raw payload of their latest message that
+    carried one. Older messages (before the listener sent names) have none: the name is unknown
+    until the provider posts again (a name older than 30 days counts as unknown)."""
+    if not provider_ids:
+        return {}
+    name = col(MessageEvent.payload)["message"]["author"]["name"].as_string()
+    rows = await db.execute(
+        select(col(MessageEvent.provider_id), name)
+        .where(
+            col(MessageEvent.provider_id).in_(provider_ids),
+            name.is_not(None),
+            col(MessageEvent.posted_at) > func.now() - text("interval '30 days'"),  # bounded scan
+        )
+        .order_by(col(MessageEvent.provider_id), col(MessageEvent.posted_at).desc())
+        .distinct(col(MessageEvent.provider_id))
+    )
+    return {provider_id: shown for provider_id, shown in rows}
 
 
 async def _messages(
@@ -216,6 +239,7 @@ def _proposal(p: dict[str, Any]) -> ProposalOut:
         price=p.get("limit_price"),
         signal_price=p.get("signal_price"),
         stop=StopOut.model_validate(stop) if stop else None,
+        tp_levels=p.get("tp_levels", []),
         tp_legs=[TpLegOut.model_validate(leg) for leg in p.get("tp_legs", [])],
         warnings=p.get("warnings", []),
         labels=p.get("labels", []),

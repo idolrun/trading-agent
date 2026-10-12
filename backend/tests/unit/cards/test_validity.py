@@ -65,11 +65,14 @@ def test_approval_blockers() -> None:
     review = card(CardAction.ENTRY, qty=None, missing_fields=["underlying_confirmation"])
     assert approval_blockers(review, {}, None) == ["underlying_confirmation", "qty"]
     assert approval_blockers(review, {"underlying_confirmation": "MU", "qty": 2}, None) == []
-    blank = card(CardAction.TRIM, labels=["lot_too_small"])
+    blank = card(CardAction.TRIM, labels=["provider_fraction:half"])
     assert approval_blockers(blank, {}, 1) == ["qty"]
     assert approval_blockers(blank, {"qty": 0}, 1) == ["qty"]
     assert approval_blockers(blank, {"qty": 2}, 1) == ["qty_exceeds_lot"]
     assert approval_blockers(blank, {"qty": 1}, 1) == []
+    close = card(CardAction.CLOSE, qty=None)  # C105: a close takes no typed quantity
+    assert approval_blockers(close, {}, 3) == []
+    assert approval_blockers(close, {}, None) == ["no_open_lot"]
     disabled = card(CardAction.ENTRY, qty=None, disabled_reason="max exposure")
     assert approval_blockers(disabled, {"qty": 1}, None) == ["disabled"]
     be = card(CardAction.STOP, stop=StopProposal(level=None, basis="premium", held_by="broker"))

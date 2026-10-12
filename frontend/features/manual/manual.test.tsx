@@ -65,6 +65,7 @@ async function confirmPassword() {
 async function fillStockEntry() {
   await userEvent.selectOptions(screen.getByLabelText("Instrument"), "stock")
   await userEvent.type(screen.getByLabelText("Underlying"), "spy")
+  await userEvent.type(screen.getByLabelText("Quantity"), "1")
   await userEvent.type(screen.getByLabelText("Limit price"), "1.25")
 }
 
@@ -95,6 +96,38 @@ describe("manual entry", () => {
     expect(stepUps).toBe(2)
     expect(typeof bodies[0].idempotencyKey).toBe("string")
     expect(bodies[1].idempotencyKey).not.toBe(bodies[0].idempotencyKey)
+  })
+
+  it("does not treat an unconfirmed entry as a failed order or send it again", async () => {
+    server.use(
+      http.post("*/api/v1/manual/entry", async ({ request }) => {
+        bodies.push((await request.json()) as Body)
+        return HttpResponse.json({ detail: "Internal Server Error" }, { status: 500 })
+      }),
+    )
+    renderWithQuery(<EntryForm />)
+    await fillStockEntry()
+    await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("We couldn't confirm the order status. Check your order history before trying again.")
+    expect(alert).not.toHaveTextContent("Request failed")
+    expect(bodies).toHaveLength(1)
+  })
+
+  it("says the entry outcome is unknown when the connection drops", async () => {
+    server.use(
+      http.post("*/api/v1/manual/entry", async ({ request }) => {
+        bodies.push((await request.json()) as Body)
+        return HttpResponse.error()
+      }),
+    )
+    renderWithQuery(<EntryForm />)
+    await fillStockEntry()
+    await userEvent.click(screen.getByRole("button", { name: "Submit entry" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We couldn't confirm the order status. Check your order history before trying again.",
+    )
+    expect(bodies).toHaveLength(1)
   })
 
   it("sends the same key on both calls of one submission (403 then retry)", async () => {
@@ -162,7 +195,11 @@ describe("lot actions", () => {
       http.post("*/api/v1/manual/stops", recorded(() => HttpResponse.json({ cardId: cardFixture.id, state: "approved", orderIds: [] }))),
     )
     renderWithQuery(<LotDetail lotId={lotDetailFixture.id} />)
-    await userEvent.click(within(await screen.findByRole("form", { name: "Exit" })).getByRole("button", { name: "Exit" }))
+    const exit = within(await screen.findByRole("form", { name: "Exit" }))
+    expect(exit.getByLabelText("Exit qty")).toHaveValue(null) // nothing pre-fills it
+    expect(exit.getByRole("button", { name: "Exit" })).toBeDisabled()
+    await userEvent.type(exit.getByLabelText("Exit qty"), String(lotDetailFixture.qty))
+    await userEvent.click(exit.getByRole("button", { name: "Exit" }))
     const stop = within(screen.getByRole("form", { name: "Stop" }))
     await userEvent.type(stop.getByLabelText("Stop level"), "0.8")
     await userEvent.click(stop.getByRole("button", { name: "Submit stop change" }))

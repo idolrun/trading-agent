@@ -31,6 +31,8 @@ def api_settings() -> Settings:
             "dashboard_origin": ORIGIN,
             "background_enabled": False,
             "discord_token": None,  # never depend on the developer's .env
+            "broker_adapter": "fake",  # nor on its Alpaca keys
+            "marketdata_adapter": "fake",
         }
     )
 

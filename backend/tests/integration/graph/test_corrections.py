@@ -71,7 +71,7 @@ async def test_edit_before_trade_invalidates_and_needs_fresh_approval(w: World) 
     [new] = await cards_by(w, state=CardState.PENDING)
     assert new.action == CardAction.ENTRY and new.card_id != first
     assert new.provider_position_id == opened_position(a1)  # the same position, corrected
-    assert new.proposal["qty"] == 20 and new.proposal["limit_price"] == "0.49"
+    assert new.proposal["qty"] is None and new.proposal["limit_price"] == "0.49"
     assert await w.thread_next(new.card_id) == ("await_approval",)  # re-approval required
     pos = await position(w, a1)
     assert pos.strike == Decimal("360") and pos.is_corrected
@@ -122,7 +122,7 @@ async def test_correction_after_trade_alerts_only_and_lot_keeps_its_contract(w: 
     )
     await w.h.process(trim, processor=w.processor)
     [exit_card] = await cards_by(w, action=CardAction.TRIM)
-    await w.decide(exit_card.card_id)
+    await w.decide(exit_card.card_id, qty=2)
     [order] = await w.orders()
     assert order.broker_symbol == GOOGL.occ_symbol() != GOOGL_360.occ_symbol()
     assert order.qty == 2 and order.side == "sell"

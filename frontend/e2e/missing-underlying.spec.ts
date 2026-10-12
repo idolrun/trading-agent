@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test"
-import { cardOnDesk, expect, optionEntry, PROVIDER_A, test, type Driver } from "./support/driver"
+import { approveWith, cardOnDesk, expect, optionEntry, PROVIDER_A, test, type Driver } from "./support/driver"
 
 // AC-14 / FR-14: "1000c" without an underlying is always a review card. The suggestion (MU, the
 // provider's recent underlying trading near 1000) must be confirmed before Approve unlocks.
@@ -55,11 +55,11 @@ test("confirmed underlying: the card becomes tradable on MU", async ({ page, dri
   await card.getByRole("button", { name: "Complete review" }).click()
   const confirmed = await driver.waitFor(() => driver.card(review.id), (c) => (c.version === 2 ? c : null), "version 2")
   expect(confirmed).toMatchObject({ underlying: "MU", cardType: "normal" })
-  expect(confirmed.proposal.qty).not.toBeNull()
+  expect(confirmed.proposal.qty).toBeNull() // confirming the underlying never sizes the card
   // the card is now titled with its underlying
-  const approve = cardOnDesk(page, PROVIDER_A, "entry", "MU").getByRole("button", { name: "Approve" })
-  await expect(approve).toBeEnabled()
-  await approve.click()
+  const mu = cardOnDesk(page, PROVIDER_A, "entry", "MU")
+  await expect(mu.getByRole("button", { name: "Approve" })).toBeDisabled()
+  await approveWith(mu, 1)
   const order = await driver.waitFor(
     () => driver.orders(),
     (orders) => orders.find((o) => o.cardId === review.id),

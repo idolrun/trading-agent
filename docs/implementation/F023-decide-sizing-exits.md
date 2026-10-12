@@ -1,5 +1,7 @@
 # F023 — Decide: Sizing, Card Tier, Exits, TP Legs
 
+> **Superseded in part by [F085](F085-user-entered-quantity.md) (C105).** `decide` no longer sizes: no tiers, no fraction pre-fill, no lot-sized exit quantity. The sizing and fractional-exit rows below describe the code before F085. Card tier, limit price, stops and TP levels still apply.
+
 ## Objective
 The pure decision engine core: given a validated signal, its link, the provider position, the user's lot and config, compute the proposed card(s) — action, quantity, limit price, bracket legs, card tier, labels — with no I/O.
 

@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto"
 import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
-import { test as base, expect, request as playwrightRequest, type APIRequestContext, type Page } from "@playwright/test"
+import { test as base, expect, request as playwrightRequest, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import { signIn } from "./auth"
 import { BACKEND, BACKEND_DIR, HMAC_SECRET, ORIGIN, UA } from "./env"
 
@@ -31,8 +31,6 @@ export const CONFIG = {
   feed_silence_s: 600,
   catch_up_backlog_n: 20,
   context_recent_messages: 30,
-  option_tiers: { default: "1000", lotto: "100" },
-  stock_tiers: { default: "5000" },
   entry_chase_pct: "5",
   entry_validity_s: 60,
   entry_cancel_after_s: 120,
@@ -136,6 +134,7 @@ export type Card = {
   proposal: {
     qty: number | null
     price: string | null
+    tpLevels: string[]
     tpLegs: { level: string; qty: number }[]
     labels: string[]
     missingFields: string[]
@@ -337,9 +336,17 @@ export class Driver {
   }
 }
 
-/** The article of one card on the desk (by its accessible name: author + action + underlying). */
+/** The article of one card on the desk. The accessible name is the provider's display label; these attributes stay stable. */
 export function cardOnDesk(page: Page, providerId: string, action: string, underlying = "") {
-  return page.getByRole("article", { name: `Provider ${providerId}, ${action} ${underlying}`.trim(), exact: true })
+  return page.locator(
+    `article[data-provider-id="${providerId}"][data-action="${action}"][data-underlying="${underlying}"]`,
+  )
+}
+
+/** The user types the quantity, then approves (C105: no card ever carries one). */
+export async function approveWith(card: Locator, qty: number) {
+  await card.getByLabel("Quantity", { exact: true }).fill(String(qty))
+  await card.getByRole("button", { name: "Approve" }).click()
 }
 
 export const test = base.extend<{ driver: Driver; start: Date }>({

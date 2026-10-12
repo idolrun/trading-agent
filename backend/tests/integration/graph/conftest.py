@@ -25,11 +25,14 @@ from app.graph.approval_graph import thread_config
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.processor import GraphProcessor
 from app.inbox.envelope import Envelope
+from app.ledger.models import Lot
 from app.main import libpq_dsn
 from tests.integration.conftest import _url
 from tests.integration.pipeline.harness import Factory, Harness, option_entry
 from tests.integration.schema.helpers import add_session
 from tests.messages import PROVIDER_A
+
+QTY = 13  # the quantity a test user types when the test does not care
 
 
 async def _never() -> bool:
@@ -58,8 +61,25 @@ class World:
         return env, card.card_id
 
     async def decide(
-        self, card_id: uuid.UUID, decision: Any = "approve", version: int = 1, **edits: Any
+        self,
+        card_id: uuid.UUID,
+        decision: Any = "approve",
+        version: int = 1,
+        *,
+        bare: bool = False,
+        **edits: Any,
     ) -> None:
+        """The user's decision. An approval of a buy or sell carries the quantity the user
+        types (C105): tests that do not care get QTY (a sell: the whole lot); `bare=True`
+        sends the approval exactly as given, to test what the backend refuses."""
+        if decision == "approve" and not bare and "qty" not in edits:
+            card = await self.card(card_id)
+            if card.action in (CardAction.ENTRY, CardAction.ADD):
+                edits["qty"] = QTY
+            elif card.action in (CardAction.TRIM, CardAction.EXIT):
+                async with self.h.factory() as db:
+                    lot = await db.get(Lot, card.lot_id) if card.lot_id else None
+                edits["qty"] = lot.qty if lot is not None else QTY
         await self.approvals.decide(
             card_id,
             decision,

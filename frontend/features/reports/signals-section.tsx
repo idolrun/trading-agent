@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { QueryState } from "@/components/query-state"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,7 +9,7 @@ import { CountBars, GroupedBars, SERIES } from "@/features/reports/charts"
 import { CoverageNote } from "@/features/reports/coverage-note"
 import { isReady, toParams, type ReportFilters } from "@/features/reports/filters"
 import { count, percent, providerName, stamp, words } from "@/features/reports/format"
-import { useSignals, type SignalParams } from "@/features/reports/queries"
+import { useSectionParams, useSignals, type SignalParams } from "@/features/reports/queries"
 import type { SignalsReport, TimeseriesReport } from "@/features/reports/types"
 import { ChartFrame, EmptyNote, Notice, Pager, Pnl, Section, Stat, Stats, StatusBadge } from "@/features/reports/ui"
 
@@ -136,7 +135,7 @@ function Outcomes({ r }: { r: SignalsReport }) {
 }
 
 export function SignalsSection({ filters }: { filters: ReportFilters }) {
-  const [params, setParams] = useState<SignalParams>({ page: 1, engine: "" })
+  const [params, setParams] = useSectionParams<SignalParams>(filters, { page: 1, engine: "" })
   const query = useSignals(filters, params)
   return (
     <QueryState

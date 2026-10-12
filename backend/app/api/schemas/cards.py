@@ -36,6 +36,7 @@ class ProposalOut(CamelModel):
     price: Num | None  # buy limit (entries/adds); exits start at the mid
     signal_price: Num | None
     stop: StopOut | None
+    tp_levels: list[Num]  # stated take-profits; legs are split from the qty the user enters
     tp_legs: list[TpLegOut]
     warnings: list[str]
     labels: list[str]
@@ -77,6 +78,7 @@ class CardOut(CamelModel):
     card_type: str
     state: str
     provider_id: DiscordId | None
+    provider_name: str | None  # latest Discord display name seen for the provider; None until known
     provider_position_id: uuid.UUID | None
     lot_id: uuid.UUID | None
     underlying: str | None

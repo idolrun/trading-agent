@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
 import { toast } from "@/components/toaster"
 import { apiPost } from "@/lib/api/client"
-import { ApiError } from "@/lib/api/errors"
+import { ApiError, userFacingMessage } from "@/lib/api/errors"
 import { cardKeys } from "@/features/cards/queries"
 import type { CardDecision, CardDetail } from "@/features/cards/types"
 import { orderKeys } from "@/features/orders/queries"
@@ -69,5 +69,6 @@ export function decisionStateFor(decide: DecideCard, cardId: string) {
 /** A failure that is neither the 409 toast nor a 422 shown at the fields. */
 export function generalDecisionError(decide: DecideCard): string | null {
   const error = decide.isError ? decide.error : null
-  return error && error.status !== 409 && error.status !== 422 ? error.message : null
+  if (!error || error.status === 409 || error.status === 422) return null
+  return userFacingMessage(error, { order: decide.variables?.decision.decision === "approve" })
 }

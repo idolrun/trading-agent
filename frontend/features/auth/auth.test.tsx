@@ -64,6 +64,16 @@ describe("login", () => {
     expect(safeNext("/cards/1?x=1")).toBe("/cards/1?x=1")
   })
 
+  it("shows and hides the password", async () => {
+    renderWithQuery(<LoginScreen />)
+    const password = screen.getByLabelText("Password")
+    expect(password).toHaveAttribute("type", "password")
+    await userEvent.click(screen.getByRole("button", { name: "Show password" }))
+    expect(password).toHaveAttribute("type", "text")
+    await userEvent.click(screen.getByRole("button", { name: "Hide password" }))
+    expect(password).toHaveAttribute("type", "password")
+  })
+
   it("shows the API error, focuses it and stays on the page", async () => {
     server.use(http.post("*/api/v1/auth/login", () => apiError(401, "unauthorized", "wrong email or password")))
     renderWithQuery(<LoginScreen />)
@@ -137,7 +147,7 @@ describe("session gate", () => {
     expect(screen.queryByText("secret")).not.toBeInTheDocument()
   })
 
-  it("renders children, the email and a sign-out button with a session, and logs out", async () => {
+  it("renders children, and the account menu holds the email and sign-out, and logs out", async () => {
     server.use(
       http.get("*/api/v1/auth/session", () => HttpResponse.json(session)),
       http.post("*/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
@@ -148,10 +158,9 @@ describe("session gate", () => {
       </RequireSession>,
     )
     expect(await screen.findByText("secret")).toBeInTheDocument()
-    const email = screen.getByText("me@example.com")
-    expect(email).not.toHaveClass("hidden")
-    expect(email).toHaveAttribute("title", "me@example.com")
-    await userEvent.click(screen.getByRole("button", { name: "Sign out" }))
+    await userEvent.click(screen.getByRole("button", { name: "Account menu" }))
+    expect(await screen.findByText("me@example.com")).toHaveAttribute("title", "me@example.com")
+    await userEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
     await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/login"))
   })
 })

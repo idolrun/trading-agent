@@ -99,6 +99,7 @@ export function words(code: string): string {
 
 /** "2026-09-29" or "2026-09-29T10:00" bucket keys as a short axis label. */
 export function bucketLabel(key: string): string {
+  if (!/^\d{4}-/.test(key)) return key
   if (key.includes("T")) return key.slice(11)
   const [y, m, d] = key.split("-")
   if (!d) return `${y}-${m}`

@@ -30,8 +30,8 @@ async def approve_exit(w: World, env: object) -> Card:
     )
     await w.h.process(msg, processor=w.processor)
     async with w.h.factory() as db:
-        card = await db.scalar(select(Card).where(col(Card.action) == CardAction.EXIT))
-    assert card is not None and card.proposal["qty"] == 2
+        card = await db.scalar(select(Card).where(col(Card.action) == CardAction.CLOSE))
+    assert card is not None and card.proposal["qty"] == 2  # the dedicated full close: the lot
     await w.decide(card.card_id)
     return card
 

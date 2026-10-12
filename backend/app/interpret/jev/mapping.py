@@ -46,7 +46,6 @@ CONSUMED = {
     "exit_intent": "map_answers C52 (trim vs soft exit)",
     "ticker": "map_answers -> fields.underlying (candidate span)",
     "expiry": "map_answers -> fields.expiry_token (candidate span)",
-    "size_tier": "map_answers -> fields.size_tier",
     "links_to": "map_answers -> link_hint (a proposal only, F077)",
 }
 
@@ -91,6 +90,13 @@ class JevResult:
     review_reasons: tuple[str, ...] = ()
     hints: dict[str, Any] = field(default_factory=dict)  # compact answers for the slow path
     model_call_id: int | None = None
+    # Only confidence doubts stopped `parsed`: Jev's best reading, each doubtful field carrying
+    # its low confidence. With no LLM to settle them, the card shows it and the user decides.
+    draft: ParsedSignals | None = None
+
+
+# Doubts about how sure Jev is (not about what the message says): a draft can carry them.
+_SOFT = re.compile(r"< t_field$|yes/no uncertain")
 
 
 def _d(p: float) -> Decimal:
@@ -156,7 +162,10 @@ def map_answers(
     *,
     underlying_optional: bool = False,
     interpreter: Literal["jev", "laya"] = "jev",
+    lenient: bool = False,
 ) -> JevResult:
+    """`lenient` (the draft pass): a pick below `t_field` is kept with its confidence instead of
+    refused; the decide step then makes the card a review card (`low_field_confidence`)."""
     t_field, t_type, t_link = cfg.t_field, cfg.t_type, cfg.t_link
     reasons: list[str] = []
     text = ctx.message.text or ""
@@ -174,7 +183,7 @@ def map_answers(
         return a
 
     def confident(name: str, a: ChoiceAnswer) -> bool:
-        if _d(a.confidence) < t_field:
+        if _d(a.confidence) < t_field and not lenient:
             reasons.append(f"{name}: confidence {a.confidence:.2f} < t_field")
             return False
         return True
@@ -266,17 +275,6 @@ def map_answers(
             fields["right"] = {"value": right.choice, "source": span}
             confidence["right"] = _d(right.confidence)
 
-    tier = choice("size_tier")
-    if tier.choice != "not_stated" and confident("size_tier", tier):
-        m = re.search(rf"\b{re.escape(tier.choice)}\b", text, re.IGNORECASE)
-        source: LiteralSpan | ModelSource = (
-            LiteralSpan(raw=m.group(0), start=m.start(), end=m.end())
-            if m
-            else model("size_tier", tier.confidence)  # read from the provider's lexicon
-        )
-        fields["size_tier"] = {"value": tier.choice.casefold(), "source": source}
-        confidence["size_tier"] = _d(tier.confidence)
-
     # A question that does not apply to the message ("how much is sold?" on an entry, "which
     # price is the stop?" with no stop) is answered at 0.2-0.5 by Jev: noise, not doubt. Such
     # answers are ignored instead of sending every plain entry to the slow path (replay of 518
@@ -293,8 +291,9 @@ def map_answers(
             sources[name] = _fraction_span(candidates, a.choice) or model(name, a.confidence)
     for name in FLAGS:
         p = noul(name).noul
-        if _d(max(p, 1 - p)) >= t_field:
+        if _d(max(p, 1 - p)) >= t_field or (lenient and name in STOP_FLAGS and has_stop):
             fields[name] = p >= 0.5
+            confidence[name] = _d(max(p, 1 - p))
             sources[name] = model(name, max(p, 1 - p))
         elif name in STOP_FLAGS and has_stop:
             reasons.append(f"{name}: yes/no uncertain ({p:.2f})")
@@ -334,7 +333,18 @@ def map_answers(
         target = "ambiguous"  # C31: a weak link is a review, never a guess
 
     if reasons:
-        return replace(base, slow_reasons=tuple(reasons), review_reasons=review)
+        draft = None
+        if not lenient and not review and all(_SOFT.search(r) for r in reasons):
+            draft = map_answers(
+                answers,
+                ctx,
+                candidates,
+                cfg,
+                underlying_optional=underlying_optional,
+                interpreter=interpreter,
+                lenient=True,
+            ).parsed
+        return replace(base, slow_reasons=tuple(reasons), review_reasons=review, draft=draft)
     instrument = fields.pop("instrument", None)
     signal = ParsedSignal.model_validate(
         {
