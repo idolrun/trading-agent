@@ -432,14 +432,16 @@ async def apply_raw_review(
     trace: dict[str, Any] | None = None,
 ) -> uuid.UUID | None:
     """FR-1e / FR-9: an `unparsed` signal + a blank review card showing the raw text.
-    `mark=None` keeps the inbox status (poison: already `failed`). Returns the new card id."""
+    `mark=None` keeps the inbox status (poison: already `failed`). Returns the new card id.
+    A stale event (backfill, catch-up) gets the signal only: like a stale entry (decide's
+    `apply_staleness`) it is shown in the feed as stale, never as a card to act on."""
     env = ctx.envelope
     signal_id = signal_id_for(env.key, 0)
     parsed = ParsedSignal(msg_type=MsgType.UNPARSED)
     outcome = SignalOutcome(0, signal_id, parsed, None, None, None, None, [])
     inp = ApplyInput(ctx, Interpreter.NONE, {}, [outcome])
     card_id: uuid.UUID | None = None
-    if await _insert_signal(db, inp, outcome):
+    if await _insert_signal(db, inp, outcome) and not ctx.stale:
         proposal = ProposedAction(
             action=CardAction.REVIEW, card_type=CardType.REVIEW, review_reasons=[reason]
         )
@@ -463,7 +465,7 @@ async def apply_raw_review(
         await inbox.mark(
             db,
             env.key,
-            mark,
+            InboxStatus.STALE if ctx.stale else mark,
             late=ctx.late,
             interpret_outcome=interpreted,
             interpret_reasons=trace,

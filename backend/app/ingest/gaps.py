@@ -4,7 +4,8 @@ missed and feed it through `inbox.accept()` tagged `backfilled` (duplicates are 
 Each channel keeps a watermark: the newest message id already verified against history.
 A run fetches everything after it, so gaps anywhere after the watermark are found — not only
 after the newest stored message. On the first run of a process the watermark is the newest
-stored message posted before `now - lookback`, so a restart re-verifies that window.
+stored message posted before `now - lookback` (or `now - lookback` itself when there is none, so
+a newly added channel never pages its whole history), so a restart re-verifies that window.
 ponytail: watermark in memory; persist it if startup re-verification gets too costly.
 """
 
@@ -20,7 +21,7 @@ from app.alerts.service import AlertService
 from app.db import in_transaction
 from app.inbox import repo as inbox
 from app.ingest.adapter import UnmappablePayload, to_envelope
-from app.markettime import Clock, is_regular_hours
+from app.markettime import Clock, datetime_to_snowflake, is_regular_hours
 from app.messageapi.port import MessageHistory, MessageHistoryUnavailable
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
@@ -56,12 +57,11 @@ class GapDetector:
             channels = (self._config.get() or RuntimeConfig()).channels
             fresh = [c for c in channels if c not in self._watermarks]
             if fresh:
+                cutoff = self._clock.now() - self._lookback
                 async with in_transaction(self._sessions, None) as db:
-                    seen = await inbox.last_seen_per_channel(
-                        db, fresh, self._clock.now() - self._lookback
-                    )
+                    seen = await inbox.last_seen_per_channel(db, fresh, cutoff)
                 for channel in fresh:
-                    self._watermarks[channel] = seen.get(channel)
+                    self._watermarks[channel] = seen.get(channel) or datetime_to_snowflake(cutoff)
             accepted = 0
             for channel in channels:
                 try:

@@ -93,6 +93,11 @@ def snowflake_to_datetime(snowflake: int) -> datetime:
     return _UNIX_EPOCH + timedelta(milliseconds=(snowflake >> 22) + DISCORD_EPOCH_MS)
 
 
+def datetime_to_snowflake(at: datetime) -> int:
+    """Smallest Discord ID posted at `at`: a history cursor for "after this time"."""
+    return (int(_aware(at).timestamp() * 1000) - DISCORD_EPOCH_MS) << 22
+
+
 def to_et(ts: datetime) -> datetime:
     return _aware(ts).astimezone(ET)
 

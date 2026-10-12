@@ -25,7 +25,7 @@ from app.runtime_config.models import Actor
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
 from tests.integration.conftest import _url
-from tests.messages import CHANNEL, create
+from tests.messages import CHANNEL, create, snowflake
 
 T0 = datetime(2026, 9, 28, 14, 30, tzinfo=UTC)
 Factory = async_sessionmaker[AsyncSession]
@@ -137,6 +137,21 @@ async def test_restart_reverifies_only_the_lookback_window(
     gaps = detector(factory, config, history, now)
     assert await gaps.run_once() == 0
     assert history.calls[0] == (CHANNEL, int(old[-1]["message"]["id"]), 3)
+
+
+async def test_new_channel_backfills_only_the_lookback_window(
+    factory: Factory, config: ConfigService, db_session: AsyncSession
+) -> None:
+    """A channel with nothing stored must not page its whole history (2026-10-12 flood)."""
+    now = T0 + timedelta(days=30)
+    old = messages(3, start=T0)  # years of history in production
+    recent = messages(2, start=now - timedelta(hours=1))
+    history = FakeMessageHistory()
+    history.add(*old, *recent)
+    gaps = detector(factory, config, history, now)
+    assert await gaps.run_once() == 2
+    assert history.calls[0] == (CHANNEL, snowflake(now - timedelta(hours=8)), 3)
+    assert await backfilled_ids(db_session) == [int(m["message"]["id"]) for m in recent]
 
 
 async def test_history_unavailable_warns_and_retries(

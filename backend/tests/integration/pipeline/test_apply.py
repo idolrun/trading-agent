@@ -228,6 +228,23 @@ async def test_literal_span_mismatch_gives_raw_review(h: Harness, db_session: As
     assert await count(db_session, ProviderPosition) == 0
 
 
+async def test_stale_raw_review_keeps_the_signal_without_a_card(
+    h: Harness, db_session: AsyncSession
+) -> None:
+    """An old unreadable message (backfill) must not sit in the inbox as a pending card."""
+    env = await h.message(
+        "Bought GOOGL 357.5C 10/2 @ 0.71",
+        [option_entry("AAPL", "357.5", "357.5C", "10/2", "0.71")],  # span mismatch -> raw review
+        author=PROVIDER_A,
+    )
+    await h.process(env, stale=True)
+    assert await count(db_session, Card) == 0
+    signal = (await db_session.scalars(select(Signal))).one()
+    assert signal.msg_type == "unparsed"
+    item = (await db_session.scalars(select(InboxItem))).one()
+    assert item.status == "stale"
+
+
 async def test_no_interpreter_configured_gives_a_review_card_not_a_degraded_parser(
     h: Harness, db_session: AsyncSession
 ) -> None:
