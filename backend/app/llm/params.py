@@ -12,12 +12,18 @@ from app.llm.capabilities import CAPABILITIES
 from app.runtime_config.schema import LlmProvider
 
 COMMON_PARAMS = frozenset({"temperature", "max_tokens"})
-COMPAT_PARAMS = COMMON_PARAMS | {"base_url"}
+# Latency knobs: reasoning models think by default, which blows the extract deadline.
+PROVIDER_PARAMS = {
+    "openai_compat": frozenset({"base_url"}),
+    "openai": frozenset({"reasoning_effort"}),
+    "deepseek": frozenset({"extra_body"}),  # only {"thinking": {"type": ...}}, see _value_error
+}
+REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high"})
 BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 
 
 def allowed_params(provider: str) -> frozenset[str]:
-    return COMPAT_PARAMS if provider == "openai_compat" else COMMON_PARAMS
+    return COMMON_PARAMS | PROVIDER_PARAMS.get(provider, frozenset())
 
 
 def _ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
@@ -66,6 +72,11 @@ def _value_error(name: str, value: Any) -> str | None:
     if name == "max_tokens":
         ok = isinstance(value, int) and not isinstance(value, bool) and value > 0
         return None if ok else "must be a positive integer"
+    if name == "reasoning_effort":
+        return None if value in REASONING_EFFORTS else f"must be one of {sorted(REASONING_EFFORTS)}"
+    if name == "extra_body":
+        ok = value in ({"thinking": {"type": "enabled"}}, {"thinking": {"type": "disabled"}})
+        return None if ok else 'must be {"thinking": {"type": "enabled" | "disabled"}}'
     return None
 
 

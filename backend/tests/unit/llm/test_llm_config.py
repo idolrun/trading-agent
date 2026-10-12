@@ -128,6 +128,17 @@ def test_registry_drops_temperature_where_unsupported() -> None:
     assert safe_params("anthropic", {"temperature": 0.2, "max_tokens": 512}) == {"max_tokens": 512}
 
 
+def test_latency_knobs_are_allowed_per_provider_with_checked_values() -> None:
+    thinking_off = {"extra_body": {"thinking": {"type": "disabled"}}}
+    assert param_errors("openai:m", {"reasoning_effort": "minimal"}) == []
+    assert param_errors("deepseek:m", thinking_off) == []
+    assert safe_params("deepseek", thinking_off) == thinking_off
+    assert param_errors("openai:m", {"reasoning_effort": "max"}) != []
+    assert param_errors("deepseek:m", {"extra_body": {"base_url": "https://evil.example"}}) != []
+    assert param_errors("anthropic:m", {"reasoning_effort": "minimal"}) != []
+    assert param_errors("openai:m", thinking_off) != []
+
+
 @pytest.mark.parametrize(
     "url",
     [
