@@ -15,7 +15,7 @@ Status = Literal["pass", "review", "blocked"]
 
 @dataclass(frozen=True)
 class Check:
-    name: str  # hours | validity | quote | quote_fresh | price_band | superseded | risk | lot | ...
+    name: str  # hours | validity | quote | quote_fresh | quote_valid | price_band | risk | ...
     status: Status
     reason: str | None = None  # the stable code revalidation fails with ("price_band", ...)
     detail: str | None = None

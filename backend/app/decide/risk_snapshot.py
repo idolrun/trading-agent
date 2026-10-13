@@ -54,28 +54,31 @@ async def build_risk_snapshot(
             Decimal(0),
         )
 
+    # Independent reads, so in parallel (F086): one quote per lot plus the broker account.
+    marks, broker_read = await asyncio.gather(
+        asyncio.gather(*(mark_lot(marketdata, lot, now, max_quote_age_s) for lot in lots)),
+        _broker_state(broker) if broker is not None else _no_broker(),
+    )
     unrealized: Decimal | None = Decimal(0)
     basis_by_symbol: dict[str, Decimal | None] = {}
-    for lot in lots:
+    for lot, mark in zip(lots, marks, strict=True):
         basis = cost_basis(lot.instrument, lot.qty, lot.avg_price)
         held = basis_by_symbol.get(lot.broker_symbol, Decimal(0))
         basis_by_symbol[lot.broker_symbol] = None if held is None or basis is None else held + basis
-        mark = await mark_lot(marketdata, lot, now, max_quote_age_s)
         if unrealized is None or mark is None or lot.avg_price is None:
             unrealized = None
         else:
             unrealized += (mark - lot.avg_price) * lot.qty * _multiplier(lot.instrument)
 
     extra_positions = 0
-    account: BrokerAccount | None = None
-    if broker is not None:
-        account, broker_basis = await _broker_state(broker)
-        for symbol, at_broker in broker_basis.items():
-            if symbol not in basis_by_symbol:
-                basis_by_symbol[symbol] = at_broker  # a holding no lot shows (adopted next run)
-                extra_positions += 1
-            elif (ledger := basis_by_symbol[symbol]) is not None and at_broker is not None:
-                basis_by_symbol[symbol] = max(ledger, at_broker)
+    account: BrokerAccount | None
+    account, broker_basis = broker_read
+    for symbol, at_broker in broker_basis.items():
+        if symbol not in basis_by_symbol:
+            basis_by_symbol[symbol] = at_broker  # a holding no lot shows (adopted next run)
+            extra_positions += 1
+        elif (ledger := basis_by_symbol[symbol]) is not None and at_broker is not None:
+            basis_by_symbol[symbol] = max(ledger, at_broker)
 
     working_exposure: Decimal | None = Decimal(0)
     new_symbols: set[str] = set()
@@ -106,6 +109,10 @@ async def build_risk_snapshot(
         working_exposure=working_exposure or Decimal(0),
         working_entries=len(new_symbols),
     )
+
+
+async def _no_broker() -> tuple[None, dict[str, Decimal | None]]:
+    return None, {}
 
 
 async def _broker_state(

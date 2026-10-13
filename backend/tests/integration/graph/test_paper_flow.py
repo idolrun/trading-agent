@@ -416,6 +416,19 @@ async def test_a_quote_that_goes_stale_before_approval_places_nothing(
         assert await p.w.orders() == []
 
 
+
+async def test_a_quote_that_crosses_before_approval_places_nothing(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    async for p in build(quote_max_age_s=60)(factory, tmp_path, db_session):
+        card = await p.signal(await p.processor(jev_client(p), p.laya))
+        assert card.state == CardState.PENDING
+        p.w.h.md.set_quote(GOOGL, Decimal("0.75"), Decimal("0.70"))  # F086: bid above ask
+        await p.w.decide(card.card_id)
+        assert (await p.card(card.card_id)).state == CardState.INVALIDATED
+        assert (await p.events(card.card_id))[-1].detail["reason"] == "quote_invalid"
+        assert await p.w.orders() == []
+
 # --- supersession after approval ----------------------------------------------------------
 
 

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     alpaca_stock_feed: Literal["iex", "sip"] = "iex"  # iex is free; sip needs a paid plan
     alpaca_options_feed: Literal["indicative", "opra"] = "indicative"  # opra needs a paid plan
     alpaca_poll_interval_s: float = 5.0  # underlying-price polling (the order stream is pushed)
+    # F086: option chains are cached this long (report fix #6: 30-60 s); quotes never are.
+    chain_ttl_s: float = Field(45.0, ge=1, le=300)
+    # F086: market data may take this long per validation, then the signal goes to review.
+    validate_budget_ms: int = Field(800, ge=100)
     # Web Push (F029). Unset -> push disabled (SSE still works).
     vapid_private_key: SecretStr | None = None
     vapid_public_key: str | None = None

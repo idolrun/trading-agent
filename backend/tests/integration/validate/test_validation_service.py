@@ -1,5 +1,6 @@
 """F019 with FakeMarketData fixtures (TRD §12 scenarios)."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -211,3 +212,59 @@ async def test_exits_skip_chain_checks(factory: Factory, md: FakeMarketData) -> 
     trim = ParsedSignal(msg_type="trim", fields=SignalFields(exit_fraction="half"))
     result = await validate(factory, md, trim)
     assert result.status == "ok" and result.contract is None
+
+
+GOOGL_357 = OptionContract(
+    underlying="GOOGL", expiry=date(2026, 10, 2), strike=Decimal("357.5"), right="call"
+)
+
+
+async def test_a_crossed_quote_is_review(factory: Factory, md: FakeMarketData) -> None:
+    md.set_quote(GOOGL_357, Decimal("2.10"), Decimal("1.90"))  # F086: bid above ask
+    result = await validate(factory, md, entry("googl", "357.5", "2.00", expiry="fri"))
+    assert (result.status, result.reasons) == ("review", ["quote_invalid"])
+
+
+async def test_the_decision_quote_is_the_contracts_own_not_the_chain_row(
+    factory: Factory, md: FakeMarketData
+) -> None:
+    svc = service(factory, md)
+    signal = entry("googl", "357.5", "2.00", expiry="fri")
+    await svc.validate(signal, ENV, config=CFG, now=NOW)  # chain now cached
+    md.set_quote(GOOGL_357, Decimal("2.10"), Decimal("1.90"))
+    result = await svc.validate(signal, ENV, config=CFG, now=NOW)
+    assert result.reasons == ["quote_invalid"]
+
+
+async def test_a_cold_slow_chain_validates_on_the_contract_snapshot(
+    factory: Factory, md: FakeMarketData
+) -> None:
+    real_chain = md.chain
+
+    async def slow_chain(underlying: str, expiry: date) -> list[tuple[OptionContract, Any]]:
+        await asyncio.sleep(1)
+        return await real_chain(underlying, expiry)
+
+    q = await md.quote(GOOGL_357)
+    mid = ((q.bid + q.ask) / 2).quantize(Decimal("0.01"))  # type: ignore[operator]
+    md.chain = slow_chain  # type: ignore[method-assign]
+    result = await validate(factory, md, entry("googl", "357.5", str(mid), expiry="fri"))
+    assert result.status == "ok", result.reasons
+    assert result.warnings == []  # the adjacent-strike warning waits for the chain
+    unlisted = await validate(factory, md, entry("googl", "358", "2.00", expiry="fri"))
+    assert unlisted.reasons == ["contract_not_in_chain"]  # no snapshot for the symbol
+
+
+async def test_market_data_over_budget_is_review(factory: Factory, md: FakeMarketData) -> None:
+    async def hang(*_: object) -> list[date]:
+        await asyncio.sleep(5)
+        return []
+
+    md.expiries = hang  # type: ignore[method-assign]
+    svc = ValidationService(
+        factory, marketdata=md, alerts=AlertService(factory), clock=FixedClock(NOW), budget_s=0.05
+    )
+    result = await svc.validate(
+        entry("googl", "357.5", "2.00", expiry="fri"), ENV, config=CFG, now=NOW
+    )
+    assert (result.status, result.reasons) == ("review", ["market_data_late"])

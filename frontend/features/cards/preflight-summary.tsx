@@ -17,6 +17,7 @@ const CHECK_LABELS: Record<string, string> = {
   contract: "Contract known",
   quote: "Quote available",
   quote_fresh: "Quote is recent",
+  quote_valid: "Quote is not crossed",
   price_band: "Price within the entry band",
   superseded: "No newer provider message",
   risk: "Account and risk limits",

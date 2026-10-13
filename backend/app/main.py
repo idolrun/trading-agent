@@ -73,6 +73,7 @@ from app.logging import configure_logging
 from app.manual.corrections import Corrections
 from app.manual.service import ManualService
 from app.marketdata.alpaca import AlpacaMarketData
+from app.marketdata.cached import CachedMarketData
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
 from app.markettime import ControlledClock, SystemClock
@@ -200,7 +201,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     planner = Planner(
         session_factory,
         validation=ValidationService(
-            session_factory, marketdata=marketdata, alerts=app.state.alerts, clock=app.state.clock
+            session_factory,
+            # Chains cached in front of the adapter (F086; Redis-ready, TRD §15.2).
+            marketdata=CachedMarketData(
+                marketdata, app.state.clock, chain_ttl=timedelta(seconds=settings.chain_ttl_s)
+            ),
+            alerts=app.state.alerts,
+            clock=app.state.clock,
+            budget_s=settings.validate_budget_ms / 1000,
         ),
         marketdata=marketdata,
         flags=app.state.flags,

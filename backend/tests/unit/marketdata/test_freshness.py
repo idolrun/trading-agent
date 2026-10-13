@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.marketdata.freshness import QuoteStale, is_stale, require_fresh
+from app.marketdata.freshness import QuoteStale, is_crossed, is_stale, require_fresh
 from app.marketdata.port import Quote
 
 NOW = datetime(2026, 9, 28, 14, 30, tzinfo=UTC)
@@ -26,3 +26,12 @@ def test_require_fresh_raises_with_the_age() -> None:
     assert require_fresh(quote(5), NOW, 60).at == NOW - timedelta(seconds=5)
     with pytest.raises(QuoteStale, match="900s old"):
         require_fresh(quote(900), NOW, 60)
+
+
+@pytest.mark.parametrize(
+    ("bid", "ask", "crossed"),
+    [("1.2", "1.1", True), ("1.1", "1.1", False), ("1.0", "1.1", False), (None, "1.1", False)],
+)
+def test_only_a_bid_above_the_ask_is_crossed(bid: str | None, ask: str, crossed: bool) -> None:
+    q = Quote(Decimal(bid) if bid else None, Decimal(ask), None, NOW)
+    assert is_crossed(q) is crossed

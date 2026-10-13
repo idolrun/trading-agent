@@ -27,6 +27,7 @@ STOCK_TICK = Decimal("0.01")
 # ponytail: per-root ticks (OD-25) when a pilot class needs prices below the coarse grid.
 OPTION_TICKS = (Decimal("0.05"), Decimal("0.10"))  # below $3, at/above $3
 PAGE = 1000
+NO_TIMESTAMP = datetime(1970, 1, 1, tzinfo=UTC)
 # Index option roots are not /v2/assets entries, and Alpaca files their contracts under the index
 # (underlying_symbols=SPX returns both the SPX monthly and SPXW weekly roots; verified 2026-10-13).
 # ponytail: SPX only (verified); add NDX/RUT roots here once Alpaca lists them.
@@ -165,7 +166,9 @@ class AlpacaMarketData:
     def _quote_of(self, snapshot: dict[str, Any]) -> Quote:
         quote, trade = snapshot.get("latestQuote") or {}, snapshot.get("latestTrade") or {}
         stamps = [_time(x.get("t")) for x in (quote, trade)]
-        at = max((s for s in stamps if s), default=self._clock.now())
+        # No timestamp means unknown age: stamped at the epoch so freshness rejects it (F086),
+        # never "now", which would pass any staleness check.
+        at = max((s for s in stamps if s), default=NO_TIMESTAMP)
         # A zero side is "no quote on that side" (IEX and indicative feeds), not a price of 0.
         return Quote(
             bid=dec(quote.get("bp")) or None,

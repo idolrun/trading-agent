@@ -23,6 +23,11 @@ class TtlCache[K: Hashable, V]:
         self._entries[key] = (now + self._ttl, value)
         return value
 
+    def peek(self, key: K) -> V | None:
+        """The value if present and unexpired; never loads."""
+        hit = self._entries.get(key)
+        return hit[1] if hit is not None and hit[0] > self._clock.now() else None
+
     def invalidate(self, key: K | None = None) -> None:
         if key is None:
             self._entries.clear()

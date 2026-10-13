@@ -116,7 +116,7 @@ class CardDetail(CardOut):
 
 
 class CheckOut(CamelModel):
-    name: str  # hours | validity | quote | quote_fresh | price_band | superseded | risk | ...
+    name: str  # hours | validity | quote | quote_fresh | quote_valid | price_band | risk | ...
     status: str  # pass | review | blocked
     reason: str | None
     detail: str | None

@@ -21,3 +21,9 @@ def require_fresh(quote: Quote, now: datetime, max_age_s: int | None) -> Quote:
     if is_stale(quote, now, max_age_s):
         raise QuoteStale(f"quote is {(now - quote.at).total_seconds():.0f}s old (max {max_age_s}s)")
     return quote
+
+
+def is_crossed(quote: Quote) -> bool:
+    """Bid above ask: a broken quote, never a price to act on. A locked quote (bid == ask)
+    happens in thin markets and is allowed."""
+    return quote.bid is not None and quote.ask is not None and quote.bid > quote.ask

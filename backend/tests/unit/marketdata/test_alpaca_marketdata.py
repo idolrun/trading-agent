@@ -177,3 +177,10 @@ async def test_one_refused_symbol_does_not_blind_the_others() -> None:
     symbol, quote = await anext(stream)
     await stream.aclose()
     assert (symbol, quote.last) == ("SPY", Decimal(450))
+
+
+async def test_a_quote_without_any_timestamp_is_never_fresh() -> None:
+    body = {"SPY": {"latestQuote": {"bp": 450, "ap": 450.1}, "latestTrade": {"p": 450.05}}}
+    data, _ = md({"/v2/stocks/snapshots": body})
+    quote = await data.quote(Stock(symbol="SPY"))
+    assert quote.at == datetime(1970, 1, 1, tzinfo=UTC)

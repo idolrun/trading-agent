@@ -4,9 +4,10 @@ Never skips a check and never guesses: missing data -> review. Nothing here writ
 ledger, and no DB transaction is open while market data is fetched.
 """
 
+import asyncio
 import logging
 from collections.abc import Awaitable
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -16,13 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.alerts.models import AlertKind, Severity
 from app.alerts.service import AlertService
 from app.inbox.envelope import Envelope
-from app.instruments import Instrument, Stock
+from app.instruments import Instrument, OptionContract, Stock
 from app.interpret.models import MsgType
 from app.interpret.signal import ParsedSignal
 from app.ledger import repo as ledger
-from app.marketdata.cache import TtlCache
-from app.marketdata.freshness import is_stale
-from app.marketdata.port import MarketData, Quote
+from app.marketdata.cached import cached
+from app.marketdata.freshness import is_crossed, is_stale
+from app.marketdata.port import MarketData, Quote, QuoteUnavailable
 from app.markettime import Clock
 from app.runtime_config.schema import RuntimeConfig
 from app.validate.identity import adjacent_strike_fits_better, find_in_chain
@@ -37,6 +38,10 @@ from app.validate.normalize import (
 from app.validate.underlying_suggest import suggest
 
 logger = logging.getLogger(__name__)
+
+# A cached or quick chain proves the strike is listed and feeds the adjacent-strike warning;
+# past this the contract's own snapshot is the proof (F086).
+CHAIN_WAIT_S = 0.3
 
 
 class ValidationResult(BaseModel):
@@ -63,13 +68,15 @@ class ValidationService:
         marketdata: MarketData,
         alerts: AlertService,
         clock: Clock,
+        budget_s: float | None = None,
     ) -> None:
+        """`budget_s`: the most the market-data part may take before the signal goes to review
+        as `market_data_late` (None = no limit, tests and replay)."""
         self._sessions = session_factory
-        self._md = marketdata
+        self._md = cached(marketdata, clock)
         self._alerts = alerts
         self._clock = clock
-        self._optionable: TtlCache[str, frozenset[str]] = TtlCache(timedelta(hours=24), clock)
-        self._expiries: TtlCache[str, list[date]] = TtlCache(timedelta(hours=1), clock)
+        self._budget_s = budget_s
 
     async def validate(
         self,
@@ -90,9 +97,13 @@ class ValidationService:
             # Exits/stops use the linked position's contract (F021/F023).
             return ValidationResult(status="ok", normalized=norm)
         try:
-            if norm.msg_type == MsgType.STOCK_ENTRY or norm.instrument == "stock":
-                return await self._stock(norm, config, now)
-            return await self._option(norm, env, config, now)
+            async with asyncio.timeout(self._budget_s):
+                if norm.msg_type == MsgType.STOCK_ENTRY or norm.instrument == "stock":
+                    return await self._stock(norm, config, now)
+                return await self._option(norm, env, config, now)
+        except TimeoutError:
+            logger.warning("market data over the validation budget", extra={"s": self._budget_s})
+            return ValidationResult(status="review", reasons=["market_data_late"], normalized=norm)
         except MarketDataUnavailable as exc:
             await self._market_data_alert(str(exc), now)
             return ValidationResult(
@@ -112,32 +123,36 @@ class ValidationService:
                 suggested_underlying=suggested,
             )
         underlying = norm.underlying
-        if underlying not in await self._fetch(
-            self._optionable.get("all", self._md.optionable_symbols)
-        ):
+        if underlying not in await self._fetch(self._md.optionable_symbols()):
             return ValidationResult(status="review", reasons=["not_optionable"], normalized=norm)
-
-        async def load_expiries() -> list[date]:
-            return await self._md.expiries(underlying)
-
-        if norm.expiry not in await self._fetch(self._expiries.get(underlying, load_expiries)):
+        if norm.expiry not in await self._fetch(self._md.expiries(underlying)):
             return ValidationResult(
                 status="review", reasons=["contract_not_in_chain"], normalized=norm
             )
         assert norm.expiry is not None  # noqa: S101 — identify()
-        chain = await self._fetch(self._md.chain(underlying, norm.expiry))
-        found = find_in_chain(chain, norm.strike, norm.right)
-        if found is None:
-            return ValidationResult(
-                status="review", reasons=["contract_not_in_chain"], normalized=norm
-            )
-        contract, quote = found
-        if is_stale(quote, now, config.quote_max_age_s):  # OD-12: never decide on an old quote
+        # A cached chain proves the strike is listed; a cold one loads in the background and
+        # the contract's own snapshot proves it instead. Either way the quote decided on is the
+        # contract's fresh one, never a chain row up to a TTL old.
+        chain = await self._md.chain_within(underlying, norm.expiry, CHAIN_WAIT_S)
+        contract = OptionContract(
+            underlying=underlying, expiry=norm.expiry, strike=norm.strike, right=norm.right
+        )
+        if chain is not None:
+            if (found := find_in_chain(chain, norm.strike, norm.right)) is None:
+                return ValidationResult(
+                    status="review", reasons=["contract_not_in_chain"], normalized=norm
+                )
+            contract = found[0]
+        try:
+            quote = await self._md.quote(contract)
+        except QuoteUnavailable:  # listed (chain) but unquoted, or no such symbol (cold chain)
+            missing = "contract_not_in_chain" if chain is None else "quote_unavailable"
+            return ValidationResult(status="review", reasons=[missing], normalized=norm)
+        except Exception as exc:
+            raise MarketDataUnavailable(f"{type(exc).__name__}: {exc}") from exc
+        if (reason := _unusable(quote, now, config)) is not None:  # OD-12: never decide on it
             return _review(
-                NeedsReview(reasons=["quote_stale"]),
-                normalized=norm,
-                contract=contract,
-                quote=quote,
+                NeedsReview(reasons=[reason]), normalized=norm, contract=contract, quote=quote
             )
         scaled = scale_prices(
             norm, mid=mid_price(quote), tolerance_pct=config.identity_price_tolerance_pct
@@ -149,6 +164,7 @@ class ValidationService:
         if (
             price is not None
             and config.adjacent_strike_ratio is not None
+            and chain is not None  # warning only (C78): skipped while the chain is cold
             and adjacent_strike_fits_better(
                 chain, contract, price.value, config.adjacent_strike_ratio
             )
@@ -171,9 +187,9 @@ class ValidationService:
             )
         stock = Stock(symbol=norm.underlying)
         quote = await self._fetch(self._md.quote(stock))
-        if is_stale(quote, now, config.quote_max_age_s):
+        if (reason := _unusable(quote, now, config)) is not None:
             return _review(
-                NeedsReview(reasons=["quote_stale"]), normalized=norm, contract=stock, quote=quote
+                NeedsReview(reasons=[reason]), normalized=norm, contract=stock, quote=quote
             )
         scaled = scale_prices(norm, mid=mid_price(quote), tolerance_pct=None)
         assert isinstance(scaled, NormalizedSignal)  # noqa: S101 — stocks are never scaled
@@ -216,6 +232,14 @@ class ValidationService:
             )
         except Exception:
             logger.exception("could not record market data alert")
+
+
+def _unusable(quote: Quote, now: datetime, config: RuntimeConfig) -> str | None:
+    if is_stale(quote, now, config.quote_max_age_s):
+        return "quote_stale"
+    if is_crossed(quote):
+        return "quote_invalid"
+    return None
 
 
 def _review(

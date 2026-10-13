@@ -70,7 +70,7 @@ from app.ledger.models import Lot, LotStatus, PositionStatus, ProviderPosition
 from app.ledger.positions import PositionUpdate, contract_of, state_of
 from app.ledger.relink import RelinkFailed, RelinkService
 from app.logging import bind
-from app.marketdata.freshness import is_stale
+from app.marketdata.freshness import is_crossed, is_stale
 from app.marketdata.port import MarketData
 from app.markettime import Clock, is_regular_hours
 from app.pipeline.apply import BookChanged, position_id_for, stored_signal
@@ -564,6 +564,12 @@ class ApprovalService:
                 "blocked" if old else "pass",
                 "quote_stale" if old else None,
                 f"quote from {quote.at:%H:%M:%S}" if old else None,
+            ):
+                return out
+            if not add(  # F086: a crossed quote is broken data, never a price to act on
+                "quote_valid",
+                "blocked" if is_crossed(quote) else "pass",
+                "quote_invalid" if is_crossed(quote) else None,
             ):
                 return out
             band = check_entry(p, quote, now, cfg.entry_chase_pct or Decimal(0))
