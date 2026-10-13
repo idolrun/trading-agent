@@ -12,7 +12,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col
 
@@ -31,7 +31,7 @@ from app.db import in_transaction
 from app.decide.types import ProposedAction
 from app.dispatcher.types import ProcessingContext
 from app.inbox.envelope import Envelope, Lane
-from app.inbox.models import MessageEvent
+from app.inbox.models import InboxItem, MessageEvent
 from app.inbox.repo import to_envelope_row
 from app.interpret import context_repo
 from app.interpret.models import LinkMethod, LinkOutcome, MessageLink, Signal
@@ -69,6 +69,44 @@ class RelinkService:
         self._config = config
         self._clock = clock
         self.recheck: Recheck | None = None  # the message graph in recheck mode (F035)
+        # F089: lane -> earliest late backfilled post time still to re-check. Backfill makes
+        # every event late; re-checking after each one ran the full graph K x M times under
+        # the lane slot. One re-check per lane once its backfill drains (`flush`).
+        self._pending: dict[Lane, datetime] = {}
+
+    def defer(self, lane: Lane, late_posted_at: datetime) -> None:
+        held = self._pending.get(lane)
+        self._pending[lane] = late_posted_at if held is None else min(held, late_posted_at)
+
+    async def flush(self, lane: Lane) -> list[uuid.UUID]:
+        """The deferred re-check for `lane`, if any (new re-link review card ids)."""
+        at = self._pending.pop(lane, None)
+        return [] if at is None else await self.recheck_after_late(lane, at)
+
+    async def restore_pending(self, since: datetime) -> list[Lane]:
+        """After a restart: lanes whose late backfilled events finished since `since` are
+        deferred again (an in-memory batch dies with the process). Re-checking is idempotent:
+        only unlinked/ambiguous follow-ups are re-read and a proposal card is deduplicated.
+        ponytail: re-reads up to `since` of history on every restart; persist the pending
+        watermark if restarts during backfill become common."""
+        async with self._sessions() as db:
+            rows = await db.execute(
+                select(
+                    col(InboxItem.channel_id),
+                    col(InboxItem.provider_id),
+                    func.min(col(InboxItem.posted_at)),
+                )
+                .where(
+                    col(InboxItem.late),
+                    col(InboxItem.backfilled),
+                    col(InboxItem.finished_at) >= since,
+                )
+                .group_by(col(InboxItem.channel_id), col(InboxItem.provider_id))
+            )
+            found = rows.all()
+        for channel_id, provider_id, at in found:
+            self.defer((channel_id, provider_id), at)
+        return [(c, p) for c, p, _ in found]
 
     async def recheck_after_late(self, lane: Lane, late_posted_at: datetime) -> list[uuid.UUID]:
         """New re-link review card ids. Unchanged results create nothing."""

@@ -1,8 +1,21 @@
 """F087: the provider limiter follows the live concurrency config without a restart."""
 
 import asyncio
+from collections.abc import Iterator
+
+import pytest
 
 from app.llm.limiter import DEFAULT_CONCURRENCY, ProviderLimiter
+from app.observability import counters
+
+
+@pytest.fixture(autouse=True)
+def _keep_counters() -> Iterator[None]:
+    """The slot counters are process-wide; the health API tests read them."""
+    saved = counters.counts.copy()
+    yield
+    counters.counts.clear()
+    counters.counts.update(saved)
 
 
 async def _occupy(limiter: ProviderLimiter, n: int, release: asyncio.Event) -> list[asyncio.Task]:

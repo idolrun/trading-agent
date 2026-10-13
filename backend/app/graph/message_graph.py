@@ -32,7 +32,7 @@ approval graphs (F036).
 import asyncio
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -161,6 +161,21 @@ def build_message_graph(
     g.add_edge("raw_review", "notify")
     g.add_edge("notify", END)
     return g.compile(checkpointer=checkpointer)
+
+
+# Jev's reading that makes an unreadable stale message ledger-only, never a card (F089).
+OPENING_HINTS = frozenset({"entry", "add", "stock_entry"})
+
+
+def _stale_skip(ctx: ProcessingContext, reasons: Iterable[str]) -> dict[str, Any]:
+    """F089 (report fix #5): a stale message that Jev could not settle skips Laya and the
+    LLM (seconds each) and goes straight to raw review: a stale entry gets no card anyway, and
+    any other stale message gets a late review card. Fast path and Jev still run, so a stale
+    entry Jev settles still reaches the provider ledger (FR-1c)."""
+    if not ctx.stale:
+        return {}
+    bump("stale:skip_slow")
+    return {"raw_reason": f"stale_skip_slow: {'; '.join(reasons)}"[:200]}
 
 
 def _raw_review_or(next_node: str) -> Any:
@@ -337,7 +352,7 @@ class _Nodes:
                     "model_call_id": outcome.model_call_id,
                 }
             status = "invalid" if outcome.kind == "invalid" else "model_failure"
-            return {
+            failed: dict[str, Any] = {
                 "route": "slow_path",
                 "fallback": "model_failure",
                 "route_reasons": [f"jev_{outcome.kind}"],
@@ -346,6 +361,7 @@ class _Nodes:
                 "model_call_id": outcome.model_call_id,
                 "jev_answered": False,
             }
+            return failed | _stale_skip(ctx, failed["route_reasons"])
         result = outcome.result
         decision = route(result, self.d.cfg(), self._feed_block(state))
         update: dict[str, Any] = {
@@ -368,6 +384,8 @@ class _Nodes:
             bump("jev:ambiguous")
             if decision.kind == "link":  # which earlier position: a person decides (F077)
                 update["raw_reason"] = f"needs_review: {'; '.join(decision.reasons)}"[:200]
+            else:
+                update |= _stale_skip(ctx, decision.reasons)
         return update
 
     async def laya_interpret(self, state: MessageState) -> dict[str, Any]:
@@ -536,6 +554,8 @@ class _Nodes:
                 mark=InboxStatus.DONE,
                 interpreted=outcome,
                 trace=trace,
+                opening=(state.get("hints") or {}).get("msg_type", {}).get("choice")
+                in OPENING_HINTS,
             )
         return {"card_ids": [str(card_id)] if card_id else []}
 
@@ -557,7 +577,9 @@ class _Nodes:
         relinks: list[uuid.UUID] = []
         if ctx.late and not state["skip"]:
             logger.info("late event applied", extra={"provider_id": ctx.envelope.provider_id})
-            if self.d.relink is not None:  # FR-1b: never a silent feed-only
+            if self.d.relink is not None and ctx.envelope.backfilled:
+                self.d.relink.defer(ctx.envelope.lane, ctx.envelope.posted_at)  # F089: batched
+            elif self.d.relink is not None:  # FR-1b: never a silent feed-only
                 relinks = await self.d.relink.recheck_after_late(
                     ctx.envelope.lane, ctx.envelope.posted_at
                 )

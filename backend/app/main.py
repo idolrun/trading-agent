@@ -59,6 +59,7 @@ from app.execution.underlying_stops import UnderlyingStopWatcher
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.message_graph import GraphDeps
 from app.graph.processor import GraphProcessor
+from app.inbox.envelope import Lane
 from app.ingest.feed_health import FeedHealthMonitor
 from app.ingest.gaps import GapDetector
 from app.interpret.interpreter import FixtureInterpreter, Interpreter
@@ -410,7 +411,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 gaps=gaps,
                 timers=app.state.timers,
             ),
+            on_lane_idle=lambda lane: relink_flush(lane),
         )
+
+        async def relink_flush(lane: Lane) -> None:
+            await app.state.approvals.start_many(await relink.flush(lane))
+
+        # F089: the gateway is up before the startup backfill asks it for history (it waited
+        # 10 s per channel and failed otherwise). Accepted messages only queue: the dispatcher
+        # starts inside `startup`, after reconciliation.
+        background.append(asyncio.create_task(discord_listener.run(), name="discord-listener"))
         # TRD §9 steps 1-12; entries stay blocked until it ends (and reconciliation is clean).
         await startup(
             sessions=session_factory,
@@ -439,7 +449,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         push = PushService(session_factory, app.state.bus, settings)
         background.append(asyncio.create_task(push.run(), name="push"))
         background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
-        background.append(asyncio.create_task(discord_listener.run(), name="discord-listener"))
+
+        async def relink_recovery() -> None:  # F089: re-links a restart cut short
+            since = app.state.clock.now() - timedelta(hours=8)  # the gap detector's lookback
+            for lane in await relink.restore_pending(since):
+                await dispatcher.idle(lane)
+
+        background.append(asyncio.create_task(relink_recovery(), name="relink-recovery"))
         if settings.environment != "test":  # tests never download or load the local model
             laya.start()  # no-op unless config.laya.enabled; loads the weights off the hot path
         background.append(

@@ -51,6 +51,7 @@ class Dispatcher:
         listen_dsn: str | None = None,
         idle_exit_s: float = 60.0,
         on_recover: Callable[[], Awaitable[object]] | None = None,
+        on_lane_idle: Callable[[Lane], Awaitable[object]] | None = None,
     ) -> None:
         self._sessions = session_factory
         self._config = config
@@ -70,6 +71,9 @@ class Dispatcher:
         # TRD §9 after a failover: workers hold until `on_recover` (block entries, reconcile)
         # has run on the reconnected database.
         self._on_recover = on_recover
+        # F089: runs under the lane slot each time the lane has nothing waiting (deferred
+        # late re-links after a backfill). Must be cheap when there is nothing to do.
+        self._on_lane_idle = on_lane_idle
         self._ready = asyncio.Event()
         self._ready.set()
         self._recovery: asyncio.Task[None] | None = None
@@ -181,11 +185,21 @@ class Dispatcher:
                 logger.warning("database unreachable; worker waits", exc_info=True)
                 self.recover()
                 continue
+            await self.idle(lane)
             try:
                 await asyncio.wait_for(wakeup.wait(), self._idle_exit_s)
             except TimeoutError:
                 self._workers.pop(lane, None)  # no await between here and return
                 return
+
+    async def idle(self, lane: Lane) -> None:
+        if self._on_lane_idle is None:
+            return
+        try:
+            async with self.slot(lane):
+                await self._on_lane_idle(lane)
+        except Exception:
+            logger.exception("lane idle hook failed", extra={"lane": lane})
 
     async def _process_next(self, lane: Lane) -> bool:
         """Claim and handle one event. False when the lane has nothing waiting."""

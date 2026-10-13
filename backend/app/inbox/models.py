@@ -122,10 +122,11 @@ class InboxItem(SQLModel, table=True):
         check_in("skip_reason", SkipReason),
         check_in("interpret_outcome", InterpretOutcome),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
-        Index(
+        Index(  # matches next_for_lane's ORDER BY (live before backfilled, 442af82 / F089)
             "ix_inbox_next_for_lane",
             "provider_id",
             "channel_id",
+            "backfilled",
             "posted_at",
             "message_id",
             postgresql_where=sa_text("status IN ('received', 'processing')"),

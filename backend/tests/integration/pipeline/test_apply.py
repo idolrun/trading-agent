@@ -228,16 +228,33 @@ async def test_literal_span_mismatch_gives_raw_review(h: Harness, db_session: As
     assert await count(db_session, ProviderPosition) == 0
 
 
-async def test_stale_raw_review_keeps_the_signal_without_a_card(
+async def test_stale_unreadable_live_message_is_a_late_review_card(
     h: Harness, db_session: AsyncSession
 ) -> None:
-    """An old unreadable message (backfill) must not sit in the inbox as a pending card."""
+    """C90 / F089: a late exit is never silent, so an unreadable stale live message still gets
+    its review card, badged late (the 840c4bb fix had silenced every stale one)."""
     env = await h.message(
         "Bought GOOGL 357.5C 10/2 @ 0.71",
         [option_entry("AAPL", "357.5", "357.5C", "10/2", "0.71")],  # span mismatch -> raw review
         author=PROVIDER_A,
     )
     await h.process(env, stale=True)
+    card = (await db_session.scalars(select(Card))).one()
+    assert card.proposal["labels"] == ["late"]
+    item = (await db_session.scalars(select(InboxItem))).one()
+    assert item.status == "done"
+
+
+async def test_stale_unreadable_backfill_keeps_the_signal_without_a_card(
+    h: Harness, db_session: AsyncSession
+) -> None:
+    """Old unreadable history (backfill) must not sit in the inbox as pending cards."""
+    env = await h.message(
+        "Bought GOOGL 357.5C 10/2 @ 0.71",
+        [option_entry("AAPL", "357.5", "357.5C", "10/2", "0.71")],
+        author=PROVIDER_A,
+    )
+    await h.process(env.model_copy(update={"backfilled": True}), stale=True)
     assert await count(db_session, Card) == 0
     signal = (await db_session.scalars(select(Signal))).one()
     assert signal.msg_type == "unparsed"

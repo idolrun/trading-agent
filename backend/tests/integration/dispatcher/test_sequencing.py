@@ -32,7 +32,12 @@ Factory = async_sessionmaker[AsyncSession]
 
 
 async def make_dispatcher(
-    factory: Factory, stub: StubProcessor, *, listen: bool = False, **config: Any
+    factory: Factory,
+    stub: StubProcessor,
+    *,
+    listen: bool = False,
+    on_lane_idle: Any = None,
+    **config: Any,
 ) -> Dispatcher:
     service = ConfigService(factory)
     config.setdefault("channels", [CHANNEL])
@@ -50,6 +55,7 @@ async def make_dispatcher(
         clock=FixedClock(T0 + timedelta(seconds=40)),
         listen_dsn=libpq_dsn(_url("test_database_url")) if listen else None,
         idle_exit_s=0.3,
+        on_lane_idle=on_lane_idle,
     )
 
 
@@ -143,6 +149,25 @@ async def test_backfill_runs_one_at_a_time_behind_live(factory: Factory) -> None
     assert all(a.ended <= b.started for a, b in pairwise(old))  # serial
     (live_call,) = (c for c in stub.calls if c.key.message_id == live_id)
     assert live_call.started < old[1].started  # not queued behind its lane's history
+
+
+async def test_the_idle_hook_runs_under_the_lane_slot_once_the_lane_drains(
+    factory: Factory,
+) -> None:
+    """F089: deferred late re-links flush when a lane has nothing waiting, holding its slot."""
+    seen: list[tuple[tuple[int, int], int, bool]] = []
+    stub = StubProcessor(factory)
+
+    async def idle(lane: tuple[int, int]) -> None:
+        seen.append((lane, len(stub.calls), dispatcher.slot(lane).locked()))
+
+    await accept(factory, ac18()["A1"], ac18()["A3"])
+    dispatcher = await make_dispatcher(factory, stub, on_lane_idle=idle)
+    await dispatcher.start()
+    await all_finished(factory, 2)
+    await asyncio.sleep(0.1)
+    await dispatcher.stop()
+    assert seen and all(n == 2 and locked for _, n, locked in seen)
 
 
 async def test_live_notify_wakes_workers(factory: Factory, db_session: AsyncSession) -> None:

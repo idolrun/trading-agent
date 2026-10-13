@@ -555,6 +555,56 @@ async def test_jev_down_without_laya_goes_to_the_configured_llm(
     assert row.interpret_reasons is not None and row.interpret_reasons["laya"] == "off"
 
 
+async def test_a_stale_message_jev_cannot_settle_skips_the_llm_and_is_a_late_card(
+    h: Harness, db_session: AsyncSession
+) -> None:
+    """F089: the slow path (seconds) is not spent on a stale message; a non-opening one is
+    still carded, late, for the user to read."""
+    env = await example(h)
+    unsure = jev(h, msg_type=c("trim", 0.6))
+    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
+    await h.process(
+        env, stale=True, processor=h.processor(fixture=False, jev=unsure, llm=extractor)
+    )
+    extract_calls = (
+        select(func.count()).select_from(ModelCall).where(col(ModelCall.role) == "extract")
+    )
+    assert await db_session.scalar(extract_calls) == 0
+    card = (await db_session.scalars(select(Card))).one()
+    assert card.proposal["review_reasons"][0].startswith("stale_skip_slow:")
+    assert card.proposal["labels"] == ["late"]
+    row = await outcome_of(db_session, env)
+    assert row.interpret_reasons is not None and "llm" not in row.interpret_reasons
+
+
+async def test_a_stale_opening_jev_cannot_settle_is_ledger_quiet_and_cardless(
+    h: Harness, db_session: AsyncSession
+) -> None:
+    """F089: Jev read it as an entry; a stale entry never becomes a card (FR-1c)."""
+    env = await example(h)
+    unsure = jev(h, msg_type=c("entry", 0.6))
+    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
+    await h.process(
+        env, stale=True, processor=h.processor(fixture=False, jev=unsure, llm=extractor)
+    )
+    assert await db_session.scalar(select(func.count()).select_from(Card)) == 0
+    row = await outcome_of(db_session, env)
+    assert row.status == "stale"
+
+
+async def test_a_stale_message_never_waits_for_laya(
+    factory: Factory, tmp_path: Path, db_session: AsyncSession
+) -> None:
+    h = await Harness.create(factory, tmp_path, llm=LLM, jev=JEV_ON, laya=LAYA_ON)
+    fake = FakeLaya(example_answers())
+    env = await example(h)
+    processor = h.processor(fixture=False, jev=jev_down(h), laya=await laya(h, fake))
+    await h.process(env, stale=True, processor=processor)
+    assert fake.calls == 0
+    card = (await db_session.scalars(select(Card))).one()
+    assert card.proposal["review_reasons"][0].startswith("stale_skip_slow:")
+
+
 async def test_a_scope_violation_is_a_review_and_an_urgent_alert_with_no_other_model(
     h: Harness, db_session: AsyncSession
 ) -> None:
