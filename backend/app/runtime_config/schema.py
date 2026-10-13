@@ -61,7 +61,9 @@ class LayaConfig(_Strict):
     signals). Its answers are weak (it was right on ~27% of labelled messages), so its gate is
     strict: anything it cannot settle continues to the optional LLM, then to review."""
 
-    enabled: bool = True  # loads only on Apple Silicon; a failed load alerts and falls through
+    # F088: off by default (report fix #8): 27% accurate, 3-10 s with one slot, and it held the
+    # lane while it ran. Jev model failures go straight to the LLM. Opt in on the Config page.
+    enabled: bool = False  # loads only on Apple Silicon; a failed load alerts and falls through
     timeout_ms: PositiveInt = 10000  # ~20 questions take 3-13 s on an M4
     t_chat: Probability = Decimal("0.95")
     t_field: Probability = Decimal("0.9")

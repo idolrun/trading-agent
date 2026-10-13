@@ -78,7 +78,7 @@ export function defaultDocument(): ConfigDoc {
     t_link: "0.8",
     symbol_map: { SPX: "SPXW" },
     jev: { model: "jev-1.13.0", timeout_ms: 900, queue_timeout_ms: 250, budget_ms: 1500, enabled: true },
-    laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
+    laya: { enabled: false, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
     llm: {
       roles: {
         extract: { deadline_ms: 3000, per_attempt_cap_ms: 2000, chain: [] },

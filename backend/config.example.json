@@ -39,7 +39,7 @@
     "enabled": true
   },
   "laya": {
-    "enabled": true,
+    "enabled": false,
     "timeout_ms": 10000,
     "t_chat": "0.95",
     "t_field": "0.9",

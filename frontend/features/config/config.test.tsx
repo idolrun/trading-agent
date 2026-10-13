@@ -67,7 +67,7 @@ describe("ConfigScreen", { timeout: 20_000 }, () => {
 
     await screen.findByText(/Version 4/)
     expect(puts[0].document).toMatchObject({
-      laya: { enabled: false, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.95", t_link: "0.9" }, // on by default: the click turns it off
+      laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.95", t_link: "0.9" }, // off by default (F088): the click turns it on
     })
   })
 
