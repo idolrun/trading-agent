@@ -113,3 +113,62 @@ def test_tp_labels_are_not_numbers() -> None:
     assert numbers == ["400C", "2.10", "1.50", "3.00", "4.00"]
     assert [x.text for x in find_candidates("tp1 3 tp2 4 T3 5").numbers] == ["3", "4", "5"]
     assert [x.text for x in find_candidates("sl1.50 spy 765p").numbers] == ["1.50", "765p"]
+
+
+# --- F090: cleaned candidates -----------------------------------------------------------------
+
+KNOWN = frozenset({"SPY", "QQQ", "CAN", "T", "S", "ON", "MU", "META"})
+
+
+def cleaned(text: str, known: frozenset[str] | None = KNOWN, aliases: frozenset[str] = frozenset()):
+    from app.interpret.candidates import clean_candidates
+
+    return clean_candidates(find_candidates(text), text, known, aliases)
+
+
+def test_report_sentence_has_no_ticker_left() -> None:
+    text = "s while can t even catch trade right Money your done range"
+    assert cleaned(text).tickers == []
+
+
+@pytest.mark.parametrize(
+    ("text", "kept"),
+    [
+        ("spy 770c .95", ["spy"]),  # lowercase listed symbol (TRD example)
+        ("Spy 770c", ["Spy"]),
+        ("$T 25c", ["$T"]),  # a $-prefixed single letter is meant
+        ("SPXW 7000p", ["SPXW"]),  # ALL-CAPS always kept, listed or not
+        ("ndx 20000c", []),  # lowercase and not listed
+        ("adding 3x meta 712.5p", ["meta"]),
+        ("mu calls", ["mu"]),
+    ],
+)
+def test_tickers_kept(text: str, kept: list[str]) -> None:
+    assert [t.text for t in cleaned(text).tickers] == kept
+
+
+def test_aliases_count_as_listed() -> None:
+    assert [t.text for t in cleaned("spx 7000p", aliases=frozenset({"SPX"})).tickers] == ["spx"]
+
+
+def test_no_list_means_no_ticker_filtering() -> None:
+    text = "can t spy"
+    assert [t.text for t in cleaned(text, known=None).tickers] == [
+        t.text for t in find_candidates(text).tickers
+    ]
+
+
+def test_numbers_in_mentions_urls_and_times_are_dropped() -> None:
+    text = "<@123456789012> spy 770c .95 https://x.com/a/1234567 at 10:30am"
+    c = cleaned(text)
+    assert [n.text for n in c.numbers] == ["770c", ".95"]
+    assert [t.text for t in c.tickers] == ["spy"]
+
+
+def test_numbers_past_the_cap_are_counted_not_asked() -> None:
+    from app.interpret.candidates import MAX_NUMBERS
+
+    text = " ".join(f"{i}.5" for i in range(MAX_NUMBERS + 3))
+    c = cleaned(text)
+    assert len(c.numbers) == MAX_NUMBERS and c.numbers_dropped == 3
+    assert [n.id for n in c.numbers] == [n.id for n in find_candidates(text).numbers][:MAX_NUMBERS]

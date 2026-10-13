@@ -40,6 +40,14 @@ from app.runtime_config.service import ConfigService
 from app.system.flags import FlagService
 from app.validate.service import ValidationService
 
+SYMBOLS = Path(__file__).with_name("optionable_symbols.txt")
+
+
+async def snapshot_symbols() -> frozenset[str]:
+    """Alpaca's optionable list as fetched for the replay (the fake market data has none)."""
+    lines = SYMBOLS.read_text().splitlines()
+    return frozenset(x for x in lines if x and not x.startswith("#"))
+
 
 @asynccontextmanager
 async def stack(settings: Settings) -> AsyncIterator[tuple[GraphDeps, LlmChain]]:
@@ -74,6 +82,7 @@ async def stack(settings: Settings) -> AsyncIterator[tuple[GraphDeps, LlmChain]]
             flags=flags,
             llm=LlmInterpreter(chain, market, alerts),
             jev=JevInterpreter(sessions, settings, runtime, clock),
+            symbols=snapshot_symbols,  # F090: the live app cleans candidates with this list
         )
         yield deps, chain
     finally:

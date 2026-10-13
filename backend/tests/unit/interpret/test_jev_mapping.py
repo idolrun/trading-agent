@@ -449,3 +449,12 @@ def test_a_doubt_about_what_the_message_says_leaves_no_draft() -> None:
     assert run(has_prose_condition=n(0.9))[0].draft is None
     assert run(signal_count=c("multiple"))[0].draft is None
     assert run(role_n1=c("strike", 0.6), ticker=c("not_stated"))[0].draft is None
+
+
+def test_dropped_numbers_never_let_an_actionable_message_settle() -> None:
+    """F090: numbers past the cap were not asked about, so the reading is partial."""
+    context, candidates = ctx(EXAMPLE), find_candidates(EXAMPLE)
+    partial = candidates.model_copy(update={"numbers_dropped": 4})
+    result = map_answers(example_answers(), context, partial, CFG)
+    assert route(result, CFG).path == "slow_path"
+    assert any(r.startswith("numbers: 4 beyond") for r in result.slow_reasons)

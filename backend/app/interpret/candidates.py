@@ -24,6 +24,7 @@ class Candidates(BaseModel):
     numbers: list[Candidate]
     expiry_tokens: list[Candidate]
     fraction_words: list[Candidate]
+    numbers_dropped: int = 0  # F090: numbers past MAX_NUMBERS, not asked about
 
 
 _WEEKDAY = r"mon(?:day)?|tue(?:s|sday)?|wed(?:s|nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?"
@@ -124,3 +125,50 @@ def _ids(prefix: str, spans: list[Span]) -> list[Candidate]:
         Candidate(id=f"{prefix}{i}", text=t, start=s, end=e)
         for i, (s, e, t) in enumerate(sorted(spans), start=1)
     ]
+
+
+# --- F090: what the models are asked about (report fix #2) -----------------------------------
+# `find_candidates` stays an over-finder: the note guard and the resolver need every span. The
+# interpreters get a cleaned copy: fewer, likelier choices, fewer `role_nN` questions that all
+# must clear `t_field`.
+
+MAX_NUMBERS = 12  # ponytail: a constant; move to runtime config if real messages need more
+# Lowercase words that are also listed symbols but almost always English in these channels.
+COMMON_WORDS = frozenset(
+    """
+    any big can car cash cat else ever fast few fun good hope key life live love low max nice
+    now one play plus real run see sure true two well wow yes
+    """.split()
+)
+_NOISE = re.compile(r"<[@#:a-z]+[^>]*>|https?://\S+|\b\d{1,2}:\d{2}(?:\s?[ap]m)?\b", re.I)
+
+
+def clean_candidates(
+    c: Candidates, text: str, known: frozenset[str] | None, aliases: frozenset[str] = frozenset()
+) -> Candidates:
+    """Tickers: `$TICK` and ALL-CAPS always; a lower/mixed-case word only when it is a listed
+    symbol (`known`, the optionable list) or a configured alias, and not a common word or a
+    single letter. `known` None (list unavailable): no ticker filtering. Numbers: none inside
+    mentions, emoji, URLs or clock times; past MAX_NUMBERS they are dropped and counted, and
+    the mapper then never settles an actionable message on a partial reading."""
+    noise = [(m.start(), m.end(), m.group()) for m in _NOISE.finditer(text)]
+    listed = None if known is None else known | aliases
+
+    def ticker_ok(t: Candidate) -> bool:
+        if _inside((t.start, t.end, t.text), noise):
+            return False
+        word = t.text.lstrip("$")
+        if t.text.startswith("$") or word.isupper():
+            return True
+        if listed is None:
+            return True
+        return len(word) > 1 and word.lower() not in COMMON_WORDS and word.upper() in listed
+
+    numbers = [n for n in c.numbers if not _inside((n.start, n.end, n.text), noise)]
+    return c.model_copy(
+        update={
+            "tickers": [t for t in c.tickers if ticker_ok(t)],
+            "numbers": numbers[:MAX_NUMBERS],
+            "numbers_dropped": max(0, len(numbers) - MAX_NUMBERS),
+        }
+    )

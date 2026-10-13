@@ -199,14 +199,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     graph_pool = open_pool(libpq_dsn(str(settings.database_url)))
     await graph_pool.open()
     checkpointer, store = saver_and_store(graph_pool)
+    # Chains and the optionable list cached in front of the adapter (F086; Redis-ready, §15.2).
+    cached_md = CachedMarketData(
+        marketdata, app.state.clock, chain_ttl=timedelta(seconds=settings.chain_ttl_s)
+    )
     planner = Planner(
         session_factory,
         validation=ValidationService(
             session_factory,
-            # Chains cached in front of the adapter (F086; Redis-ready, TRD §15.2).
-            marketdata=CachedMarketData(
-                marketdata, app.state.clock, chain_ttl=timedelta(seconds=settings.chain_ttl_s)
-            ),
+            marketdata=cached_md,
             alerts=app.state.alerts,
             clock=app.state.clock,
             budget_s=settings.validate_budget_ms / 1000,
@@ -393,6 +394,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             relink=relink,
             corrections=CorrectionService(session_factory, planner=planner, marketdata=marketdata),
             alerts=app.state.alerts,
+            symbols=cached_md.optionable_symbols,  # F090
         )
         processor = GraphProcessor(graph_deps, checkpointer)
         relink.recheck = processor.recheck

@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from typesafe_sdk import Choice, ChoiceAnswer, Noul, NoulAnswer, Question, Score, ScoreAnswer
 
-from app.interpret.candidates import Candidate, Candidates, fraction_value
+from app.interpret.candidates import MAX_NUMBERS, Candidate, Candidates, fraction_value
 from app.interpret.context import ProviderContext
 from app.interpret.models import MsgType
 from app.interpret.signal import (
@@ -225,6 +225,8 @@ def map_answers(
 
     fields: dict[str, Any] = {}
     confidence: dict[str, Decimal] = {}
+    if candidates.numbers_dropped:  # F090: never act on a partial reading of the numbers
+        reasons.append(f"numbers: {candidates.numbers_dropped} beyond the {MAX_NUMBERS} asked")
 
     def literal(name: str, c: Candidate, p: float) -> None:
         value = parse_raw(name.split("[")[0], c.text)
