@@ -1001,7 +1001,7 @@ This is the fallback if the Jev bench fails its latency or accuracy targets. The
 
 | # | Finding | Change |
 |---|---|---|
-| 1 | 199 underlyings, a long tail | **C86:** no ticker whitelist. The Jev candidate finder over-finds tickers, and `validate` checks them against the broker's optionable-symbol list and live chain. F090: before the models see them, lowercase/mixed-case ticker candidates are kept only when they are on that list (or a symbol-map alias); `$TICK` and ALL-CAPS always stay, and with no list nothing is dropped. Validation is unchanged. |
+| 1 | 199 underlyings, a long tail | **C86:** no ticker whitelist. The Jev candidate finder over-finds tickers, and `validate` checks them against the broker's optionable-symbol list and live chain. F090 checked filtering candidates by that list on the replay: it cost feed-only settlements, so candidates stay unfiltered (only mentions/URLs/times are dropped). |
 | 2 | SPXW is 12.5% of trades | **C85:** "SPX" maps to **SPXW** (PM-settled, daily expiries) through a config symbol map. Provider profiles can add aliases with user approval (§5.3). The SPX real-time index entitlement (§7.3) is confirmed as required. |
 | 3 | MU strikes ~900–1,010, SPXW 6,500–7,855 | **C84:** the missing-underlying suggestion uses **live-price proximity** (§6), not a fixed "strike > N means SPX" rule. It stays a suggestion that needs confirmation (C79). |
 | 4 | 45% 0DTE, 81 expired at $0 | Expiration management (cutoffs 1/2) is a core path and is tested first in the paper stage. |

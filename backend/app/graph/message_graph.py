@@ -32,7 +32,7 @@ approval graphs (F036).
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -108,8 +108,6 @@ class GraphDeps:
     book: Callable[[Envelope], list[BookEntry]] | None = None  # replay only: the label ledger
     alerts: AlertService | None = None  # F078: a scope violation is an urgent alert
     resolution: Callable[[Envelope], Resolution] | None = None  # replay only (F082)
-    # F090: the optionable list (24 h cache) that cleans ticker candidates; None = no cleaning
-    symbols: Callable[[], Awaitable[frozenset[str]]] | None = None
     background: set[asyncio.Task[Any]] = field(default_factory=set)
 
     def cfg(self) -> RuntimeConfig:
@@ -165,7 +163,6 @@ def build_message_graph(
     return g.compile(checkpointer=checkpointer)
 
 
-SYMBOLS_WAIT_S = 0.2  # F090: never hold a message for a cold optionable list
 # Jev's reading that makes an unreadable stale message ledger-only, never a card (F089).
 OPENING_HINTS = frozenset({"entry", "add", "stock_entry"})
 
@@ -300,24 +297,7 @@ class _Nodes:
         """F090: every interpreter (fast path, Jev, Laya, LLM, feed guard) sees the same
         cleaned candidates."""
         text = _processing(state).envelope.text or ""
-        cfg = self.d.cfg()
-        aliases = {k.upper() for k in cfg.symbol_map} | {v.upper() for v in cfg.symbol_map.values()}
-        aliases |= {a.upper() for a in _context(state).provider_profile.get("aliases", [])}
-        found = clean_candidates(
-            find_candidates(text), text, await self._symbols(), frozenset(aliases)
-        )
-        return {"candidates": found.model_dump(mode="json")}
-
-    async def _symbols(self) -> frozenset[str] | None:
-        """The optionable list, or None when it is not at hand within SYMBOLS_WAIT_S: a cold
-        cache keeps loading (shielded) and this message is just not cleaned. Any failure is
-        also None: no list means no filtering, never an empty list."""
-        if self.d.symbols is None:
-            return None
-        try:
-            return await asyncio.wait_for(asyncio.shield(self.d.symbols()), SYMBOLS_WAIT_S)
-        except Exception:
-            return None
+        return {"candidates": clean_candidates(find_candidates(text), text).model_dump(mode="json")}
 
     async def fixture_interpret(self, state: MessageState) -> dict[str, Any]:
         assert self.d.fixture is not None  # noqa: S101 — edge only taken when injected

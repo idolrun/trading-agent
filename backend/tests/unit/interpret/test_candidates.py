@@ -117,52 +117,24 @@ def test_tp_labels_are_not_numbers() -> None:
 
 # --- F090: cleaned candidates -----------------------------------------------------------------
 
-KNOWN = frozenset({"SPY", "QQQ", "CAN", "T", "S", "ON", "MU", "META"})
 
-
-def cleaned(text: str, known: frozenset[str] | None = KNOWN, aliases: frozenset[str] = frozenset()):
+def cleaned(text: str) -> Candidates:
     from app.interpret.candidates import clean_candidates
 
-    return clean_candidates(find_candidates(text), text, known, aliases)
+    return clean_candidates(find_candidates(text), text)
 
 
-def test_report_sentence_has_no_ticker_left() -> None:
-    text = "s while can t even catch trade right Money your done range"
-    assert cleaned(text).tickers == []
+def test_tickers_are_not_filtered_by_a_symbol_list() -> None:
+    """Replay (F090): filtering word candidates cost feed-only settlements, gained nothing."""
+    text = "s while can t spy 770c"
+    assert cleaned(text).tickers == find_candidates(text).tickers
 
 
-@pytest.mark.parametrize(
-    ("text", "kept"),
-    [
-        ("spy 770c .95", ["spy"]),  # lowercase listed symbol (TRD example)
-        ("Spy 770c", ["Spy"]),
-        ("$T 25c", ["$T"]),  # a $-prefixed single letter is meant
-        ("SPXW 7000p", ["SPXW"]),  # ALL-CAPS always kept, listed or not
-        ("ndx 20000c", []),  # lowercase and not listed
-        ("adding 3x meta 712.5p", ["meta"]),
-        ("mu calls", ["mu"]),
-    ],
-)
-def test_tickers_kept(text: str, kept: list[str]) -> None:
-    assert [t.text for t in cleaned(text).tickers] == kept
-
-
-def test_aliases_count_as_listed() -> None:
-    assert [t.text for t in cleaned("spx 7000p", aliases=frozenset({"SPX"})).tickers] == ["spx"]
-
-
-def test_no_list_means_no_ticker_filtering() -> None:
-    text = "can t spy"
-    assert [t.text for t in cleaned(text, known=None).tickers] == [
-        t.text for t in find_candidates(text).tickers
-    ]
-
-
-def test_numbers_in_mentions_urls_and_times_are_dropped() -> None:
+def test_mentions_urls_and_times_are_dropped() -> None:
     text = "<@123456789012> spy 770c .95 https://x.com/a/1234567 at 10:30am"
     c = cleaned(text)
     assert [n.text for n in c.numbers] == ["770c", ".95"]
-    assert [t.text for t in c.tickers] == ["spy"]
+    assert [t.text for t in c.tickers] == ["spy"]  # "at" is a stop word; https/x/com dropped
 
 
 def test_numbers_past_the_cap_are_counted_not_asked() -> None:
