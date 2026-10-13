@@ -2,6 +2,7 @@
 
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from typesafe_sdk import Choice
 
@@ -406,7 +407,7 @@ def test_the_question_set_version_is_the_catalog_fingerprint() -> None:
     """A wording, option or routing change must move this on purpose (and replay first)."""
     from app.interpret.jev.questions import VERSION
 
-    assert VERSION == "jev_questions@e12e3dadf071"
+    assert VERSION == "jev_questions@b3e2aed87d20"  # F091: ROUTING_VERSION 4
 
 
 def test_an_entry_sl_tp1_tp2_signal_assembles_without_review() -> None:
@@ -458,3 +459,52 @@ def test_dropped_numbers_never_let_an_actionable_message_settle() -> None:
     result = map_answers(example_answers(), context, partial, CFG)
     assert route(result, CFG).path == "slow_path"
     assert any(r.startswith("numbers: 4 beyond") for r in result.slow_reasons)
+
+
+# --- F091: gate only what the message type reads ------------------------------------------------
+
+UNSURE_PRICE = c("entry_price", 0.6, other=0.4)  # unsure, and surely not a strike
+
+
+def reasons(**overrides: Any) -> list[str]:
+    result, _ = run(**overrides)
+    return list(result.slow_reasons)
+
+
+def test_an_unsure_price_on_a_trim_is_noise() -> None:
+    got = reasons(msg_type=c("trim"), exit_fraction=c("half", 0.9), role_n2=UNSURE_PRICE)
+    assert not any(r.startswith("role_") for r in got), got
+
+
+def test_an_unsure_price_on_an_entry_still_blocks() -> None:
+    assert any(r.startswith("role_n2") for r in reasons(role_n2=UNSURE_PRICE))
+
+
+def test_a_number_that_may_be_the_strike_blocks_on_any_follow_up() -> None:
+    maybe_strike = c("other", 0.6, strike=0.4)
+    got = reasons(msg_type=c("trim"), exit_fraction=c("half", 0.9), role_n1=maybe_strike)
+    assert any(r.startswith("role_n1") for r in got)
+
+
+def test_a_trims_fraction_still_blocks_when_unsure() -> None:
+    """ "all" closes the whole lot: the fraction changes the order."""
+    got = reasons(msg_type=c("trim"), exit_fraction=c("all", 0.6))
+    assert any(r.startswith("exit_fraction") for r in got)
+
+
+def test_a_full_exits_fraction_is_never_a_doubt() -> None:
+    got = reasons(msg_type=c("full_exit"), exit_fraction=c("all", 0.6))
+    assert not any(r.startswith("exit_fraction") for r in got), got
+
+
+def test_instrument_blocks_an_opening_but_not_a_follow_up() -> None:
+    unsure = c("option", 0.6)
+    assert any(r.startswith("instrument") for r in reasons(instrument=unsure))
+    trim = reasons(msg_type=c("trim"), exit_fraction=c("half", 0.9), instrument=unsure)
+    assert not any(r.startswith("instrument") for r in trim), trim
+
+
+def test_a_follow_ups_unsure_ticker_still_blocks() -> None:
+    """The stated contract is the only guard against a sole-candidate wrong link (F077)."""
+    got = reasons(msg_type=c("trim"), exit_fraction=c("half", 0.9), ticker=c("t1", 0.6))
+    assert any(r.startswith("ticker") for r in got)

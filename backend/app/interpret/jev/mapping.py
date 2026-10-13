@@ -28,7 +28,7 @@ Answer = ChoiceAnswer | NoulAnswer | ScoreAnswer
 # Part of the question-set version (F080): bump when this mapper's or `route.py`'s reading of
 # the answers changes (thresholds' meaning, routing rules), so a historical call can be replayed
 # with the semantics it was decided under.
-ROUTING_VERSION = 3
+ROUTING_VERSION = 4  # 4: F090 numbers_dropped, F091 per-type gating
 # Every catalog question and the code that reads it (F080: a question with no reader is cost
 # without value). `role_<id>` questions are per number candidate, read by the role loop.
 CONSUMED = {
@@ -74,6 +74,21 @@ STOP_TYPES = frozenset({MsgType.STOP_SET, MsgType.STOP_MOVE, MsgType.STOP_CANCEL
 EXIT_TYPES = frozenset({MsgType.TRIM, MsgType.FULL_EXIT, MsgType.SOFT_EXIT, MsgType.STOCK_EXIT})
 # Every flag changes what an order does only when the message carries a stop.
 STOP_FLAGS = frozenset(FLAGS)
+# F091 (report fix #1): which number roles each type actually reads downstream; an unsure
+# number that is surely none of them is noise, not doubt. `strike` is read by every follow-up's
+# contract cross-check (correlation.inconsistency). Unlisted types read every role (default).
+# `share_or_contract_qty` is never read (C105: the user types every quantity).
+READ_ROLES_DEFAULT = frozenset({*SINGLE_ROLES} - {"share_or_contract_qty"} | {"take_profit_level"})
+READ_ROLES: dict[MsgType, frozenset[str]] = {
+    **{t: frozenset({"strike"}) for t in (*EXIT_TYPES, MsgType.TP_HIT_NOTICE)},
+    MsgType.STOP_SET: frozenset({"strike", "stop_level"}),
+    MsgType.STOP_MOVE: frozenset({"strike", "stop_level"}),
+    MsgType.STOP_CANCEL: frozenset({"strike"}),
+    MsgType.TP_SET: frozenset({"strike", "take_profit_level"}),
+}
+# F091: only these types are refused on an unsure `instrument` (validation checks the contract
+# only for an option opening); on a follow-up an unstated instrument contradicts nothing.
+INSTRUMENT_GATED = frozenset({MsgType.ENTRY, MsgType.ADD, MsgType.STOCK_ENTRY, MsgType.CONDITIONAL})
 CONDITION_YES = Decimal("0.5")  # F079: has_prose_condition at or above: a conditional instruction
 _RIGHT_WORD = re.compile(r"\b(?:calls?|puts?)\b", re.IGNORECASE)
 
@@ -243,12 +258,15 @@ def map_answers(
 
     # Numbers: each candidate's role (A.1 role_<nX>).
     by_role: dict[str, list[tuple[Candidate, float]]] = {}
+    read = READ_ROLES.get(msg_type, READ_ROLES_DEFAULT)
     for c in candidates.numbers:
         a = choice(f"role_{c.id}")
+        if a.choice not in read and _d(a.confidence) >= t_field:
+            continue  # surely a number this type never reads (a trim's price, a quantity)
         if _d(a.confidence) < t_field:
-            irrelevant = sum(a.probabilities.get(r, 0.0) for r in IRRELEVANT_ROLES)
-            if _d(irrelevant) >= t_field:
-                continue  # unsure which junk it is, sure it is not a number we read
+            unread = sum(p for r, p in a.probabilities.items() if r not in read)
+            if _d(unread) >= t_field:
+                continue  # unsure which it is, sure it is not a number this type reads
         if confident(f"role_{c.id}", a):
             by_role.setdefault(a.choice, []).append((c, a.confidence))
     for role, name in SINGLE_ROLES.items():
@@ -288,7 +306,15 @@ def map_answers(
         ):
             continue
         a = choice(name)
-        if confident(name, a) and a.choice not in ("not_applicable", "unclear"):
+        # F091: a doubt only where the answer changes the order: a trim's fraction ("all"
+        # closes the lot) and an opening's instrument. Elsewhere an unsure answer is dropped.
+        gated = (
+            (name == "exit_fraction" and msg_type == MsgType.TRIM)
+            or (name == "instrument" and msg_type in INSTRUMENT_GATED)
+            or name == "stop_basis"
+        )
+        sure = confident(name, a) if gated else _d(a.confidence) >= t_field
+        if sure and a.choice not in ("not_applicable", "unclear"):
             fields[name] = a.choice
             sources[name] = _fraction_span(candidates, a.choice) or model(name, a.confidence)
     for name in FLAGS:
