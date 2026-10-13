@@ -77,7 +77,7 @@ export function defaultDocument(): ConfigDoc {
     t_type: "0.8",
     t_link: "0.8",
     symbol_map: { SPX: "SPXW" },
-    jev: { model: "jev-1.13.0", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
+    jev: { model: "jev-1.13.0", timeout_ms: 900, queue_timeout_ms: 250, budget_ms: 1500, enabled: true },
     laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
     llm: {
       roles: {
@@ -124,7 +124,7 @@ export function toDraft(doc: ConfigDoc): Draft {
       model: jev.model ?? "",
       timeout_ms: jev.timeout_ms == null ? "" : String(jev.timeout_ms),
       queue_timeout_ms: text(jev.queue_timeout_ms, "250"),
-      budget_ms: text(jev.budget_ms, "1200"),
+      budget_ms: text(jev.budget_ms, "1500"),
       enabled: !!jev.enabled,
     },
     laya: {

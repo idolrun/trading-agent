@@ -40,9 +40,11 @@ class JevConfig(_Strict):
     # jev-1.13.0). Thresholds were measured on it; move on purpose, after a replay. An alias
     # stays possible for development; `model_calls.model_returned` shows what really answered.
     model: str | None = "jev-1.13.0"
-    timeout_ms: PositiveInt = 700
+    # F087: 700 ms sat on the vendor's p99 (~11% of live calls timed out); 900 clears it, and
+    # the 1,500 ms budget still leaves room for the one 429/529 retry after a fast failure.
+    timeout_ms: PositiveInt = 900
     queue_timeout_ms: PositiveInt = 250
-    budget_ms: PositiveInt = 1200
+    budget_ms: PositiveInt = 1500
     enabled: bool = (
         True  # primary interpreter; needs TYPESAFE_API_KEY, else every message falls back
     )

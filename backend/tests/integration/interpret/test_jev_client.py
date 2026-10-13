@@ -260,5 +260,5 @@ async def test_the_audit_row_holds_what_a_replay_needs(
         "t_field": "0.8",
         "t_link": "0.8",
     }
-    assert row.request["budget_ms"] == {"queue": 250, "request": 700, "step": 1200}
+    assert row.request["budget_ms"] == {"queue": 250, "request": 900, "step": 1500}
     assert counts["jev:model_mismatch"] == before + 1  # the alias moved under us

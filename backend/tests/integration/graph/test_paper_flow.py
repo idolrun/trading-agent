@@ -416,7 +416,6 @@ async def test_a_quote_that_goes_stale_before_approval_places_nothing(
         assert await p.w.orders() == []
 
 
-
 async def test_a_quote_that_crosses_before_approval_places_nothing(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
@@ -428,6 +427,7 @@ async def test_a_quote_that_crosses_before_approval_places_nothing(
         assert (await p.card(card.card_id)).state == CardState.INVALIDATED
         assert (await p.events(card.card_id))[-1].detail["reason"] == "quote_invalid"
         assert await p.w.orders() == []
+
 
 # --- supersession after approval ----------------------------------------------------------
 

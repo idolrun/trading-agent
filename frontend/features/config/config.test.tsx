@@ -90,7 +90,7 @@ describe("ConfigScreen", { timeout: 20_000 }, () => {
       max_daily_loss_usd: "500",
       channels: ["999888777666555444"],
       feed_silence_s: 60,
-      jev: { model: "jev-1.13.0", timeout_ms: 700, queue_timeout_ms: 250, budget_ms: 1200, enabled: true },
+      jev: { model: "jev-1.13.0", timeout_ms: 900, queue_timeout_ms: 250, budget_ms: 1500, enabled: true },
     })
     // dirty state reset: save bar gone, nothing to save
     expect(screen.queryByLabelText("Reason for this change")).not.toBeInTheDocument()
