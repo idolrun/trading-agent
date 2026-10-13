@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from typing import Any
 
 from sqlalchemy import select
@@ -116,6 +117,32 @@ async def test_one_author_in_two_channels_is_two_parallel_lanes(factory: Factory
     calls = {ids[c.key.message_id]: c for c in stub.calls}
     assert calls["a1"].ended <= calls["a2"].started  # same lane: serial, post order
     assert calls["b1"].started < calls["a1"].ended  # other channel: parallel
+
+
+async def test_backfill_runs_one_at_a_time_behind_live(factory: Factory) -> None:
+    """Backfill never takes more than one slot across lanes; a live event goes first."""
+    other = CHANNEL + 1
+    history = [create(T0 - timedelta(hours=1, seconds=i), f"old {i}") for i in range(3)]
+    history += [
+        create(T0 - timedelta(hours=1, seconds=i), f"old {i}", channel=other, seq=1)
+        for i in range(3)
+    ]
+    live = create(T0, "SPY 765P .54")
+    for payload in history:
+        async with in_transaction(factory, None) as db:
+            await inbox.accept(db, to_envelope(payload, T0).model_copy(update={"backfilled": True}))
+    await accept(factory, live)
+    stub = StubProcessor(factory, delay_s=0.1)
+    dispatcher = await make_dispatcher(factory, stub, channels=[CHANNEL, other])
+    await dispatcher.start()
+    await all_finished(factory, 7)
+    await dispatcher.stop()
+
+    live_id = int(live["message"]["id"])
+    old = sorted((c for c in stub.calls if c.key.message_id != live_id), key=lambda c: c.started)
+    assert all(a.ended <= b.started for a, b in pairwise(old))  # serial
+    (live_call,) = (c for c in stub.calls if c.key.message_id == live_id)
+    assert live_call.started < old[1].started  # not queued behind its lane's history
 
 
 async def test_live_notify_wakes_workers(factory: Factory, db_session: AsyncSession) -> None:

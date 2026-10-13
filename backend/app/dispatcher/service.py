@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 # Driver errors only: a plain OSError (e.g. a TimeoutError from a broker call) is the message's.
 CONNECTION_ERRORS = (psycopg.OperationalError, OperationalError, InterfaceError)
 RETRY_MAX_S = 5.0
+BACKFILL_WAIT_S = 1.0  # a backfilled event waiting for the gate re-checks for live ones
 
 
 class Dispatcher:
@@ -61,6 +62,10 @@ class Dispatcher:
         self._workers: dict[Lane, asyncio.Task[None]] = {}
         self._wakeups: defaultdict[Lane, asyncio.Event] = defaultdict(asyncio.Event)
         self._slots: defaultdict[Lane, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # Backfilled events share models and market data with live ones: one at a time
+        # across all lanes, so history never takes more than one model slot.
+        # ponytail: 1 global backfill slot; size it from config if backfill drains too slowly.
+        self._backfill_gate = asyncio.Semaphore(1)
         self._listener: asyncio.Task[None] | None = None
         # TRD §9 after a failover: workers hold until `on_recover` (block entries, reconcile)
         # has run on the reconnected database.
@@ -186,11 +191,27 @@ class Dispatcher:
         """Claim and handle one event. False when the lane has nothing waiting."""
         async with in_transaction(self._sessions, None) as db:
             env = await inbox.next_for_lane(db, lane)
-            if env is None:
-                return False
+        if env is None:
+            return False
+        config = self._config.get() or RuntimeConfig()
+        if not env.backfilled or skip_reason(env, config) is not None:
+            return await self._claim_and_process(lane, env.key, config)
+        try:
+            await asyncio.wait_for(self._backfill_gate.acquire(), BACKFILL_WAIT_S)
+        except TimeoutError:
+            return True  # re-peek: a live event that arrived meanwhile goes first
+        try:
+            return await self._claim_and_process(lane, env.key, config)
+        finally:
+            self._backfill_gate.release()
+
+    async def _claim_and_process(self, lane: Lane, key: EventKey, config: RuntimeConfig) -> bool:
+        async with in_transaction(self._sessions, None) as db:
+            env = await inbox.next_for_lane(db, lane)
+            if env is None or env.key != key:
+                return True  # the lane changed while waiting: re-peek
             attempt = await inbox.claim(db, env.key, self._clock.now())
             late = await inbox.later_applied(db, lane, env.posted_at)
-        config = self._config.get() or RuntimeConfig()
         with bind(provider_id=lane[1], channel_id=lane[0], message_id=env.key.message_id):
             if (reason := skip_reason(env, config)) is not None:
                 await self._mark(env.key, InboxStatus.DONE, skip_reason=reason)

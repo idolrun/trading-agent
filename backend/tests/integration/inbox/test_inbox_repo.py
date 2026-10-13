@@ -91,6 +91,20 @@ async def test_next_for_lane_in_post_order(factory: async_sessionmaker[AsyncSess
         assert b is not None and b.text == "Bought TSLA 400C @ 2.10"
 
 
+async def test_next_for_lane_live_before_backfilled(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    old = create(NOW - timedelta(hours=1), "Bought SPY 600C @ 1.00")
+    live = create(NOW, "Trim half")
+    async with in_transaction(factory, None) as db:
+        env = to_envelope(old, NOW).model_copy(update={"backfilled": True})
+        await repo.accept(db, env)
+    await accept(factory, live)
+    async with in_transaction(factory, None) as db:
+        first = await repo.next_for_lane(db, (CHANNEL, PROVIDER_A))
+    assert first is not None and first.text == "Trim half"
+
+
 async def test_mark_claim_reset_and_later_applied(
     factory: async_sessionmaker[AsyncSession], db_session: AsyncSession
 ) -> None:

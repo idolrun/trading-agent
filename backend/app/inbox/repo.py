@@ -107,7 +107,9 @@ def parse_lane(payload: str) -> Lane:
 
 
 async def next_for_lane(db: AsyncSession, lane: Lane) -> Envelope | None:
-    """The lane's earliest waiting event in post-time (snowflake) order."""
+    """The lane's earliest waiting event in post-time (snowflake) order, live events before
+    backfilled ones: history is already late, so it never delays a live message (`late` +
+    re-link handle the out-of-order apply)."""
     channel_id, provider_id = lane
     row = await db.scalar(
         select(MessageEvent)
@@ -125,6 +127,7 @@ async def next_for_lane(db: AsyncSession, lane: Lane) -> Envelope | None:
             col(InboxItem.status) == InboxStatus.RECEIVED,
         )
         .order_by(
+            col(InboxItem.backfilled),
             col(InboxItem.posted_at),
             col(InboxItem.message_id),
             col(InboxItem.event_type),
