@@ -143,7 +143,7 @@ cd frontend && pnpm dev                  # after F052
 | [F011](F011-ingest-webhook-inbox.md) | Ingest webhook & inbox | F003, F007 | FR-1, FR-1d, FR-3 |
 | [F012](F012-per-provider-dispatcher.md) | Per-provider dispatcher | F011, F008, F006 | FR-1a, FR-1c, FR-1e, FR-2 |
 | [F013](F013-feed-health-catch-up.md) | Feed health & catch-up mode | F012 | FR-4, FR-1c, AC-8 |
-| [F014](F014-gap-detection-backfill.md) | Gap detection & backfill | F011 | FR-1d, AC-21 |
+| [F014](F014-gap-detection-backfill.md) | Gap detection & backfill (**removed in F099**) | F011 | FR-1d, AC-21 |
 | [F015](F015-signal-contract-literal-spans.md) | Signal contract & literal-span verification | F001 | FR-6, FR-7, AC-11 |
 | [F016](F016-candidate-finders.md) | Candidate finders | F015 | TRD §4.1, FR-12 |
 | [F017](F017-provider-context-loader.md) | Provider context loader | F003, F005 | C71, FR-8 |

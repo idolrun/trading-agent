@@ -2541,7 +2541,7 @@
         "description": "Time budget (F078, from 510 real calls on 2026-10-03: p50 353 ms, p95 450 ms; an earlier\nrun p95 688 ms): `queue_timeout_ms` caps the wait for a `typesafe` limiter slot, then\n`timeout_ms` caps one request; `budget_ms` caps the whole Jev step (wait + attempts), so a\n429 retry happens only when a full request still fits. A miss is a model failure: the\nmessage goes to the fallbacks, never waits longer.",
         "properties": {
           "budget_ms": {
-            "default": 1200,
+            "default": 1500,
             "exclusiveMinimum": 0.0,
             "title": "Budget Ms",
             "type": "integer"
@@ -2570,7 +2570,7 @@
             "type": "integer"
           },
           "timeout_ms": {
-            "default": 700,
+            "default": 900,
             "exclusiveMinimum": 0.0,
             "title": "Timeout Ms",
             "type": "integer"
@@ -2916,85 +2916,6 @@
         ],
         "title": "LabelSource",
         "type": "string"
-      },
-      "LayaConfig": {
-        "additionalProperties": false,
-        "description": "Local fallback for when Jev did not settle a message (no answer, low confidence, multiple\nsignals). Its answers are weak (it was right on ~27% of labelled messages), so its gate is\nstrict: anything it cannot settle continues to the optional LLM, then to review.",
-        "properties": {
-          "enabled": {
-            "default": true,
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "t_chat": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "default": "0.95",
-            "title": "T Chat"
-          },
-          "t_field": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "default": "0.9",
-            "title": "T Field"
-          },
-          "t_link": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "default": "0.9",
-            "title": "T Link"
-          },
-          "t_type": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "default": "0.9",
-            "title": "T Type"
-          },
-          "timeout_ms": {
-            "default": 10000,
-            "exclusiveMinimum": 0.0,
-            "title": "Timeout Ms",
-            "type": "integer"
-          }
-        },
-        "title": "LayaConfig",
-        "type": "object"
       },
       "LinkOut": {
         "properties": {
@@ -6817,22 +6738,11 @@
           "jev": {
             "$ref": "#/components/schemas/JevConfig",
             "default": {
-              "budget_ms": 1200,
+              "budget_ms": 1500,
               "enabled": true,
               "model": "jev-1.13.0",
               "queue_timeout_ms": 250,
-              "timeout_ms": 700
-            }
-          },
-          "laya": {
-            "$ref": "#/components/schemas/LayaConfig",
-            "default": {
-              "enabled": true,
-              "t_chat": "0.95",
-              "t_field": "0.9",
-              "t_link": "0.9",
-              "t_type": "0.9",
-              "timeout_ms": 10000
+              "timeout_ms": 900
             }
           },
           "llm": {

@@ -175,7 +175,7 @@ async def interpretation_stats(
     db: AsyncSession, since: datetime, counters: dict[str, int]
 ) -> InterpretationStats:
     """F081: outcome / path / Jev status shares from `inbox` (F078), links from `message_links`
-    (F077). Laya / LLM count when they were actually asked (not `off` / `not_configured`)."""
+    (F077). The LLM counts when they were actually asked (not `off` / `not_configured`)."""
     r = (
         await _rows(
             db,
@@ -183,8 +183,6 @@ async def interpretation_stats(
             SELECT count(*) AS events,
                 count(*) FILTER (WHERE interpret_outcome = 'fast_success') AS fast,
                 count(*) FILTER (WHERE interpret_reasons ? 'jev') AS jev,
-                count(*) FILTER (WHERE interpret_reasons->>'laya' IN
-                                 ('success', 'unsure', 'no_answer', 'scope')) AS laya,
                 count(*) FILTER (WHERE interpret_reasons ? 'llm'
                                  AND interpret_reasons->>'llm' <> 'not_configured') AS llm,
                 count(*) FILTER (WHERE interpret_outcome IN
@@ -226,8 +224,7 @@ async def interpretation_stats(
         events=total,
         outcomes=outcomes,
         path_rates={
-            k: _rate(r[k], total) or 0.0
-            for k in ("fast", "jev", "laya", "llm", "review", "feed_only")
+            k: _rate(r[k], total) or 0.0 for k in ("fast", "jev", "llm", "review", "feed_only")
         },
         jev=jev,
         jev_failures=failures,

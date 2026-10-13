@@ -9,7 +9,7 @@ Run (regular US market hours, paper keys in the repo-root `.env`, test database 
     cd backend && uv run pytest -m live tests/live/test_paper_app_flow.py -s
 
 One SPY share is bought and sold again. Skipped outside market hours (paper orders do not fill
-then) and without keys. Jev / Laya are not live here: their routing is covered by
+then) and without keys. Jev is not live here: their routing is covered by
 `tests/integration/graph/test_paper_flow.py`; the interpretation is recorded.
 """
 

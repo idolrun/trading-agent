@@ -1727,7 +1727,7 @@ export interface components {
         JevConfig: {
             /**
              * Budget Ms
-             * @default 1200
+             * @default 1500
              */
             budget_ms: number;
             /**
@@ -1747,7 +1747,7 @@ export interface components {
             queue_timeout_ms: number;
             /**
              * Timeout Ms
-             * @default 700
+             * @default 900
              */
             timeout_ms: number;
         };
@@ -1882,44 +1882,6 @@ export interface components {
          * @enum {string}
          */
         LabelSource: "prelabel_corrected" | "manual" | "provider_correction" | "assistant";
-        /**
-         * LayaConfig
-         * @description Local fallback for when Jev did not settle a message (no answer, low confidence, multiple
-         *     signals). Its answers are weak (it was right on ~27% of labelled messages), so its gate is
-         *     strict: anything it cannot settle continues to the optional LLM, then to review.
-         */
-        LayaConfig: {
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled: boolean;
-            /**
-             * T Chat
-             * @default 0.95
-             */
-            t_chat: number | string;
-            /**
-             * T Field
-             * @default 0.9
-             */
-            t_field: number | string;
-            /**
-             * T Link
-             * @default 0.9
-             */
-            t_link: number | string;
-            /**
-             * T Type
-             * @default 0.9
-             */
-            t_type: number | string;
-            /**
-             * Timeout Ms
-             * @default 10000
-             */
-            timeout_ms: number;
-        };
         /** LinkOut */
         LinkOut: {
             /** Confidence */
@@ -3041,25 +3003,14 @@ export interface components {
             identity_price_tolerance_pct?: number | string | null;
             /**
              * @default {
-             *       "budget_ms": 1200,
+             *       "budget_ms": 1500,
              *       "enabled": true,
              *       "model": "jev-1.13.0",
              *       "queue_timeout_ms": 250,
-             *       "timeout_ms": 700
+             *       "timeout_ms": 900
              *     }
              */
             jev: components["schemas"]["JevConfig"];
-            /**
-             * @default {
-             *       "enabled": true,
-             *       "t_chat": "0.95",
-             *       "t_field": "0.9",
-             *       "t_link": "0.9",
-             *       "t_type": "0.9",
-             *       "timeout_ms": 10000
-             *     }
-             */
-            laya: components["schemas"]["LayaConfig"];
             /**
              * @default {
              *       "concurrency": {},

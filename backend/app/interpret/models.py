@@ -66,7 +66,7 @@ class Interpreter(StrEnum):
     FAST = "fast"  # F070: deterministic rules, no model
     JEV = "jev"
     LLM = "llm"
-    LAYA = "laya"
+    LAYA = "laya"  # removed (F098): stored rows only
     NONE = "none"
 
 
@@ -81,7 +81,7 @@ class LinkMethod(StrEnum):
     REPLY = "reply"
     JEV = "jev"
     LLM = "llm"
-    LAYA = "laya"
+    LAYA = "laya"  # removed (F098): stored rows only
     USER_CORRECTION = "user_correction"
     CODE = "code"  # entry opened a new position
     THREAD = "thread"  # F069: the only lane position this provider acted on in the thread

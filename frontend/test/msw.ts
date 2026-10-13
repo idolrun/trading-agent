@@ -212,7 +212,7 @@ export const healthFixture = {
   interpretation: {
     events: 40,
     outcomes: { fast_success: 10, jev_success: 20, review: 10 },
-    pathRates: { fast: 0.25, jev: 0.75, laya: 0, llm: 0, review: 0.25, feed_only: 0.4 },
+    pathRates: { fast: 0.25, jev: 0.75, llm: 0, review: 0.25, feed_only: 0.4 },
     jev: { success: 20, ambiguous: 8, model_failure: 2 },
     jevFailures: { timeout: 2 },
     feedGuardBlocks: 3,

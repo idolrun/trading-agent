@@ -83,7 +83,7 @@ export function validateDraft(draft: Draft): Record<string, string> {
   if (!problems.cutoff_1_min_before_close && !problems.cutoff_2_min_before_close && draft.cutoff_1_min_before_close && draft.cutoff_2_min_before_close && c1 <= c2) {
     problems.cutoff_1_min_before_close = "Cutoff 1 must be more minutes before close than Cutoff 2."
   }
-  const { jev, laya } = draft
+  const { jev } = draft
   add("jev_timeout_ms", checkNumber(jev.timeout_ms, "int", true))
   add("jev_queue_timeout_ms", checkNumber(jev.queue_timeout_ms, "int", true))
   add("jev_budget_ms", checkNumber(jev.budget_ms, "int", true))
@@ -91,10 +91,6 @@ export function validateDraft(draft: Draft): Record<string, string> {
     if (Number(jev.budget_ms) < Number(jev.queue_timeout_ms) + Number(jev.timeout_ms)) {
       problems.jev_budget_ms = "Step budget must be at least queue wait + request timeout."
     }
-  }
-  add("laya_timeout_ms", checkNumber(laya.timeout_ms, "int", true))
-  for (const key of ["t_chat", "t_field", "t_type", "t_link"] as const) {
-    add(`laya_${key}`, checkNumber(laya[key], "prob", true))
   }
   return problems
 }

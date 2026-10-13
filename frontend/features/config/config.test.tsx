@@ -57,20 +57,6 @@ describe("ConfigScreen", { timeout: 20_000 }, () => {
     expect(screen.getByLabelText("Max daily loss (USD)")).not.toHaveAttribute("data-unset")
   })
 
-  it("saves the Laya fallback settings and keeps its thresholds", async () => {
-    const puts = capturePuts()
-    renderWithQuery(<ConfigScreen />)
-    await userEvent.click(await screen.findByLabelText("Laya enabled"))
-    await userEvent.clear(screen.getByLabelText("Laya t_type (0 to 1)"))
-    await userEvent.type(screen.getByLabelText("Laya t_type (0 to 1)"), "0.95")
-    await save("tighten the local fallback")
-
-    await screen.findByText(/Version 4/)
-    expect(puts[0].document).toMatchObject({
-      laya: { enabled: true, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.95", t_link: "0.9" }, // off by default (F088): the click turns it on
-    })
-  })
-
   it("saves the full document with expectedVersion and reason", async () => {
     const puts = capturePuts()
     renderWithQuery(<ConfigScreen />)

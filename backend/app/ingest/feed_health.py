@@ -3,7 +3,6 @@ threshold: an unset one is reported once and its check is skipped."""
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -76,7 +75,6 @@ class FeedHealthMonitor:
         # Grace period: the feed counts as heard at process start.
         self.last_message_at = self._started_at
         self.last_heartbeat_at = self._started_at
-        self.on_recovered: list[Callable[[], Awaitable[None]]] = []  # e.g. gap backfill (F014)
 
     def note_message(self, at: datetime) -> None:
         self.last_message_at = max(self.last_message_at, at)
@@ -97,14 +95,8 @@ class FeedHealthMonitor:
         elif state.feed == "silent":
             reason = f"no message or heartbeat for {int(state.gap_s)} s during market hours"
             await self._flags.set(FlagName.FEED_DEGRADED, True, reason, Actor.SYSTEM)
-        elif state.feed == "ok" and await self._flags.set(
-            FlagName.FEED_DEGRADED, False, "feed resumed", Actor.SYSTEM
-        ):
-            for hook in self.on_recovered:
-                try:
-                    await hook()
-                except Exception:
-                    logger.exception("feed recovery hook failed")
+        elif state.feed == "ok":
+            await self._flags.set(FlagName.FEED_DEGRADED, False, "feed resumed", Actor.SYSTEM)
 
         if state.catch_up is None:
             await self._unconfigured(AlertKind.CATCH_UP, "catch_up_backlog_n")

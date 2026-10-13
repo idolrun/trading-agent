@@ -7,12 +7,10 @@
     -> fast_interpret (F070: whole-message rules, no model) -> decide_apply
        else jev_interpret -> route: feed_only | assemble -> decide_apply
           slow_path, by why (F078):
-            model_failure (off, timeout, API error, invalid answer) -> laya_interpret
+            model_failure (off, timeout, API error, invalid answer) -> llm_extract
             semantic (unsure, several signals, missing field, condition) -> llm_extract
             link (which earlier position: re-entry among several) -> raw_review
           scope violation (user data in the request) -> raw_review + urgent alert, no model
-    laya_interpret (only after a Jev model failure): feed_only | assemble -> decide_apply,
-                   link doubt -> raw_review, else -> llm_extract (optional)
     llm_extract (not configured / exhausted / rejected) | decide_apply (span mismatch) -> raw_review
     decide_apply | raw_review -> notify -> END
     recheck mode (F037): after interpretation -> END (no apply, no notify)
@@ -62,9 +60,7 @@ from app.interpret.feed_guard import feed_block
 from app.interpret.interpreter import Interpreter, InterpreterUnavailable
 from app.interpret.jev.client import JevAnswered, JevFailed, JevInterpreter
 from app.interpret.jev.mapping import FEED_TYPES
-from app.interpret.laya.client import LayaInterpreter, gate
 from app.interpret.llm_extract.agent import LlmInterpreter
-from app.interpret.llm_extract.middleware import ScopeViolation
 from app.interpret.models import Interpreter as InterpreterKind
 from app.interpret.note import NoteWriter
 from app.interpret.route import InterpretOutcome, route
@@ -98,7 +94,6 @@ class GraphDeps:
     flags: FlagService
     llm: LlmInterpreter
     jev: JevInterpreter | None = None
-    laya: LayaInterpreter | None = None  # only when Jev gave no answer
     notes: NoteWriter | None = None
     store: BaseStore | None = None
     fixture: Interpreter | None = None  # dev/demo/tests only: replaces Jev + LLM
@@ -126,7 +121,6 @@ def build_message_graph(
         ("fixture_interpret", n.fixture_interpret),
         ("fast_interpret", n.fast_interpret),
         ("jev_interpret", n.jev_interpret),
-        ("laya_interpret", n.laya_interpret),
         ("llm_extract", n.llm_extract),
         ("decide_apply", n.decide_apply),
         ("raw_review", n.raw_review),
@@ -148,14 +142,6 @@ def build_message_graph(
     )
     # F078: what Jev cannot settle goes where its reason says (see module docstring)
     g.add_conditional_edges("jev_interpret", _after_jev)
-    g.add_conditional_edges(
-        "laya_interpret",
-        lambda s: (
-            "llm_extract"
-            if s["route"] == "slow_path" and not s["raw_reason"]
-            else _after_interpret(s)
-        ),
-    )
     g.add_conditional_edges("llm_extract", _after_interpret)
     g.add_conditional_edges("decide_apply", _raw_review_or("notify"))  # span mismatch
     g.add_edge("raw_review", "notify")
@@ -171,7 +157,7 @@ def _stale_skip(
     ctx: ProcessingContext, hints: dict[str, Any] | None, reasons: Iterable[str]
 ) -> dict[str, Any]:
     """F089 (report fix #5): a stale message that Jev read as an opening but could not settle
-    skips Laya and the LLM (seconds each): a stale entry never gets a card, so reading it
+    skips the LLM (seconds): a stale entry never gets a card, so reading it
     better buys nothing; it ends as a stale `unparsed` signal with no card. Anything else still
     goes to the slow path: a late exit must become a readable exit card (C90), and unsure
     chatter must be able to end feed-only instead of as a late review card."""
@@ -200,7 +186,7 @@ def _after_interpret(s: MessageState) -> str:
 def _after_jev(s: MessageState) -> str:
     if s["raw_reason"] or s["route"] != "slow_path":
         return _after_interpret(s)
-    return "laya_interpret" if s["fallback"] == "model_failure" else "llm_extract"
+    return "llm_extract"
 
 
 def interpret_outcome(s: MessageState) -> tuple[InterpretOutcome, dict[str, Any]]:
@@ -221,7 +207,7 @@ def interpret_outcome(s: MessageState) -> tuple[InterpretOutcome, dict[str, Any]
             return InterpretOutcome.FAST_SUCCESS, trace
         case "jev":
             return InterpretOutcome.JEV_SUCCESS, trace
-        case "laya" | "llm":
+        case "llm":
             return InterpretOutcome.FALLBACK_SUCCESS, trace
         case _:
             return InterpretOutcome.FIXTURE, trace
@@ -303,7 +289,7 @@ class _Nodes:
         }
 
     async def find_candidates(self, state: MessageState) -> dict[str, Any]:
-        """F090: every interpreter (fast path, Jev, Laya, LLM, feed guard) sees the same
+        """F090: every interpreter (fast path, Jev, LLM, feed guard) sees the same
         cleaned candidates."""
         text = _processing(state).envelope.text or ""
         return {"candidates": clean_candidates(find_candidates(text), text).model_dump(mode="json")}
@@ -365,7 +351,6 @@ class _Nodes:
             status = "invalid" if outcome.kind == "invalid" else "model_failure"
             return {
                 "route": "slow_path",
-                "fallback": "model_failure",
                 "route_reasons": [f"jev_{outcome.kind}"],
                 "trace": {"jev": status, "jev_detail": outcome.kind},
                 "interpreter": "jev",
@@ -377,7 +362,6 @@ class _Nodes:
         update: dict[str, Any] = {
             "route": decision.path,
             "route_reasons": list(decision.reasons),
-            "fallback": decision.kind,
             "hints": decision.hints,
             "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
             "draft": (
@@ -396,50 +380,6 @@ class _Nodes:
                 update["raw_reason"] = f"needs_review: {'; '.join(decision.reasons)}"[:200]
             else:
                 update |= _stale_skip(ctx, decision.hints, decision.reasons)
-        return update
-
-    async def laya_interpret(self, state: MessageState) -> dict[str, Any]:
-        """Jev gave no usable answer (F078: off, timeout, API error, invalid answer): the local
-        model gets one try, under its own strict thresholds. What it cannot settle continues to
-        the optional LLM, then to review; a doubt about which position is meant is a review."""
-        ctx = _processing(state)
-        result = None
-        asked = self.d.laya is not None and self.d.laya.available()
-        trace = dict(state["trace"])
-        if self.d.laya is not None:
-            try:
-                result = await self.d.laya.interpret(
-                    _model_context(state),
-                    _candidates(state),
-                    ref=_ref(ctx),
-                    lot_ids=frozenset(state["lot_ids"]),
-                    underlying_optional=not self.d.llm.configured(),
-                )
-            except ScopeViolation as exc:
-                await self._scope_alert(ctx, "Laya", str(exc), None)
-                return {"raw_reason": "scope_violation", "trace": trace | {"laya": "scope"}}
-        if asked:  # F074: timed whether it answered, timed out or was busy
-            await self._stage(state, ctx, Stage.LAYA)
-        if result is None:
-            return {"trace": trace | {"laya": "no_answer" if asked else "off"}}
-        decision = route(result, gate(self.d.cfg()), self._feed_block(state))
-        settled = decision.path != "slow_path"
-        reasons = (
-            list(decision.reasons)
-            if settled
-            else [*state["route_reasons"], *(f"laya: {r}" for r in decision.reasons)]
-        )
-        update: dict[str, Any] = {
-            "route": decision.path,
-            "route_reasons": reasons,
-            "fallback": decision.kind,
-            "parsed": decision.parsed.model_dump(mode="json") if decision.parsed else None,
-            "interpreter": "laya",
-            "model_call_id": result.model_call_id,
-            "trace": trace | {"laya": "success" if settled else "unsure"},
-        }
-        if decision.kind == "link":
-            update["raw_reason"] = f"needs_review: {'; '.join(reasons)}"[:200]
         return update
 
     async def llm_extract(self, state: MessageState) -> dict[str, Any]:

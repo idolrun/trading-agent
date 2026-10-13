@@ -50,7 +50,6 @@ from app.cards.edits import Edits
 from app.cards.models import Card, CardAction, CardState, CardType
 from app.execution.models import Order, OrderKind
 from app.inbox.models import InboxItem, MessageEvent
-from app.messageapi.fake import FakeMessageHistory
 from app.runtime_config.schema import TradingMode
 from app.system.models import FlagName, SystemFlagEvent
 from tests.integration.conftest import _url
@@ -76,9 +75,6 @@ ITEMS = [
     for m in sd.cross_burst(sc.SEED + 6, BURST_MESSAGES, BURST_WINDOW_S, BURST_PROVIDERS)
 ]
 LOT_ENTRY = sd.story_message("entry", P + 90, sc.CONTRACTS[0], seed=9)
-RESTART_GAP = [
-    sd.story_message("entry", P + 91 + i, sc.CONTRACTS[i], seed=90 + i) for i in range(5)
-]
 
 
 def compose(*args: str) -> subprocess.CompletedProcess[str]:
@@ -248,9 +244,8 @@ def seconds(value: float | None) -> str:
 async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: AsyncSession) -> None:
     if reason := docker_ready():
         pytest.skip(f"failover test needs docker compose: {reason}")
-    plans = sd.by_text([*ITEMS, LOT_ENTRY, *RESTART_GAP])
+    plans = sd.by_text([*ITEMS, LOT_ENTRY])
     clock = RealtimeClock(T0 + timedelta(seconds=5))
-    history = FakeMessageHistory()  # messages posted while the process restarts
     session_id = await add_session(db_session)
     common: dict[str, Any] = {"clock": clock, "trading_mode": TradingMode.PAPER}
     t_stop = t_up = 0.0
@@ -320,13 +315,8 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
             unacked_committed = sum(not s.accepted for s in sent)  # committed, ack lost, resent
 
         # --- phase B: restart through the TRD §9 startup sequence ---
-        gap = [run.envelope(m, ids) for m in RESTART_GAP]
-        for s in gap:
-            history.add(s.payload)  # posted while the process is down: backfilled at step 7
-        async with open_run(
-            tmp_path, plans, broker=broker, history=history, restart=True, **common
-        ) as run:
-            every = [*all_ids, *(s.message_id for s in gap)]
+        async with open_run(tmp_path, plans, broker=broker, restart=True, **common) as run:
+            every = list(all_ids)
             budget = max(sc.RTO_S - (time.perf_counter() - t_stop), 1.0)
             statuses_b = await run.wait_terminal(every, budget)
             t_b_end = time.perf_counter()
@@ -432,7 +422,7 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
         info("B. entry cards disabled by the startup block", str(gap_disabled)),
         Check("B. entries open again after startup", str(released), "== True", released),
         Check(
-            "B. events not processed after restart (incl. restart-gap backfill)",
+            "B. events not processed after restart",
             str(unprocessed),
             "== {}",
             not unprocessed,
@@ -460,12 +450,12 @@ async def test_6_postgres_failover_during_burst(tmp_path: Path, db_session: Asyn
                 "accepted queries again.",
                 "B (restart): fresh services on the same DB, broker and clock through "
                 "`startup()` (TRD §9: 'after a failover or restore: run the full startup "
-                f"sequence'); {len(RESTART_GAP)} entries posted while the process was down are "
-                "backfilled at step 7. RTO is measured from the stop to B's end, so it also "
+                "sequence'). Messages posted while the process is down are lost (no history "
+                "backfill, F099). RTO is measured from the stop to B's end, so it also "
                 "contains phase A's wait: an upper bound.",
                 "AC-23 in-process: on a connection error the dispatcher holds its workers and "
                 "runs `recover_after_failover` once the DB answers (block entries, reconcile, "
-                "backfill, due timers, release if clean, resume approvals); a failed event is "
+                "due timers, release if clean, resume approvals); a failed event is "
                 "released back to `received` with retries, so it is never left `processing`.",
                 "Slow path forced for the burst (as test 3) so model calls are in flight when "
                 "the DB stops.",

@@ -1,6 +1,6 @@
 /**
  * Help text for every config control, keyed by the control's `name` (the config key; nested
- * keys use `jev_*` / `laya_*`). Each entry was written from the backend code that reads the
+ * keys use `jev_*`). Each entry was written from the backend code that reads the
  * value (`backend/app/...`); nothing here is a guess. Order of fields in the popover is fixed.
  */
 export type Help = {
@@ -284,50 +284,9 @@ export const HELP: Record<string, Help> = {
   },
   jev_enabled: {
     means: "Turns the primary interpreter on or off.",
-    affects: "Off, or without the TypeSafe API key, every message goes to the fallbacks.",
+    affects: "Off, or without the TypeSafe API key, every message goes to the LLM (when configured), else review.",
     example: "On = Jev reads each message first.",
-    risk: "Off sends all traffic to weaker fallbacks and review.",
-  },
-  laya_enabled: {
-    means: "Turns the local fallback interpreter on or off.",
-    affects: "When Jev gives no usable answer, Laya tries next. It loads only on Apple Silicon; a failed load raises an alert and continues to the next step.",
-    example: "On = Laya is tried after Jev.",
-    risk: "Laya is weak (about 27% correct on labelled messages), hence the strict thresholds.",
-  },
-  laya_timeout_ms: {
-    means: "How long Laya may take.",
-    affects: "A slower run is treated as no answer.",
-    example: "10000 = 10 seconds (about 20 questions take 3 to 13 s on an M4).",
-    constraints: `${POS_INT} Unit: milliseconds.`,
-    risk: "Too low: Laya often times out. Too high: delays fallback.",
-  },
-  laya_t_chat: {
-    means: "Laya's confidence needed to call a message chat.",
-    affects: "Same role as the Chat threshold, applied only to Laya's answers.",
-    example: "0.95 = 95%.",
-    constraints: PROB,
-    risk: "Lower values trust a weak model more.",
-  },
-  laya_t_field: {
-    means: "Laya's confidence needed for each extracted field.",
-    affects: "Same role as the Field threshold, applied only to Laya's answers.",
-    example: "0.9 = 90%.",
-    constraints: PROB,
-    risk: "Lower values trust a weak model more.",
-  },
-  laya_t_type: {
-    means: "Laya's confidence needed for the message type.",
-    affects: "Same role as the Message type threshold, applied only to Laya's answers.",
-    example: "0.9 = 90%.",
-    constraints: PROB,
-    risk: "Lower values trust a weak model more.",
-  },
-  laya_t_link: {
-    means: "Laya's confidence needed to link a message to a position.",
-    affects: "Same role as the Link threshold, applied only to Laya's answers.",
-    example: "0.9 = 90%.",
-    constraints: PROB,
-    risk: "Lower values trust a weak model more.",
+    risk: "Off sends all traffic to the slower LLM and review.",
   },
   llm: {
     means: "The optional language-model registry: which models handle which job, in what order.",

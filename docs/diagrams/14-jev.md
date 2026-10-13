@@ -32,10 +32,10 @@ flowchart TB
     GUARD["feed guard<br/>position open and the text<br/>could act on it"]:::code
     LINK["link doubt<br/>raw review, no other model"]:::human
     SEM["semantic doubt<br/>optional LLM, else review<br/>a Jev draft is shown if the LLM is off"]:::model
-    LAYA["model failure<br/>Laya, then optional LLM, then review"]:::model
+    MF["model failure<br/>optional LLM, else review"]:::model
 
     IN --> ON
-    ON -->|"disabled"| LAYA
+    ON -->|"disabled"| MF
     ON -->|"yes"| STATE
     STATE -->|"user data in the request"| SCOPE
     SCOPE --> AUDIT
@@ -43,7 +43,7 @@ flowchart TB
     CALL --> AUDIT
     CALL -->|"no usable answer"| FAIL
     FAIL -->|"scope_violation"| SCOPE
-    FAIL -->|"timeout, queue timeout, rate limit, api error, connection, or invalid"| LAYA
+    FAIL -->|"timeout, queue timeout, rate limit, api error, connection, or invalid"| MF
     CALL -->|"JevAnswered"| MAP --> ROUTE
     ROUTE -->|"chatter, commentary, or watch at or above t_chat"| FEED
     ROUTE -->|"same types, feed guard blocks"| GUARD
@@ -57,7 +57,7 @@ flowchart TB
 
 A failure is a `JevFailed` value. It does not raise, and it does not poison the inbox event.
 
-`map_answers` keeps a field only when Jev picked a code-found candidate. The stored value is that candidate's exact span. Two numbers claiming one role, a required field left unstated, or a confidence under `t_field` are slow reasons, not a settled signal. Doubts about which earlier position is meant are review reasons. Those never go to Laya or the LLM.
+`map_answers` keeps a field only when Jev picked a code-found candidate. The stored value is that candidate's exact span. Two numbers claiming one role, a required field left unstated, or a confidence under `t_field` are slow reasons, not a settled signal. Doubts about which earlier position is meant are review reasons. Those never go to the LLM.
 
 `route()` is pure. The message graph sends each kind to a different place:
 
@@ -66,9 +66,7 @@ A failure is a `JevFailed` value. It does not raise, and it does not poison the 
 | Settled | feed only at or above `t_chat`; assemble | `decide_apply` |
 | `link` | re-entry among several positions | raw review |
 | `semantic` | unsure type, several signals, missing field, a worded condition, feed guard | optional LLM, else a person. If the LLM is off and Jev left a draft, the card shows that draft |
-| `model_failure` | off, timeout, queue timeout, rate limit, API error, connection, invalid answer | Laya, then the optional LLM, then review |
+| `model_failure` | off, timeout, queue timeout, rate limit, API error, connection, invalid answer | optional LLM, else review |
 | scope violation | the request contained user-portfolio data | raw review and an urgent alert. Nothing is sent |
 
 The feed guard refuses a feed-only verdict when the lane holds a position or today's setup and the text has an action word, a leaving phrase, a provider term, a fraction, or a price. Confidence does not override that. Over-blocking costs a review card. Under-blocking can drop an exit.
-
-Laya is asked the same questions, under stricter thresholds (`gate`). It is not a second opinion on a message Jev already answered.

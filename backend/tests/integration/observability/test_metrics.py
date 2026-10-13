@@ -330,11 +330,11 @@ async def test_interpretation_and_link_stats(db_session: AsyncSession) -> None:
         ("fast_success", {"route": "fast"}),
         ("jev_success", {"jev": "success", "route": "assemble"}),
         ("jev_success", {"jev": "success", "route": "feed_only"}),
-        ("fallback_success", {"jev": "model_failure", "jev_detail": "timeout", "laya": "success"}),
+        ("fallback_success", {"jev": "model_failure", "jev_detail": "timeout", "llm": "success"}),
         ("review", {"jev": "ambiguous", "llm": "not_configured", "reasons": ["feed_guard: x"]}),
         (
             "review",
-            {"jev": "invalid", "jev_detail": "invalid", "laya": "off", "llm": "not_configured"},
+            {"jev": "invalid", "jev_detail": "invalid", "llm": "not_configured"},
         ),
     ]
     for n, (outcome, trace) in enumerate(traces):
@@ -405,8 +405,7 @@ async def test_interpretation_and_link_stats(db_session: AsyncSession) -> None:
     assert stats.path_rates == {
         "fast": round(1 / 6, 4),
         "jev": round(5 / 6, 4),
-        "laya": round(1 / 6, 4),
-        "llm": 0.0,
+        "llm": round(1 / 6, 4),
         "review": round(2 / 6, 4),
         "feed_only": round(1 / 6, 4),
     }

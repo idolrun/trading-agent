@@ -1,4 +1,4 @@
-"""Application-level paper lifecycle: message -> Jev (-> Laya) -> validation -> market data ->
+"""Application-level paper lifecycle: message -> Jev -> validation -> market data ->
 broker account + working orders -> risk -> card -> approval -> revalidation -> `submit_order`
 -> broker -> fill -> lot -> reconciliation.
 
@@ -24,18 +24,16 @@ from app.broker.fake import Behavior, FakeBroker, Script
 from app.broker.simulated import SimulatedBroker
 from app.cards.approval_service import DecisionInvalid
 from app.cards.models import Card, CardAction, CardEvent, CardReason, CardState, CardType
-from app.config import get_settings
 from app.execution.consumer import BrokerEventConsumer
 from app.execution.models import Fill, Order, OrderKind, OrderStatus
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.graph.processor import GraphProcessor
 from app.instruments import OptionContract
-from app.interpret.laya.client import LayaInterpreter
 from app.ledger.models import Lot
 from app.llm.models import ModelCall
 from app.main import libpq_dsn
 from app.reconcile.service import Reconciler
-from app.runtime_config.schema import LayaConfig, RuntimeConfig, TradingMode
+from app.runtime_config.schema import TradingMode
 from app.system.flags import FlagService
 from tests.integration.conftest import _url
 from tests.integration.graph.conftest import World
@@ -51,20 +49,18 @@ from tests.integration.pipeline.harness import (
 )
 from tests.integration.schema.helpers import add_session
 from tests.jev_helpers import c, example_answers
-from tests.laya_helpers import FakeLaya
 from tests.messages import PROVIDER_A, PROVIDER_B
 
 pytestmark = pytest.mark.graph
 GOOGL = OptionContract(
     underlying="GOOGL", expiry=date(2026, 10, 2), strike=Decimal("357.5"), right="call"
 )
-# "here" keeps it off the F070 fast path, so these tests exercise Jev / Laya
+# "here" keeps it off the F070 fast path, so these tests exercise Jev
 TEXT = "Bought GOOGL 357.5C 10/2 @ 0.71 here"
-LAYA_ON = LayaConfig(enabled=True)
 
 
 def answers(**override: Any) -> dict[str, Any]:
-    """Confident Jev/Laya answers for TEXT: GOOGL (t1), 10/2 (e1), strike n1, entry price n2."""
+    """Confident Jev answers for TEXT: GOOGL (t1), 10/2 (e1), strike n1, entry price n2."""
     return example_answers(
         ticker=c("t1", 0.95),
         expiry=c("e1", 0.95),
@@ -85,23 +81,9 @@ class RestingBroker(SimulatedBroker):
 @dataclass
 class Paper:
     w: World
-    laya: FakeLaya
 
-    async def processor(self, jev_client: Any, laya_fake: FakeLaya | None = None) -> GraphProcessor:
-        laya = None
-        if laya_fake is not None:
-            laya = LayaInterpreter(
-                self.w.h.factory,
-                get_settings(),
-                lambda: self.w.h.config.get() or RuntimeConfig(),
-                self.w.h.clock,
-                self.w.h.alerts,
-                loader=laya_fake.load,
-            )
-            await laya.warm()
-        return self.w.h.processor(
-            fixture=False, jev=jev_client, laya=laya, approvals=self.w.approvals
-        )
+    async def processor(self, jev_client: Any) -> GraphProcessor:
+        return self.w.h.processor(fixture=False, jev=jev_client, approvals=self.w.approvals)
 
     async def signal(
         self, processor: GraphProcessor, *, author: int = PROVIDER_A, at: Any = T0
@@ -160,7 +142,6 @@ def build(
                 tmp_path,
                 trading_mode=TradingMode.PAPER,
                 jev=JEV_ON,
-                laya=LAYA_ON,
                 **config,
             )
             h.md.set_quote(GOOGL, Decimal("0.70"), Decimal("0.71"))
@@ -177,7 +158,7 @@ def build(
             exit_policy = approvals._executor.exit
             assert exit_policy is not None
             exit_policy.sleep = world.elapse
-            yield Paper(world, FakeLaya(answers()))
+            yield Paper(world)
             for task in list(exit_policy.loops.values()):
                 task.cancel()
         finally:
@@ -219,13 +200,12 @@ def jev_client(p: Paper, **override: Any) -> Any:
     return jev(p.w.h, **answers(**override))
 
 
-# --- AI: Jev first, Laya only as the fallback, review when neither settles it --------------
+# --- AI: Jev first, review when it cannot settle it (no LLM configured here) ----------------
 
 
-async def test_jev_settles_the_signal_and_laya_is_not_called(p: Paper) -> None:
-    processor = await p.processor(jev_client(p), p.laya)
+async def test_jev_settles_the_signal(p: Paper) -> None:
+    processor = await p.processor(jev_client(p))
     card = await p.signal(processor)
-    assert p.laya.calls == 0
     assert (card.action, card.card_type, card.state) == (
         CardAction.ENTRY,
         CardType.NORMAL,
@@ -234,26 +214,15 @@ async def test_jev_settles_the_signal_and_laya_is_not_called(p: Paper) -> None:
     assert card.proposal["qty"] is None and card.proposal["limit_price"] == "0.74"
 
 
-async def test_laya_answers_when_jev_is_down_and_the_card_is_the_same(p: Paper) -> None:
-    processor = await p.processor(jev_down(p.w.h), p.laya)
-    card = await p.signal(processor)
-    assert p.laya.calls == 1
-    assert (card.action, card.state) == (CardAction.ENTRY, CardState.PENDING)
-    assert card.proposal["qty"] is None
-
-
-async def test_an_unsure_jev_is_a_review_not_a_laya_question(p: Paper) -> None:
-    """F078: Jev answered but was unsure: a semantic doubt, so no LLM -> review; never Laya."""
+async def test_an_unsure_jev_is_a_review(p: Paper) -> None:
+    """F078: Jev answered but was unsure: a semantic doubt, so no LLM -> review."""
     unsure = jev_client(p, msg_type=c("entry", 0.6))
-    card = await p.signal(await p.processor(unsure, p.laya))
-    assert p.laya.calls == 0
+    card = await p.signal(await p.processor(unsure))
     assert card.card_type == CardType.REVIEW
 
 
-async def test_neither_model_settling_it_gives_a_review_card_and_no_order(p: Paper) -> None:
-    weak = FakeLaya(answers(msg_type=c("entry", 0.5)))
-    card = await p.signal(await p.processor(jev_down(p.w.h), weak))
-    assert weak.calls == 1
+async def test_jev_down_without_an_llm_gives_a_review_card_and_no_order(p: Paper) -> None:
+    card = await p.signal(await p.processor(jev_down(p.w.h)))
     assert card.card_type == CardType.REVIEW
     assert await p.w.orders() == []
     with pytest.raises(DecisionInvalid, match="could not be read"):  # nothing to approve
@@ -269,7 +238,7 @@ async def test_neither_model_settling_it_gives_a_review_card_and_no_order(p: Pap
 
 
 async def test_approved_signal_becomes_an_order_a_fill_a_lot_and_reconciles(p: Paper) -> None:
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     await p.w.decide(card.card_id)
 
     assert (await p.card(card.card_id)).state == CardState.SUBMITTED
@@ -291,7 +260,7 @@ async def test_approved_signal_becomes_an_order_a_fill_a_lot_and_reconciles(p: P
 
 
 async def test_preflight_shows_the_numbers_the_decision_rests_on(p: Paper) -> None:
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     pf = await p.w.approvals.preflight(card.card_id, qty=13)  # what the user typed
     assert pf.failure is None
     assert {c.name for c in pf.checks} >= {"hours", "validity", "quote_fresh", "price_band", "risk"}
@@ -319,7 +288,7 @@ async def test_a_quantity_the_account_cannot_afford_is_refused_not_reduced(p: Pa
     """C105: no quantity exists when the card is made, so the account cannot disable it then.
     The user's number is judged when typed; the refusal names the reason and changes nothing."""
     p.w.broker.buying_power = Decimal("500")  # 13 contracts cost 962
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     assert card.state == CardState.PENDING and card.proposal["qty"] is None
     with pytest.raises(DecisionInvalid, match="insufficient buying power"):
         await p.w.decide(card.card_id, qty=13)
@@ -331,7 +300,7 @@ async def test_a_quantity_the_account_cannot_afford_is_refused_not_reduced(p: Pa
 
 
 async def test_buying_power_lost_between_card_and_approval_places_nothing(p: Paper) -> None:
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     p.w.broker.buying_power = Decimal("500")  # spent elsewhere in the meantime
 
     async def passed(*_: object) -> None:  # the approval-time check ran just before it went
@@ -346,7 +315,7 @@ async def test_buying_power_lost_between_card_and_approval_places_nothing(p: Pap
 
 
 async def test_an_unreadable_account_at_approval_places_nothing(p: Paper) -> None:
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     p.w.broker.account_error = RuntimeError("alpaca down")
     await p.w.decide(card.card_id)
     assert (await p.card(card.card_id)).state == CardState.INVALIDATED
@@ -358,9 +327,9 @@ async def test_an_unreadable_account_at_approval_places_nothing(p: Paper) -> Non
 
 async def test_a_working_order_counts_against_the_exposure_limit(resting: Paper) -> None:
     p = resting
-    processor = await p.processor(jev_client(p), p.laya)
+    processor = await p.processor(jev_client(p))
     first = await p.signal(processor, author=PROVIDER_A)
-    again = await p.processor(jev_client(p), p.laya)  # one scripted Jev answer per message
+    again = await p.processor(jev_client(p))  # one scripted Jev answer per message
     second = await p.signal(again, author=PROVIDER_B, at=T0 + timedelta(seconds=1))
     assert first.state == second.state == CardState.PENDING  # each fits on its own: 962 <= 1500
 
@@ -382,9 +351,9 @@ async def test_two_simultaneous_approvals_cannot_both_pass_the_exposure_limit(
     (962 <= 1500); the final risk check before submission is serialized per account, so the
     second sees the first's working order and is refused."""
     p = resting
-    first = await p.signal(await p.processor(jev_client(p), p.laya), author=PROVIDER_A)
+    first = await p.signal(await p.processor(jev_client(p)), author=PROVIDER_A)
     second = await p.signal(
-        await p.processor(jev_client(p), p.laya), author=PROVIDER_B, at=T0 + timedelta(seconds=1)
+        await p.processor(jev_client(p)), author=PROVIDER_B, at=T0 + timedelta(seconds=1)
     )
     await asyncio.gather(p.w.decide(first.card_id), p.w.decide(second.card_id))
     assert len(await p.w.orders()) == 1
@@ -397,7 +366,7 @@ async def test_a_stale_quote_makes_a_review_card_and_never_an_order(
 ) -> None:
     async for p in build(quote_max_age_s=60)(factory, tmp_path, db_session):
         p.w.h.md.set_quote(GOOGL, Decimal("0.70"), Decimal("0.71"), at=T0 - timedelta(minutes=30))
-        card = await p.signal(await p.processor(jev_client(p), p.laya))
+        card = await p.signal(await p.processor(jev_client(p)))
         assert card.card_type == CardType.REVIEW
         assert "quote_stale" in card.proposal["review_reasons"]
         assert await p.w.orders() == []
@@ -407,7 +376,7 @@ async def test_a_quote_that_goes_stale_before_approval_places_nothing(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
     async for p in build(quote_max_age_s=60)(factory, tmp_path, db_session):
-        card = await p.signal(await p.processor(jev_client(p), p.laya))
+        card = await p.signal(await p.processor(jev_client(p)))
         assert card.state == CardState.PENDING
         p.w.h.md.set_quote(GOOGL, Decimal("0.70"), Decimal("0.71"), at=T0 - timedelta(minutes=30))
         await p.w.decide(card.card_id)
@@ -420,7 +389,7 @@ async def test_a_quote_that_crosses_before_approval_places_nothing(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
     async for p in build(quote_max_age_s=60)(factory, tmp_path, db_session):
-        card = await p.signal(await p.processor(jev_client(p), p.laya))
+        card = await p.signal(await p.processor(jev_client(p)))
         assert card.state == CardState.PENDING
         p.w.h.md.set_quote(GOOGL, Decimal("0.75"), Decimal("0.70"))  # F086: bid above ask
         await p.w.decide(card.card_id)
@@ -433,7 +402,7 @@ async def test_a_quote_that_crosses_before_approval_places_nothing(
 
 
 async def test_an_approved_entry_overtaken_by_a_stop_message_never_executes(p: Paper) -> None:
-    processor = await p.processor(jev_client(p), p.laya)
+    processor = await p.processor(jev_client(p))
     env = await p.w.h.message(TEXT, None, author=PROVIDER_A)
     await p.w.h.process(env, processor=processor)
     async with p.w.h.factory() as db:
@@ -469,7 +438,7 @@ async def test_an_approved_entry_overtaken_by_a_stop_message_never_executes(p: P
 
 async def _approved_and_held(p: Paper) -> tuple[Any, Card]:
     """An approved entry whose graph has not run yet (what a restart or a block leaves)."""
-    processor = await p.processor(jev_client(p), p.laya)
+    processor = await p.processor(jev_client(p))
     env = await p.w.h.message(TEXT, None, author=PROVIDER_A)
     await p.w.h.process(env, processor=processor)
     async with p.w.h.factory() as db:
@@ -515,7 +484,7 @@ async def test_an_approved_entry_whose_message_was_deleted_or_edited_never_execu
 
 async def test_a_submit_timeout_queries_the_broker_and_never_resends(p: Paper) -> None:
     p.w.broker.default = Script(Behavior.TIMEOUT_THEN_EXISTS)
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     await p.w.decide(card.card_id)
     calls = [name for name, _ in p.w.broker.calls]
     assert calls.count("submit") == 1 and "get_by_client_id" in calls  # FR-22
@@ -527,7 +496,7 @@ async def test_a_rejected_order_shows_as_rejected_on_the_card_and_creates_no_pos
     p: Paper,
 ) -> None:
     p.w.broker.default = Script(Behavior.REJECT)
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     await p.w.decide(card.card_id)
     final = await p.card(card.card_id)
     assert final.state == CardState.INVALIDATED  # not "submitted"
@@ -540,7 +509,7 @@ async def test_a_rejected_order_shows_as_rejected_on_the_card_and_creates_no_pos
 
 
 async def test_a_paper_mode_that_points_at_the_wrong_broker_is_refused(p: Paper) -> None:
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     orders = p.w.approvals._executor._orders
     orders._broker_kind, orders._allow_fake = "alpaca-live", False  # paper mode, live endpoint
     await p.w.decide(card.card_id)
@@ -557,7 +526,7 @@ async def test_a_partial_fill_makes_a_partial_lot_and_a_duplicate_fill_changes_n
     p: Paper,
 ) -> None:
     p.w.broker.default = Script(Behavior.PARTIAL, qty=5)
-    card = await p.signal(await p.processor(jev_client(p), p.laya))
+    card = await p.signal(await p.processor(jev_client(p)))
     await p.w.decide(card.card_id)
     events = p.w.broker.pending_events()
     consumer = BrokerEventConsumer(p.w.h.factory, [p.w.broker])
@@ -574,7 +543,7 @@ async def test_a_partial_fill_makes_a_partial_lot_and_a_duplicate_fill_changes_n
 async def test_no_model_ever_sees_the_account(p: Paper, db_session: AsyncSession) -> None:
     """AI interprets, code decides: the model requests carry the message and the provider's book,
     never buying power, equity, cash or the user's lots."""
-    await p.signal(await p.processor(jev_down(p.w.h), p.laya))  # Jev and Laya both ask
+    await p.signal(await p.processor(jev_down(p.w.h)))  # Jev asks (and retries)
     requests = (await db_session.scalars(select(col(ModelCall.request)))).all()
     assert requests
     sent = repr(requests)

@@ -47,7 +47,7 @@ class ModelSource(_Contract):
     """A model's judgment (F071): never a value copied from text, never code-derived."""
 
     kind: Literal["model"] = "model"
-    interpreter: Literal["jev", "laya", "llm"]
+    interpreter: Literal["jev", "laya", "llm"]  # laya: stored rows only (removed F098)
     question: str  # the Jev question id, or the LLM output field
     confidence: Decimal | None = None
 
@@ -118,7 +118,7 @@ class ParsedSignals(_Contract):
     """0..n signals per message event (FR-6)."""
 
     signals: list[ParsedSignal]
-    interpreter: Literal["fast", "jev", "laya", "llm", "stub", "none"]
+    interpreter: Literal["fast", "jev", "laya", "llm", "stub", "none"]  # laya: stored only
     schema_version: int = SCHEMA_VERSION
 
 

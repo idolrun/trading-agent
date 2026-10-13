@@ -7,7 +7,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any
 
 from typesafe_sdk import Choice, ChoiceAnswer, Noul, NoulAnswer, Question, Score, ScoreAnswer
 
@@ -176,7 +176,6 @@ def map_answers(
     cfg: RuntimeConfig,
     *,
     underlying_optional: bool = False,
-    interpreter: Literal["jev", "laya"] = "jev",
     lenient: bool = False,
 ) -> JevResult:
     """`lenient` (the draft pass): a pick below `t_field` is kept with its confidence instead of
@@ -204,7 +203,7 @@ def map_answers(
         return True
 
     def model(question: str, p: float) -> ModelSource:
-        return ModelSource(interpreter=interpreter, question=question, confidence=_d(p))
+        return ModelSource(interpreter="jev", question=question, confidence=_d(p))
 
     mt = choice("msg_type")
     msg_type, conf = MsgType(mt.choice), _d(mt.confidence)
@@ -235,7 +234,7 @@ def map_answers(
         signal = ParsedSignal.model_validate(
             {"msg_type": msg_type, "fields": fields_, "field_sources": sources}
         )
-        parsed = ParsedSignals(signals=[signal], interpreter=interpreter)
+        parsed = ParsedSignals(signals=[signal], interpreter="jev")
         return replace(base, parsed=parsed)
 
     fields: dict[str, Any] = {}
@@ -369,7 +368,6 @@ def map_answers(
                 candidates,
                 cfg,
                 underlying_optional=underlying_optional,
-                interpreter=interpreter,
                 lenient=True,
             ).parsed
         return replace(base, slow_reasons=tuple(reasons), review_reasons=review, draft=draft)
@@ -384,7 +382,7 @@ def map_answers(
             "field_sources": sources,
         }
     )
-    parsed = ParsedSignals(signals=[signal], interpreter=interpreter)
+    parsed = ParsedSignals(signals=[signal], interpreter="jev")
     if errors := verify_literal_spans(parsed, text):  # defence in depth: spans came from code
         reasons += [f"{e.field}: {e.reason}" for e in errors]
         return replace(base, slow_reasons=tuple(reasons))

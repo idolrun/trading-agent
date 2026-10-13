@@ -1,12 +1,11 @@
 """TRD §12 fault test 4 (F063, AC-21): a 10-minute Message API outage, then backlog delivery.
 
 Live: every provider opens a position; its entry card is approved and filled (a user lot, so
-a later exit is carded). Outage: the webhook delivers nothing and the history API is down; the
-providers post a new entry, an exit of the live position and chatter; the app clock jumps
-10 minutes (the pipeline's `RealtimeClock` is advanced: no real 10-minute wait). Recovery: the
-webhook comes back with late redeliveries of half the backlog, the feed-health tick sees the feed
-again and its recovery hook runs the gap detector (backfills the other half), then the webhook
-redelivers the whole backlog once more (duplicates). A fresh entry per provider follows.
+a later exit is carded). Outage: the webhook delivers nothing; the providers post a new entry,
+an exit of the live position and chatter; the app clock jumps 10 minutes (the pipeline's
+`RealtimeClock` is advanced: no real 10-minute wait). Recovery: the webhook comes back with
+late redeliveries of the backlog (no history backfill, F099), then redelivers it once more
+(duplicates). A fresh entry per provider follows.
 
 Pass (TRD §12): nothing lost, nothing duplicated; CATCH_UP set during the backlog and cleared
 after it drained; stale entries have no card (inbox `stale`); exits are carded with the `late`
@@ -32,10 +31,8 @@ from app.inbox import repo as inbox
 from app.inbox.models import InboxItem, MessageEvent
 from app.ingest.adapter import to_envelope
 from app.ingest.feed_health import FeedHealthMonitor
-from app.ingest.gaps import GapDetector
 from app.interpret.models import Signal
 from app.ledger.models import Lot
-from app.messageapi.fake import FakeMessageHistory
 from app.system.models import FlagName, SystemFlagEvent
 from tests.integration.pipeline.harness import T0
 from tests.integration.schema.helpers import add_session
@@ -99,26 +96,16 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
     p = plan()
     everything = [*p.live, *(m for _, m in p.outage), *p.fresh]
     clock = RealtimeClock(T0 + timedelta(seconds=5))
-    history = FakeMessageHistory()
     session_id = await add_session(db_session)
     async with open_run(tmp_path, sd.by_text(everything), clock=clock, warm_up=False) as run:
-        gaps = GapDetector(
-            run.factory, history=history, config=run.h.config, alerts=run.h.alerts, clock=clock
-        )
         monitor = FeedHealthMonitor(
             run.factory, config=run.h.config, flags=run.flags, alerts=run.h.alerts, clock=clock
         )
-
-        async def backfill_on_recovery() -> None:  # the app's wiring (app/main.py)
-            await gaps.run_once()
-
-        monitor.on_recovered.append(backfill_on_recovery)
         ids: dict[int, int] = {}
 
         # --- live: positions opened, approved, filled ---
         live = [run.envelope(m, ids) for m in p.live]
         for s in live:
-            history.add(s.payload)
             await run.accept(s)
             monitor.note_message(clock.now())
         await run.wait_terminal([s.message_id for s in live], 30)
@@ -138,28 +125,21 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
         async with run.factory() as db:
             lots = int(await db.scalar(select(func.count()).select_from(Lot)) or 0)
 
-        # --- outage: webhook silent, history down, 10 minutes pass ---
-        history.unavailable = True
+        # --- outage: webhook silent, 10 minutes pass ---
         start = clock.now()
         backlog = [run.envelope(m, ids, at=start + timedelta(seconds=t)) for t, m in p.outage]
-        for s in backlog:
-            history.add(s.payload)  # posted in the channel; nobody tells us
-        down_backfill = await gaps.run_once()  # history unavailable: warns, retries later
         clock.advance(timedelta(seconds=sc.OUTAGE_S + 5))
         await monitor.tick()
         degraded = await run.flags.is_active(FlagName.FEED_DEGRADED)
 
         # --- recovery ---
         t_recovery = time.perf_counter()
-        history.unavailable = False
-        late_half = backlog[::2]
-        accepted_webhook = [await webhook(run, s) for s in late_half]
+        accepted_webhook = [await webhook(run, s) for s in backlog]
         fresh = [run.envelope(m, ids) for m in p.fresh]
         for s in fresh:
-            history.add(s.payload)
             accepted_webhook.append(await webhook(run, s))
         monitor.note_message(clock.now())
-        await monitor.tick()  # feed back -> recovery hook -> gap backfill
+        await monitor.tick()  # feed back
         states: list[tuple[float, bool]] = []
 
         async def ticker() -> None:
@@ -206,16 +186,6 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
                     )
                 ).all()
             )
-            backfilled = set(
-                (
-                    await db.scalars(
-                        select(col(MessageEvent.message_id)).where(
-                            col(MessageEvent.message_id).in_(all_ids),
-                            col(MessageEvent.backfilled),
-                        )
-                    )
-                ).all()
-            )
             sig_rows = (
                 await db.execute(select(col(Signal.signal_id), col(Signal.message_id)))
             ).all()
@@ -247,7 +217,6 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
         for s in fresh
         if statuses.get(s.message_id) != "done" or len(cards_of.get(s.message_id, [])) != 1
     ]
-    expected_backfill = {s.message_id for s in backlog[1::2]}
     duplicates_rejected = sum(not a for a in accepted_webhook + redelivered)
     checks = [
         info(
@@ -256,17 +225,10 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
         ),
         info("user lots opened in the live phase", str(lots)),
         info("feed_degraded during the outage (AC-8)", str(degraded)),
-        info("backfilled while history was down", str(down_backfill)),
         Check("lost (not stored or not queued)", str(len(lost)), "== 0", not lost),
         Check("duplicated stored events", str(len(duplicated)), "== 0", not duplicated),
         Check("duplicate cards", str(dup_cards), "== 0", dup_cards == 0),
         info("duplicate deliveries rejected by accept()", str(duplicates_rejected)),
-        Check(
-            "backfilled by the gap detector = the half the webhook never redelivered",
-            f"{len(backfilled)} (expected {len(expected_backfill)})",
-            "equal sets",
-            backfilled == expected_backfill,
-        ),
         Check("not processed (or failed)", str(unprocessed), "== {}", not unprocessed),
         Check("CATCH_UP set during the backlog", str(set_during), "== True", set_during),
         Check(
@@ -301,13 +263,12 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
             checks,
             notes=(
                 f"{sc.OUTAGE_PROVIDERS} providers. Live: an entry each, approved and filled. "
-                "Outage (history API down, webhook silent, app clock advanced "
+                "Outage (webhook silent, app clock advanced "
                 f"{sc.OUTAGE_S + 5:g} s): per provider a new entry, an exit of the live "
-                "position and chatter. Recovery: late webhook redeliveries of half the backlog "
-                "and a fresh entry per provider; the feed-health tick's recovery hook runs the "
-                "gap detector (the other half); then the whole backlog and the live messages "
-                "are redelivered once more (all duplicates).",
-                "Drain time is wall clock from the history API coming back; the model fakes "
+                "position and chatter. Recovery: late webhook redeliveries of the backlog and a "
+                "fresh entry per provider (no history backfill, F099); then the whole backlog "
+                "and the live messages are redelivered once more (all duplicates).",
+                "Drain time is wall clock from the webhook coming back; the model fakes "
                 "keep their simulated latency.",
             ),
         ),

@@ -47,11 +47,11 @@ class SkipReason(StrEnum):
 
 class InterpretOutcome(StrEnum):
     """How interpretation of one event ended (F078). Why each interpreter did not settle it is
-    in `interpret_reasons` (e.g. {"jev": "model_failure", "jev_detail": "timeout", "laya": ...})."""
+    in `interpret_reasons` (e.g. {"jev": "model_failure", "jev_detail": "timeout", "llm": ...})."""
 
     FAST_SUCCESS = "fast_success"  # code only
     JEV_SUCCESS = "jev_success"  # feed-only or assembled by Jev
-    FALLBACK_SUCCESS = "fallback_success"  # Laya or the LLM settled it
+    FALLBACK_SUCCESS = "fallback_success"  # the LLM settled it (Laya, removed F098, in old rows)
     REVIEW = "review"  # a person decides (raw review card)
     VALIDATION_FAILURE = "validation_failure"  # interpreted, then refused by code (span check)
     SCOPE_VIOLATION = "scope_violation"  # user data in a model request: nothing was sent
@@ -63,7 +63,7 @@ class Stage(StrEnum):
     DEQUEUED = "dequeued"
     CONTEXT = "context"
     FAST = "fast"  # F070: settled by the deterministic fast path
-    LAYA = "laya"  # F074: the local fallback answered (or timed out / was busy)
+    LAYA = "laya"  # F074; Laya removed (F098): stored rows only
     JEV = "jev"
     LLM = "llm"
     VALIDATED = "validated"

@@ -2,11 +2,11 @@
 answered. Pure.
 
 Why a message is not settled decides where it goes next (F078):
-- `model_failure`: no usable answer (Jev off, timeout, API error, invalid answer). Another model
-  may answer: Laya, then the optional LLM, then review.
+- `model_failure`: no usable answer (Jev off, timeout, API error, invalid answer): the optional
+  LLM, else review.
 - `semantic`: the model answered but is unsure or the message needs more than it can settle
   (low type confidence, several signals, a missing field, a worded condition, a correction):
-  the optional LLM (a stronger reader), else review. Never Laya.
+  the optional LLM (a stronger reader), else review.
 - `link`: the doubt is which earlier position is meant (re-entry among several): review. No
   model may resolve it (F077).
 """

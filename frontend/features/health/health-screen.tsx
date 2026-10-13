@@ -88,7 +88,6 @@ function interpretation(stats: NonNullable<HealthDetails["interpretation"]>) {
     ["Interpreted messages", stats.events],
     ["Settled by code (fast path)", rate(paths.fast)],
     ["Asked Jev", rate(paths.jev)],
-    ["Asked Laya", rate(paths.laya)],
     ["Asked the LLM", rate(paths.llm)],
     ["Ended in review", rate(paths.review)],
     ["Feed only", rate(paths.feed_only)],

@@ -55,12 +55,6 @@ async def test_ac8_silence_degrades_and_heartbeat_recovers(
     factory: Factory, db_session: AsyncSession
 ) -> None:
     mon, flags, clock = await monitor(factory, MARKET, feed_silence_s=60, catch_up_backlog_n=20)
-    recovered: list[bool] = []
-
-    async def hook() -> None:
-        recovered.append(True)
-
-    mon.on_recovered.append(hook)
     clock.advance(timedelta(seconds=60))
     await mon.tick()
     assert not await flags.is_active(FlagName.FEED_DEGRADED)
@@ -75,7 +69,6 @@ async def test_ac8_silence_degrades_and_heartbeat_recovers(
     mon.note_heartbeat(clock.now())
     await mon.tick()
     assert not await flags.is_active(FlagName.FEED_DEGRADED)
-    assert recovered == [True]
 
 
 async def test_quiet_after_close_is_not_degraded(factory: Factory) -> None:

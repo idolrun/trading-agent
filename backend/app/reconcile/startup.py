@@ -15,7 +15,6 @@ from app.dispatcher.service import Dispatcher
 from app.execution import repo as orders_repo
 from app.execution.exit import ExitPolicy
 from app.execution.expiration import ExpirationService
-from app.ingest.gaps import GapDetector
 from app.reconcile.service import Reconciler, ReconcileReport
 from app.runtime_config.models import Actor
 from app.system.flags import FlagService
@@ -44,7 +43,6 @@ async def startup(
     flags: FlagService,
     reconciler: Reconciler,
     approvals: ApprovalService,
-    gaps: GapDetector,
     timers: TimerService,
     expiration: ExpirationService,
     exits: ExitPolicy,
@@ -57,11 +55,7 @@ async def startup(
     async with _step(5, "expire open cards"):
         expired = await approvals.expire_on_restart()
         logger.info("open cards expired", extra={"expired": expired})
-    async with _step(7, "gap detector"):  # step 6 (inbox reset) is Dispatcher.start()
-        try:
-            await gaps.run_once()
-        except Exception:
-            logger.exception("startup gap detection failed")  # the periodic run retries
+    # step 6 (inbox reset) is Dispatcher.start(); step 7 (gap backfill) was removed in F099
     async with _step(8, "timers and expiration cutoffs"):
         await timers.run_due()
         await expiration.schedule_today()
@@ -85,19 +79,14 @@ async def recover_after_failover(
     flags: FlagService,
     reconciler: Reconciler,
     approvals: ApprovalService,
-    gaps: GapDetector,
     timers: TimerService,
 ) -> ReconcileReport:
     """TRD §9 "after a failover: run the startup sequence" in a live process: the dispatcher
     holds its workers and calls this once the database answers again. The process kept its
     state, so open cards stay open, exits keep running and the inbox is not reset; the rest
-    is the startup sequence: block entries, reconcile, backfill, due timers, gate, resume."""
+    is the startup sequence: block entries, reconcile, due timers, gate, resume."""
     await flags.set(FlagName.ENTRIES_BLOCKED, True, reason="failover", actor=Actor.SYSTEM)
     report = await reconciler.run(release=False)
-    try:
-        await gaps.run_once()
-    except Exception:
-        logger.exception("failover gap detection failed")  # the periodic run retries
     await timers.run_due()
     if report.clean:
         await reconciler.release()

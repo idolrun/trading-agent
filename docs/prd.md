@@ -206,7 +206,7 @@ Messages calling for action outside regular hours are held until 9:30 ET. The ca
 - FR-1d. **Delivery and backfill.**
   - A message event is accepted only once it is durably stored.
   - The message API must either redeliver unacknowledged events for ≥ 10 minutes, or provide a history API for backfill.
-  - The system detects gaps (per channel, by last seen message ID) and backfills them on startup, on reconnect, and periodically during market hours [C91].
+  - ~~The system detects gaps (per channel, by last seen message ID) and backfills them on startup, on reconnect, and periodically during market hours [C91].~~ Removed in F099 (2026-10-13): no channel-history backfill (Discord Terms); messages posted while disconnected are lost.
 - FR-1e. **No silent drops.**
   - A message that fails processing 3 times produces a raw review card and an alert.
   - The provider's later messages continue to be processed.
@@ -489,7 +489,7 @@ Everything in §7–§18: options (including 0DTE and SPX) and long stock; singl
   - A3 is never processed against a provider book that does not yet contain A1.
 - AC-19. An entry processed more than the staleness threshold after its post time produces no approvable card. An exit processed that late produces a card marked "late".
 - AC-20. A message that fails processing 3 times produces a raw review card and an alert, and the same provider's next message is still processed.
-- AC-21. After a message-API outage, every message posted during the outage is either redelivered or backfilled. None is lost or duplicated, and catch-up mode is shown until the backlog clears.
+- AC-21. After a message-API outage, every message posted during the outage is either redelivered or backfilled. (F099: backfill removed; only redelivered messages are recovered.) None is lost or duplicated, and catch-up mode is shown until the backlog clears.
 - AC-22. Load tests at the §12 design bursts meet p95 ≤ 5 s and p99 ≤ 8 s.
 - AC-23. A database failover during market hours loses no approval, order intent, fill or ledger change. The system recovers within 5 minutes and reconciles against the broker before allowing entries.
 

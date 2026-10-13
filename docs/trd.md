@@ -143,7 +143,7 @@ Everything outside the graph stays plain async code: ingest, market-data streams
 | Module | Responsibility | PRD |
 |---|---|---|
 | `ingest` | Webhook, signature check, provisional payload adapter, feed-health watchdog, gap detector + backfill. It writes only through `inbox.accept()`. | FR-1–4 |
-| `discord_source` | Discord gateway listener (`discord.py-self`, user-account token): maps create/edit/delete events to the provisional payload, ignores bot authors, appends embed text, backfills gaps from channel history, reports status. Same path as the webhook (C95). | FR-1, FR-1d |
+| `discord_source` | Discord gateway listener (`discord.py-self`, user-account token): maps create/edit/delete events to the provisional payload, ignores bot authors, appends embed text, reports status. Never reads channel history (F099). Same path as the webhook (C95). | FR-1, FR-1d |
 | `messageapi` | Port + fake for the user's Message API (history/backfill); the real adapter is not built (F050 blocked). | §7.1 |
 | `inbox` | `accept()`, `next_for_provider()`, `mark()`. The only transport boundary; Postgres-backed (§2.4). | FR-1 |
 | `dispatcher` | Per-provider workers, snowflake ordering, staleness check, model semaphores, poison handling. Starts one graph run per event. | §2.4 |

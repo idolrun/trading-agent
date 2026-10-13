@@ -45,7 +45,6 @@ from app.cards.approval_service import ApprovalService
 from app.cards.corrections import CorrectionService
 from app.config import Settings, get_settings
 from app.db import create_engine, create_session_factory
-from app.discord_source.history import DiscordHistory
 from app.discord_source.listener import DiscordListener
 from app.dispatcher.service import Dispatcher
 from app.execution.brackets import BracketService
@@ -61,10 +60,8 @@ from app.graph.message_graph import GraphDeps
 from app.graph.processor import GraphProcessor
 from app.inbox.envelope import Lane
 from app.ingest.feed_health import FeedHealthMonitor
-from app.ingest.gaps import GapDetector
 from app.interpret.interpreter import FixtureInterpreter, Interpreter
 from app.interpret.jev.client import JevInterpreter
-from app.interpret.laya.client import LayaInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.note import NoteWriter
 from app.ledger.relink import RelinkService
@@ -78,8 +75,6 @@ from app.marketdata.cached import CachedMarketData
 from app.marketdata.fake import FakeMarketData
 from app.marketdata.port import MarketData
 from app.markettime import ControlledClock, SystemClock
-from app.messageapi.fake import FakeMessageHistory
-from app.messageapi.port import MessageHistory
 from app.notify.bus import EventBus
 from app.notify.push import PushService
 from app.observability.service import HealthService, check_spend, prune_checkpoints, run_daily
@@ -276,23 +271,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         clock=app.state.clock,
     )
     app.state.discord = discord_listener
-    history: MessageHistory = (
-        DiscordHistory(discord_listener) if discord_listener.enabled else FakeMessageHistory()
-    )
-    gaps = GapDetector(
-        session_factory,
-        history=history,
-        config=config_service,
-        alerts=app.state.alerts,
-        clock=app.state.clock,
-    )
-    app.state.gaps = gaps
-
-    async def backfill_on_recovery() -> None:
-        await gaps.run_once()
-
-    feed_health.on_recovered.append(backfill_on_recovery)
-
     # Handlers are registered by their owners; unregistered kinds wait.
     app.state.timers = TimerService(
         session_factory,
@@ -374,10 +352,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         def runtime() -> RuntimeConfig:
             return config_service.get() or RuntimeConfig()
 
-        laya = LayaInterpreter(
-            session_factory, settings, runtime, app.state.clock, app.state.alerts
-        )
-        app.state.laya = laya
         graph_deps = GraphDeps(
             sessions=session_factory,
             config=config_service,
@@ -386,7 +360,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             flags=app.state.flags,
             llm=LlmInterpreter(app.state.llm, marketdata, app.state.alerts),
             jev=JevInterpreter(session_factory, settings, runtime, app.state.clock),
-            laya=laya,
             notes=NoteWriter(session_factory, app.state.llm, app.state.alerts, runtime),
             store=store,
             fixture=_fixture(settings),
@@ -409,7 +382,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 flags=app.state.flags,
                 reconciler=reconciler,
                 approvals=app.state.approvals,
-                gaps=gaps,
                 timers=app.state.timers,
             ),
             on_lane_idle=lambda lane: relink_flush(lane),
@@ -418,9 +390,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async def relink_flush(lane: Lane) -> None:
             await app.state.approvals.start_many(await relink.flush(lane))
 
-        # F089: the gateway is up before the startup backfill asks it for history (it waited
-        # 10 s per channel and failed otherwise). Accepted messages only queue: the dispatcher
-        # starts inside `startup`, after reconciliation.
+        # The listener starts first so live messages are stored during startup. Accepted
+        # messages only queue: the dispatcher starts inside `startup`, after reconciliation.
         background.append(asyncio.create_task(discord_listener.run(), name="discord-listener"))
         # TRD §9 steps 1-12; entries stay blocked until it ends (and reconciliation is clean).
         await startup(
@@ -428,7 +399,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             flags=app.state.flags,
             reconciler=reconciler,
             approvals=app.state.approvals,
-            gaps=gaps,
             timers=app.state.timers,
             expiration=expiration,
             exits=exits,
@@ -449,16 +419,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         background.append(asyncio.create_task(watcher.run(), name="underlying-stops"))
         push = PushService(session_factory, app.state.bus, settings)
         background.append(asyncio.create_task(push.run(), name="push"))
-        background.append(asyncio.create_task(gaps.run(), name="gap-detector"))
 
         async def relink_recovery() -> None:  # F089: re-links a restart cut short
-            since = app.state.clock.now() - timedelta(hours=8)  # the gap detector's lookback
+            since = app.state.clock.now() - timedelta(hours=8)  # one full session
             for lane in await relink.restore_pending(since):
                 await dispatcher.idle(lane)
 
         background.append(asyncio.create_task(relink_recovery(), name="relink-recovery"))
-        if settings.environment != "test":  # tests never download or load the local model
-            laya.start()  # no-op unless config.laya.enabled; loads the weights off the hot path
         background.append(
             asyncio.create_task(
                 run_daily(
@@ -496,8 +463,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         for task in background:
             task.cancel()
         await asyncio.gather(*background, return_exceptions=True)
-        if graph_deps is not None and graph_deps.laya is not None:
-            graph_deps.laya.close()
         await graph_pool.close()
         if alpaca is not None:
             await alpaca.aclose()

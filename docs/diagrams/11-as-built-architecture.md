@@ -2,7 +2,7 @@
 
 [← Index](README.md) · Next: [Decision →](12-decision.md)
 
-The same pipeline as [01](01-high-level-architecture.md)–[10](10-architecture-summary.md), on one chart: lane isolation, the deterministic fast path, Jev with a Laya fallback, and a decision engine that never chooses a quantity.
+The same pipeline as [01](01-high-level-architecture.md)–[10](10-architecture-summary.md), on one chart: lane isolation, the deterministic fast path, Jev with the optional LLM as its only fallback, and a decision engine that never chooses a quantity.
 
 ## 11.1 One-page view
 
@@ -23,12 +23,8 @@ flowchart TB
     FAST -->|"settled"| APPLY["decide_apply<br/>validate, link, decide<br/>one transaction"]:::code
     FAST -->|"miss"| JEV["jev_interpret<br/>one system_one call"]:::model
     JEV -->|"feed only or assemble"| APPLY
-    JEV -->|"model failure"| LAYA["laya_interpret<br/>only after Jev fails"]:::model
-    JEV -->|"semantic doubt"| LLM["llm_extract<br/>optional"]:::model
+    JEV -->|"model failure or semantic doubt"| LLM["llm_extract<br/>optional"]:::model
     JEV -->|"link doubt or scope"| RAW["raw_review"]:::fail
-    LAYA -->|"settled"| APPLY
-    LAYA -->|"still open"| LLM
-    LAYA -->|"link doubt or scope"| RAW
     LLM -->|"settled, or Jev draft"| APPLY
     LLM -->|"off, exhausted, rejected"| RAW
     APPLY ==> PG

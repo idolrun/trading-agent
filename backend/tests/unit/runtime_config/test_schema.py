@@ -63,7 +63,7 @@ def test_defaults() -> None:
     assert c.symbol_map == {"SPX": "SPXW"}
     assert c.missing_underlying_proximity_pct == Decimal(10)
     assert (c.t_chat, c.t_field, c.t_link) == (Decimal("0.9"), Decimal("0.8"), Decimal("0.8"))
-    assert (c.jev.enabled, c.jev.model, c.laya.enabled) == (True, "jev-1.13.0", False)
+    assert (c.jev.enabled, c.jev.model) == (True, "jev-1.13.0")
     assert c.llm.roles.extract.chain == [] and c.llm.roles.extract.deadline_ms == 3000
     assert c.note_guard_enabled is True
     assert c.channels == c.muted_authors == []
@@ -83,8 +83,11 @@ def test_missing_for_entries_lists_each_unset_field() -> None:
 
 def test_retired_sizing_tiers_are_dropped_on_read() -> None:
     """C105: documents saved before the user typed every quantity still load."""
-    config = RuntimeConfig.model_validate({"option_tiers": {"default": "500"}, "stock_tiers": {}})
+    config = RuntimeConfig.model_validate(
+        {"option_tiers": {"default": "500"}, "stock_tiers": {}, "laya": {"enabled": True}}
+    )
     assert not hasattr(config, "option_tiers") and "stock_tiers" not in config.model_dump()
+    assert "laya" not in config.model_dump()  # F098
 
 
 def test_unknown_keys_rejected() -> None:

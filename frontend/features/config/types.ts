@@ -55,7 +55,6 @@ export type Draft = Record<ScalarKey, string> &
   Record<ListKey, string[]> & {
     trading_mode: string
     jev: { model: string; timeout_ms: string; queue_timeout_ms: string; budget_ms: string; enabled: boolean }
-    laya: { enabled: boolean; timeout_ms: string; t_chat: string; t_field: string; t_type: string; t_link: string }
     llm: string // JSON text
     note_guard_enabled: boolean
   }
@@ -78,7 +77,6 @@ export function defaultDocument(): ConfigDoc {
     t_link: "0.8",
     symbol_map: { SPX: "SPXW" },
     jev: { model: "jev-1.13.0", timeout_ms: 900, queue_timeout_ms: 250, budget_ms: 1500, enabled: true },
-    laya: { enabled: false, timeout_ms: 10000, t_chat: "0.95", t_field: "0.9", t_type: "0.9", t_link: "0.9" },
     llm: {
       roles: {
         extract: { deadline_ms: 3000, per_attempt_cap_ms: 2000, chain: [] },
@@ -111,7 +109,6 @@ export function toDraft(doc: ConfigDoc): Draft {
     budget_ms?: number | null
     enabled?: boolean
   }
-  const laya = (doc.laya ?? {}) as Record<string, unknown>
   const text = (value: unknown, fallback: string) => (value == null ? fallback : String(value))
   const scalars = Object.fromEntries(SCALARS.map((key) => [key, doc[key] == null ? "" : String(doc[key])]))
   return {
@@ -126,14 +123,6 @@ export function toDraft(doc: ConfigDoc): Draft {
       queue_timeout_ms: text(jev.queue_timeout_ms, "250"),
       budget_ms: text(jev.budget_ms, "1500"),
       enabled: !!jev.enabled,
-    },
-    laya: {
-      enabled: !!laya.enabled,
-      timeout_ms: text(laya.timeout_ms, "10000"),
-      t_chat: text(laya.t_chat, "0.95"),
-      t_field: text(laya.t_field, "0.9"),
-      t_type: text(laya.t_type, "0.9"),
-      t_link: text(laya.t_link, "0.9"),
     },
     llm: JSON.stringify(doc.llm ?? {}, null, 2),
     note_guard_enabled: doc.note_guard_enabled !== false,
@@ -175,14 +164,6 @@ export function toDoc(draft: Draft): ConfigDoc {
       queue_timeout_ms: toNumber(draft.jev.queue_timeout_ms),
       budget_ms: toNumber(draft.jev.budget_ms),
       enabled: draft.jev.enabled,
-    },
-    laya: {
-      enabled: draft.laya.enabled,
-      timeout_ms: toNumber(draft.laya.timeout_ms),
-      t_chat: draft.laya.t_chat.trim(),
-      t_field: draft.laya.t_field.trim(),
-      t_type: draft.laya.t_type.trim(),
-      t_link: draft.laya.t_link.trim(),
     },
     llm: llmError(draft.llm) ? draft.llm : JSON.parse(draft.llm),
     note_guard_enabled: draft.note_guard_enabled,

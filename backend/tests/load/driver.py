@@ -52,14 +52,12 @@ from app.inbox import repo as inbox
 from app.inbox.envelope import Envelope
 from app.inbox.models import InboxItem, Stage, StageTiming
 from app.ingest.adapter import to_envelope
-from app.ingest.gaps import GapDetector
 from app.interpret.jev.client import JevInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.models import Signal
 from app.llm.chain import LlmChain
 from app.llm.models import ModelCall
 from app.marketdata.fake import FakeMarketData
-from app.messageapi.fake import FakeMessageHistory
 from app.notify.bus import EventBus
 from app.notify.push import PushService
 from app.pipeline.processor import RawReviewPoisonHandler
@@ -469,15 +467,14 @@ async def open_run(
     warm_up: bool = True,
     clock: RealtimeClock | None = None,
     broker: SimulatedBroker | None = None,
-    history: FakeMessageHistory | None = None,
     restart: bool = False,
     trading_mode: TradingMode = TradingMode.SHADOW,
 ) -> AsyncIterator[LoadRun]:
     """Build and start the stack against the test database; tear it down on exit.
 
-    Fault tests pass what outlives a process: the `clock` (time goes on), the `broker` (an
-    external system) and the Message API `history`. `restart`: start through the real TRD §9
-    `startup()` sequence (block entries, reconcile, expire / resume approvals, gap backfill,
+    Fault tests pass what outlives a process: the `clock` (time goes on) and the `broker` (an
+    external system). `restart`: start through the real TRD §9
+    `startup()` sequence (block entries, reconcile, expire / resume approvals,
     timers, dispatcher, unblock) instead of `Dispatcher.start()` alone."""
     plans = {**plans, **{m.text: m for m in WARMUP}}  # the fakes copy their plans
     url = _url("test_database_url")
@@ -586,13 +583,6 @@ async def open_run(
             config=h.config,
             clock=clock,
         )
-        gaps = GapDetector(
-            factory,
-            history=history or FakeMessageHistory(),
-            config=h.config,
-            alerts=h.alerts,
-            clock=clock,
-        )
         timers = TimerService(factory, alerts=h.alerts, clock=clock)
         dispatcher = Dispatcher(
             factory,
@@ -607,7 +597,6 @@ async def open_run(
                 flags=flags,
                 reconciler=reconciler,
                 approvals=approvals,
-                gaps=gaps,
                 timers=timers,
             ),
         )
@@ -621,7 +610,6 @@ async def open_run(
                 flags=flags,
                 reconciler=reconciler,
                 approvals=approvals,
-                gaps=gaps,
                 timers=timers,
                 expiration=ExpirationService(
                     factory,

@@ -86,7 +86,6 @@ class Planner:
         env = ctx.envelope
         method = {
             "jev": LinkMethod.JEV,
-            "laya": LinkMethod.LAYA,
             "fast": LinkMethod.CODE,
         }.get(parsed.interpreter, LinkMethod.LLM)
         flags = await self._flags_view()

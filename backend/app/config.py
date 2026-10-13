@@ -71,8 +71,6 @@ class Settings(BaseSettings):
     typesafe_api_key: SecretStr | None = None  # Jev fast path (F033); None = LLM path only
     # Discord account token for the live listener (selfbot). None = listener off. Never logged.
     discord_token: SecretStr | None = None
-    # Checkpoint for the local Laya fallback (downloaded from Hugging Face on first use).
-    laya_model: str = "aac6fef/laya-mlx"
     # Development only: accept chain entries without a passing gate run (never in production).
     allow_ungated_models: bool = False
     # Integration tests only (tests/integration/conftest.py).

@@ -20,7 +20,7 @@ class ModelProvider(StrEnum):
     DEEPSEEK = "deepseek"
     OPENAI_COMPAT = "openai_compat"
     BEDROCK = "bedrock"
-    LAYA = "laya"  # local typed-decision model, answers when Jev gave no answer
+    LAYA = "laya"  # local model, removed (F098): stored rows only
 
 
 class ModelRole(StrEnum):

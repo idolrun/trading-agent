@@ -1,4 +1,4 @@
-"""Discord listener -> inbox, and the Discord-backed history for gap backfill."""
+"""Discord listener -> inbox."""
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -13,11 +13,9 @@ from sqlalchemy.pool import NullPool
 from app.alerts.service import AlertService
 from app.db import create_session_factory
 from app.discord_source import mapping
-from app.discord_source.history import DiscordHistory
 from app.discord_source.listener import DiscordListener
 from app.inbox.models import EventType, InboxItem, MessageEvent
 from app.markettime import FixedClock
-from app.messageapi.port import MessageHistoryUnavailable
 from app.runtime_config.models import Actor
 from app.runtime_config.schema import RuntimeConfig
 from app.runtime_config.service import ConfigService
@@ -185,37 +183,6 @@ async def test_unconfigured_status(listener: DiscordListener) -> None:
     status = listener.status()
     assert status.state == "not_configured"
     assert [(c.id, c.visible) for c in status.channels] == [(CHANNEL, False)]
-
-
-class FakeChannel:
-    def __init__(self, messages: list[NS]) -> None:
-        self._messages = messages
-        self.name = "alerts"
-        self.guild = NS(name="Owls")
-
-    async def history(self, *, limit: int, after: Any, oldest_first: bool) -> Any:
-        floor = after.id if after else 0
-        for m in [m for m in self._messages if m.id > floor][:limit]:
-            yield m
-
-
-async def test_history_returns_payloads_after_the_watermark(listener: DiscordListener) -> None:
-    msgs = [message(T0 + timedelta(seconds=10 * i), f"m{i}") for i in range(3)]
-    bot = message(T0 + timedelta(seconds=99), "bot", author=NS(id=1, bot=True))
-    client = NS(get_channel=lambda cid: FakeChannel([*msgs, bot]))
-    listener._client = client  # type: ignore[assignment]
-    listener.connected()
-    history = DiscordHistory(listener)
-    page = await history.fetch_after(CHANNEL, msgs[0].id, 10)
-    assert [p["message"]["content"] for p in page] == ["m1", "m2"]
-
-
-async def test_history_unavailable_when_not_connected(listener: DiscordListener) -> None:
-    import app.discord_source.history as h
-
-    h.READY_WAIT_S = 0.01
-    with pytest.raises(MessageHistoryUnavailable):
-        await DiscordHistory(listener).fetch_after(CHANNEL, None, 10)
 
 
 async def test_login_failure_raises_one_alert_and_stops(

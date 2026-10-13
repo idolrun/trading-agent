@@ -26,9 +26,7 @@ from app.graph.approval_graph import thread_config
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.inbox import repo as inbox
 from app.inbox.models import InboxItem, InboxStatus
-from app.ingest.gaps import GapDetector
 from app.main import libpq_dsn
-from app.messageapi.fake import FakeMessageHistory
 from app.reconcile.service import Reconciler, ReconcileReport
 from app.reconcile.startup import recover_after_failover, startup
 from app.runtime_config.models import Actor
@@ -117,13 +115,6 @@ def recovery_services(w: World, broker: FakeBroker, flags: FlagService) -> dict[
             clock=h.clock,
         ),
         "approvals": w.approvals,
-        "gaps": GapDetector(
-            factory,
-            history=FakeMessageHistory(),
-            config=h.config,
-            alerts=h.alerts,
-            clock=h.clock,
-        ),
         "timers": TimerService(factory, alerts=h.alerts, clock=h.clock),
     }
 

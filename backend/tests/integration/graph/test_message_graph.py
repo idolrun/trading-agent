@@ -21,9 +21,8 @@ from app.config import get_settings
 from app.db import create_session_factory
 from app.graph.checkpointer import open_pool, saver_and_store
 from app.inbox.envelope import Envelope
-from app.inbox.models import InboxItem, StageTiming
+from app.inbox.models import InboxItem
 from app.interpret.jev.client import JevFailed, JevInterpreter, JevOutcome
-from app.interpret.laya.client import LayaInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.models import Signal
 from app.interpret.signal import ParsedSignals
@@ -33,7 +32,6 @@ from app.main import libpq_dsn
 from app.runtime_config.schema import (
     ChainEntry,
     JevConfig,
-    LayaConfig,
     LlmConfig,
     LlmRoles,
     RoleConfig,
@@ -44,7 +42,6 @@ from tests.integration.conftest import _url
 from tests.integration.interpret.test_jev_client import ScriptedJev, rate_limited, response
 from tests.integration.pipeline.harness import T0, Factory, Harness
 from tests.jev_helpers import EXAMPLE, c, example_answers, n
-from tests.laya_helpers import FakeLaya
 from tests.llm_helpers import FakeChat, FakeRegistry, structured
 from tests.messages import PROVIDER_A, PROVIDER_B
 
@@ -124,19 +121,6 @@ def jev_down(h: Harness) -> JevInterpreter:
         h.clock,
         client=client,  # type: ignore[arg-type]
     )
-
-
-async def laya(h: Harness, fake: FakeLaya) -> LayaInterpreter:
-    interpreter = LayaInterpreter(
-        h.factory,
-        get_settings(),
-        lambda: h.config.get() or RuntimeConfig(),
-        h.clock,
-        h.alerts,
-        loader=fake.load,
-    )
-    await interpreter.warm()
-    return interpreter
 
 
 NO_ANSWER = AIMessage("I am not sure")  # no structured response -> `empty` -> fallback
@@ -351,40 +335,14 @@ async def test_crash_mid_llm_then_rerun_makes_one_card(
     assert threads == [f"{base}:1", f"{base}:2", f"{base}:2"]
 
 
-LAYA_ON = LayaConfig(enabled=True)
-
-
-async def test_laya_answers_when_jev_is_down(
+async def test_an_unsure_jev_without_an_llm_is_a_review(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
-    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
-    fake = FakeLaya(example_answers())
-    env = await example(h)
-    processor = h.processor(fixture=False, jev=jev_down(h), laya=await laya(h, fake))
-    await h.process(env, processor=processor)
-    [signal] = await signals(db_session)
-    assert (signal.msg_type, signal.interpreter) == ("entry", "laya")
-    assert signal.model_call_id is not None
-    assert len(await cards(db_session)) == 1
-    providers = (await db_session.scalars(select(ModelCall.provider).order_by(ModelCall.id))).all()
-    assert providers == ["typesafe", "typesafe", "laya"]
-    flag = await db_session.get(SystemFlag, FlagName.PARSER_DEGRADED)
-    assert flag is None or not flag.active
-    stages = set((await db_session.scalars(select(StageTiming.stage))).all())
-    assert "laya" in stages  # F074: timed as itself, not as Jev
-
-
-async def test_laya_is_not_asked_when_jev_is_unsure(
-    factory: Factory, tmp_path: Path, db_session: AsyncSession
-) -> None:
-    """F078: an unsure Jev is a semantic doubt (the LLM's job, else review), not a model
-    failure: asking a weaker model for another answer would not make it safer."""
-    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
-    fake = FakeLaya(example_answers())
+    """F078: an unsure Jev is a semantic doubt: the LLM's job, else review."""
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
     env = await example(h)
     unsure = jev(h, msg_type=c("entry", 0.6))
-    await h.process(env, processor=h.processor(fixture=False, jev=unsure, laya=await laya(h, fake)))
-    assert fake.calls == 0
+    await h.process(env, processor=h.processor(fixture=False, jev=unsure))
     [card] = await cards(db_session)
     assert card.card_type == "review"
     assert card.proposal["review_reasons"][0].startswith("needs_review: msg_type: below t_type")
@@ -393,93 +351,35 @@ async def test_laya_is_not_asked_when_jev_is_unsure(
     assert inbox_row.interpret_reasons is not None
     assert inbox_row.interpret_reasons["jev"] == "ambiguous"
     assert inbox_row.interpret_reasons["llm"] == "not_configured"
-    assert "laya" not in inbox_row.interpret_reasons
 
 
-async def test_unsure_jev_with_an_llm_goes_to_the_llm_not_laya(
+async def test_unsure_jev_with_an_llm_goes_to_the_llm(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
-    h = await Harness.create(factory, tmp_path, llm=LLM, jev=JEV_ON, laya=LAYA_ON)
-    fake = FakeLaya(example_answers())
+    h = await Harness.create(factory, tmp_path, llm=LLM, jev=JEV_ON)
     env = await example(h)
     unsure = jev(h, msg_type=c("entry", 0.6))
     extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
-    processor = h.processor(fixture=False, jev=unsure, laya=await laya(h, fake), llm=extractor)
+    processor = h.processor(fixture=False, jev=unsure, llm=extractor)
     await h.process(env, processor=processor)
-    assert fake.calls == 0
     [signal] = await signals(db_session)
     assert signal.interpreter == "llm"
     inbox_row = await db_session.get(InboxItem, (env.key.message_id, "create", 0))
     assert inbox_row is not None and inbox_row.interpret_outcome == "fallback_success"
 
 
-async def test_laya_is_not_asked_when_jev_settles_the_message(
+async def test_jev_down_without_an_llm_is_a_review_card(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
-    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
-    fake = FakeLaya(example_answers())
+    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON)
     env = await example(h)
-    await h.process(env, processor=h.processor(fixture=False, jev=jev(h), laya=await laya(h, fake)))
-    assert fake.calls == 0  # a settled Jev answer is never second-guessed
-    [signal] = await signals(db_session)
-    assert (signal.msg_type, signal.interpreter) == ("entry", "jev")
-
-
-async def test_jev_down_and_unsure_laya_end_in_a_review_card_without_orders(
-    factory: Factory, tmp_path: Path, db_session: AsyncSession
-) -> None:
-    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
-    fake = FakeLaya(example_answers(msg_type=c("entry", 0.5)))
-    env = await example(h)
-    await h.process(
-        env, processor=h.processor(fixture=False, jev=jev_down(h), laya=await laya(h, fake))
-    )
-    assert fake.calls == 1
+    await h.process(env, processor=h.processor(fixture=False, jev=jev_down(h)))
     [card] = await cards(db_session)
     assert card.card_type == "review"
-    [reason] = card.proposal["review_reasons"]
-    assert reason.startswith("needs_review: jev_rate_limited") and "laya: msg_type" in reason
-    inbox_row = await db_session.get(InboxItem, (env.key.message_id, "create", 0))
-    assert inbox_row is not None and inbox_row.interpret_reasons is not None
-    assert inbox_row.interpret_reasons["jev"] == "model_failure"
-    assert inbox_row.interpret_reasons["laya"] == "unsure"
-
-
-async def test_a_doubtful_laya_answer_continues_to_the_llm(
-    factory: Factory, tmp_path: Path, db_session: AsyncSession
-) -> None:
-    h = await Harness.create(factory, tmp_path, llm=LLM, jev=JEV_ON, laya=LAYA_ON)
-    fake = FakeLaya(example_answers(msg_type=c("entry", 0.85)))  # below Laya's 0.9 gate
-    env = await example(h)
-    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
-    processor = h.processor(fixture=False, jev=jev_down(h), laya=await laya(h, fake), llm=extractor)
-    await h.process(env, processor=processor)
-    assert fake.calls == 1
-    [signal] = await signals(db_session)
-    assert signal.interpreter == "llm"
-
-
-async def test_laya_that_cannot_load_leaves_the_outage_to_the_review_card(
-    factory: Factory, tmp_path: Path, db_session: AsyncSession
-) -> None:
-    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
-
-    def broken(_model: str) -> Any:
-        raise ImportError("No module named 'mlx'")
-
-    dead = LayaInterpreter(
-        h.factory,
-        get_settings(),
-        lambda: h.config.get() or RuntimeConfig(),
-        h.clock,
-        h.alerts,
-        loader=broken,
-    )
-    await dead.warm()
-    env = await example(h)
-    await h.process(env, processor=h.processor(fixture=False, jev=jev_down(h), laya=dead))
-    [card] = await cards(db_session)
     assert card.proposal["review_reasons"] == ["needs_review: jev_rate_limited"]
+    row = await outcome_of(db_session, env)
+    assert row.interpret_reasons is not None
+    assert row.interpret_reasons["jev"] == "model_failure"
 
 
 # --- F078: why Jev did not settle a message decides where it goes ------------------------------
@@ -506,18 +406,15 @@ async def outcome_of(db: AsyncSession, env: Envelope) -> InboxItem:
     return row
 
 
-async def test_a_jev_timeout_goes_to_laya(
+async def test_a_jev_timeout_goes_to_the_llm(
     factory: Factory, tmp_path: Path, db_session: AsyncSession
 ) -> None:
-    h = await Harness.create(factory, tmp_path, llm=LlmConfig(), jev=JEV_ON, laya=LAYA_ON)
-    fake = FakeLaya(example_answers())
+    h = await Harness.create(factory, tmp_path, llm=LLM, jev=JEV_ON)
     env = await example(h)
-    await h.process(
-        env, processor=h.processor(fixture=False, jev=jev_slow(h), laya=await laya(h, fake))
-    )
-    assert fake.calls == 1
+    extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
+    await h.process(env, processor=h.processor(fixture=False, jev=jev_slow(h), llm=extractor))
     [signal] = await signals(db_session)
-    assert signal.interpreter == "laya"
+    assert signal.interpreter == "llm"
     row = await outcome_of(db_session, env)
     assert row.interpret_outcome == "fallback_success"
     assert row.interpret_reasons is not None
@@ -542,9 +439,7 @@ async def test_an_invalid_jev_answer_never_poisons_the_event(
     assert row.interpret_reasons is not None and row.interpret_reasons["jev"] == "invalid"
 
 
-async def test_jev_down_without_laya_goes_to_the_configured_llm(
-    h: Harness, db_session: AsyncSession
-) -> None:
+async def test_jev_down_goes_to_the_configured_llm(h: Harness, db_session: AsyncSession) -> None:
     env = await example(h)
     extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
     await h.process(env, processor=h.processor(fixture=False, jev=jev_down(h), llm=extractor))
@@ -552,7 +447,7 @@ async def test_jev_down_without_laya_goes_to_the_configured_llm(
     assert signal.interpreter == "llm"
     row = await outcome_of(db_session, env)
     assert row.interpret_outcome == "fallback_success"
-    assert row.interpret_reasons is not None and row.interpret_reasons["laya"] == "off"
+    assert row.interpret_reasons is not None and row.interpret_reasons["jev"] == "model_failure"
 
 
 async def test_a_stale_follow_up_jev_cannot_settle_still_goes_to_the_llm(
@@ -606,13 +501,11 @@ async def test_a_stale_message_jev_failed_on_still_goes_to_the_llm(
 async def test_a_scope_violation_is_a_review_and_an_urgent_alert_with_no_other_model(
     h: Harness, db_session: AsyncSession
 ) -> None:
-    fake = FakeLaya(example_answers())
     blocked = ScopeBlockedJev(h.factory, get_settings(), lambda: RuntimeConfig(), h.clock)
     env = await example(h)
     extractor = llm(h, [structured(SCHEMA, {"signals": [ENTRY]})])
-    processor = h.processor(fixture=False, jev=blocked, laya=await laya(h, fake), llm=extractor)
+    processor = h.processor(fixture=False, jev=blocked, llm=extractor)
     await h.process(env, processor=processor)
-    assert fake.calls == 0  # no other model was asked
     assert [s.interpreter for s in await signals(db_session)] == ["none"]  # the raw review
     [card] = await cards(db_session)
     assert card.proposal["review_reasons"] == ["scope_violation"]

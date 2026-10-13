@@ -28,7 +28,6 @@ from app.inbox.envelope import Envelope
 from app.ingest.adapter import to_envelope
 from app.interpret.interpreter import FixtureInterpreter
 from app.interpret.jev.client import JevInterpreter
-from app.interpret.laya.client import LayaInterpreter
 from app.interpret.llm_extract.agent import LlmInterpreter
 from app.interpret.note import NoteWriter
 from app.interpret.signal import F, LinkHint, LiteralSpan, ParsedSignal, ParsedSignals, SignalFields
@@ -120,7 +119,6 @@ class Harness:
         fixture: bool = True,
         llm: LlmInterpreter | None = None,
         jev: JevInterpreter | None = None,
-        laya: LayaInterpreter | None = None,
         notes: NoteWriter | None = None,
         checkpointer: Any = None,
         approvals: ApprovalService | None = None,
@@ -143,7 +141,6 @@ class Harness:
             flags=flags,
             llm=llm or LlmInterpreter(chain, self.md, self.alerts),
             jev=jev,
-            laya=laya,
             notes=notes,
             fixture=FixtureInterpreter(self.fixtures) if fixture else None,
             approvals=approvals,

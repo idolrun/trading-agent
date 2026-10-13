@@ -4,7 +4,7 @@ what `mapping.py` reads. Every Choice has a no-match option.
 `VERSION` (F080) is a fingerprint, not a hand-edited label: the sha256 of the whole catalog
 (ids, types, instructions, criteria; built over a fixed sample message so the per-message
 options have a stable shape) plus `mapping.ROUTING_VERSION`. Any wording, option or routing
-change gives a new version, stored with every Jev / Laya call (`model_calls.prompt_version`)."""
+change gives a new version, stored with every Jev call (`model_calls.prompt_version`)."""
 
 import hashlib
 import json

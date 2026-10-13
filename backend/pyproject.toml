@@ -16,7 +16,6 @@ dependencies = [
     "langchain-openai>=1.6.6",
     "langgraph>=1.2.12",
     "langgraph-checkpoint-postgres>=3.1.2",
-    "laya-mlx>=0.2.0",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pywebpush>=2.5.0",
@@ -53,7 +52,7 @@ plugins = ["pydantic.mypy"]
 files = ["app"]
 
 [[tool.mypy.overrides]]
-module = ["exchange_calendars", "laya_mlx", "pywebpush"]
+module = ["exchange_calendars", "pywebpush"]
 ignore_missing_imports = true  # ships no type information
 
 [tool.pytest.ini_options]

@@ -96,7 +96,6 @@ class DiscordListener:
         self._clock = clock
         self._client: _Client | None = None
         self._state: State = "connecting" if self._token else "not_configured"
-        self._ready = asyncio.Event()
         self.last_message_at: datetime | None = None
 
     # --- lifecycle -------------------------------------------------------------------------
@@ -114,7 +113,6 @@ class DiscordListener:
             await client.start(self._token.get_secret_value())
         except discord.LoginFailure:
             self._state = "login_failed"
-            self._ready.clear()
             logger.error("discord login failed; listener stopped")
             await self._alerts.raise_(
                 AlertKind.MESSAGE_API,
@@ -126,23 +124,13 @@ class DiscordListener:
             heartbeat.cancel()
             await client.close()
 
-    async def ready_client(self, timeout_s: float) -> discord.Client | None:
-        """The connected client, waiting up to `timeout_s` (startup backfill races the login)."""
-        try:
-            await asyncio.wait_for(self._ready.wait(), timeout_s)
-        except TimeoutError:
-            return None
-        return self._client
-
     def connected(self) -> None:
         self._state = "connected"
-        self._ready.set()
         self._feed_health.note_heartbeat(self._clock.now())
 
     def disconnected(self) -> None:
         if self._state == "connected":
             self._state = "connecting"
-            self._ready.clear()
 
     async def _heartbeat(self) -> None:
         """A quiet channel must not look like a dead feed: liveness is the gateway session."""
@@ -175,7 +163,7 @@ class DiscordListener:
             async with in_transaction(self._sessions, None) as db:
                 await inbox.accept(db, env)
         except (SQLAlchemyError, OSError):
-            # Not redelivered by Discord: the gap detector backfills it from channel history.
+            # Not redelivered by Discord and no history backfill (F099): the message is lost.
             logger.exception(
                 "discord message storage failed", extra={"message_id": env.key.message_id}
             )
