@@ -167,15 +167,24 @@ def build_message_graph(
 OPENING_HINTS = frozenset({"entry", "add", "stock_entry"})
 
 
-def _stale_skip(ctx: ProcessingContext, reasons: Iterable[str]) -> dict[str, Any]:
-    """F089 (report fix #5): a stale message that Jev could not settle skips Laya and the
-    LLM (seconds each) and goes straight to raw review: a stale entry gets no card anyway, and
-    any other stale message gets a late review card. Fast path and Jev still run, so a stale
-    entry Jev settles still reaches the provider ledger (FR-1c)."""
-    if not ctx.stale:
+def _stale_skip(
+    ctx: ProcessingContext, hints: dict[str, Any] | None, reasons: Iterable[str]
+) -> dict[str, Any]:
+    """F089 (report fix #5): a stale message that Jev read as an opening but could not settle
+    skips Laya and the LLM (seconds each): a stale entry never gets a card, so reading it
+    better buys nothing; it ends as a stale `unparsed` signal with no card. Anything else still
+    goes to the slow path: a late exit must become a readable exit card (C90), and unsure
+    chatter must be able to end feed-only instead of as a late review card."""
+    if not ctx.stale or _hinted_type(hints) not in OPENING_HINTS:
         return {}
     bump("stale:skip_slow")
     return {"raw_reason": f"stale_skip_slow: {'; '.join(reasons)}"[:200]}
+
+
+def _hinted_type(hints: dict[str, Any] | None) -> str | None:
+    """Jev's msg_type pick, also when it was below the gate."""
+    pick = (hints or {}).get("msg_type")
+    return pick.get("choice") if isinstance(pick, dict) else None
 
 
 def _raw_review_or(next_node: str) -> Any:
@@ -354,7 +363,7 @@ class _Nodes:
                     "model_call_id": outcome.model_call_id,
                 }
             status = "invalid" if outcome.kind == "invalid" else "model_failure"
-            failed: dict[str, Any] = {
+            return {
                 "route": "slow_path",
                 "fallback": "model_failure",
                 "route_reasons": [f"jev_{outcome.kind}"],
@@ -362,8 +371,7 @@ class _Nodes:
                 "interpreter": "jev",
                 "model_call_id": outcome.model_call_id,
                 "jev_answered": False,
-            }
-            return failed | _stale_skip(ctx, failed["route_reasons"])
+            }  # F089: no reading to judge a stale message by, so the slow path decides
         result = outcome.result
         decision = route(result, self.d.cfg(), self._feed_block(state))
         update: dict[str, Any] = {
@@ -387,7 +395,7 @@ class _Nodes:
             if decision.kind == "link":  # which earlier position: a person decides (F077)
                 update["raw_reason"] = f"needs_review: {'; '.join(decision.reasons)}"[:200]
             else:
-                update |= _stale_skip(ctx, decision.reasons)
+                update |= _stale_skip(ctx, decision.hints, decision.reasons)
         return update
 
     async def laya_interpret(self, state: MessageState) -> dict[str, Any]:
@@ -556,8 +564,7 @@ class _Nodes:
                 mark=InboxStatus.DONE,
                 interpreted=outcome,
                 trace=trace,
-                opening=(state.get("hints") or {}).get("msg_type", {}).get("choice")
-                in OPENING_HINTS,
+                opening=_hinted_type(state.get("hints")) in OPENING_HINTS,
             )
         return {"card_ids": [str(card_id)] if card_id else []}
 

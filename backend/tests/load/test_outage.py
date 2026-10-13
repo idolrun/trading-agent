@@ -238,7 +238,8 @@ async def test_4_message_api_outage_then_backlog(tmp_path: Path, db_session: Asy
     exits_not_late = [
         m
         for m in exits
-        if [c.action for c in cards_of.get(m, [])] != [CardAction.EXIT]
+        # C105 (F085): a full exit is a `close` card ("Close entire position")
+        if [c.action for c in cards_of.get(m, [])] not in ([CardAction.EXIT], [CardAction.CLOSE])
         or "late" not in (cards_of[m][0].proposal.get("labels") or [])
     ]
     fresh_wrong = [
