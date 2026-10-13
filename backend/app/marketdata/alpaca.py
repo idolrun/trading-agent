@@ -27,6 +27,10 @@ STOCK_TICK = Decimal("0.01")
 # ponytail: per-root ticks (OD-25) when a pilot class needs prices below the coarse grid.
 OPTION_TICKS = (Decimal("0.05"), Decimal("0.10"))  # below $3, at/above $3
 PAGE = 1000
+# Index option roots are not /v2/assets entries, and Alpaca files their contracts under the index
+# (underlying_symbols=SPX returns both the SPX monthly and SPXW weekly roots; verified 2026-10-13).
+# ponytail: SPX only (verified); add NDX/RUT roots here once Alpaca lists them.
+INDEX_ROOTS = {"SPX": "SPX", "SPXW": "SPX"}
 
 
 class AlpacaMarketData:
@@ -57,7 +61,7 @@ class AlpacaMarketData:
         while True:
             body = await self._api.get(
                 "/v2/options/contracts",
-                underlying_symbols=underlying,
+                underlying_symbols=INDEX_ROOTS.get(underlying, underlying),
                 status="active",
                 expiration_date_gte=self._clock.now()
                 .astimezone(ET)
@@ -66,7 +70,11 @@ class AlpacaMarketData:
                 limit=10000,
                 page_token=token,
             )
-            days |= {date.fromisoformat(c["expiration_date"]) for c in body["option_contracts"]}
+            days |= {
+                date.fromisoformat(c["expiration_date"])
+                for c in body["option_contracts"]
+                if c.get("root_symbol", underlying) == underlying  # SPX monthlies != SPXW
+            }
             if not (token := body.get("next_page_token")):
                 return sorted(days)
 
@@ -94,7 +102,7 @@ class AlpacaMarketData:
 
     async def optionable_symbols(self) -> frozenset[str]:
         assets = await self._api.get("/v2/assets", status="active", attributes="options_enabled")
-        return frozenset(a["symbol"] for a in assets)
+        return frozenset(a["symbol"] for a in assets) | INDEX_ROOTS.keys()
 
     async def tick_size(self, instrument: Instrument, price: Decimal) -> Decimal:
         if isinstance(instrument, Stock):

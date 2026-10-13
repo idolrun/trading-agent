@@ -68,11 +68,34 @@ async def test_stock_quote_and_unknown_symbol(data: AlpacaMarketData) -> None:
         await data.quote(Stock(symbol="ZZZZZZ"))
 
 
-async def test_spx_is_not_available(data: AlpacaMarketData) -> None:
-    """Records the accepted gap: Alpaca has no index quote and no SPXW options."""
+async def test_spxw_options_but_no_index_quote(data: AlpacaMarketData) -> None:
+    """Alpaca lists SPX options under the SPXW root, but has no SPX index quote."""
     with pytest.raises(QuoteUnavailable):
         await data.underlying_price("SPX")
-    assert "SPXW" not in await data.optionable_symbols()
+    assert "SPXW" in await data.optionable_symbols()
+    expiry = (await data.expiries("SPXW"))[0]
+    chain = await data.chain("SPXW", expiry)
+    assert chain and all(c.underlying == "SPXW" and c.expiry == expiry for c, _ in chain)
+
+
+async def test_spxw_limit_order_rests_and_cancels(
+    broker: AlpacaBroker, data: AlpacaMarketData
+) -> None:
+    expiry = (await data.expiries("SPXW"))[-1]
+    contract = next(c for c, _ in await data.chain("SPXW", expiry))
+    placed = await broker.submit(
+        OrderRequest(
+            client_order_id=f"cta-{uuid.uuid4()}",
+            instrument=contract,
+            side=Side.BUY,
+            qty=1,
+            order_type=OrderType.LIMIT,
+            tif=TimeInForce.DAY,
+            limit_price=Decimal("0.05"),
+        )
+    )
+    assert placed.instrument == contract
+    await broker.cancel(placed.broker_order_id)
 
 
 async def test_optionable_expiries_chain_and_option_quote(data: AlpacaMarketData) -> None:

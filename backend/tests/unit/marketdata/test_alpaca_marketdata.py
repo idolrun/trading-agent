@@ -101,6 +101,16 @@ async def test_expiries_are_paged_deduplicated_and_sorted() -> None:
     assert seen[1].url.params["page_token"] == "p2"
 
 
+async def test_index_root_expiries_query_the_index_and_keep_only_that_root() -> None:
+    contracts = [
+        {"expiration_date": "2026-10-16", "root_symbol": "SPX"},
+        {"expiration_date": "2026-10-13", "root_symbol": "SPXW"},
+    ]
+    data, seen = md({"/v2/options/contracts": {"option_contracts": contracts}})
+    assert await data.expiries("SPXW") == [date(2026, 10, 13)]
+    assert seen[0].url.params["underlying_symbols"] == "SPX"
+
+
 async def test_chain_keeps_only_the_requested_root_across_pages() -> None:
     pages = iter(
         [
@@ -119,7 +129,7 @@ async def test_chain_keeps_only_the_requested_root_across_pages() -> None:
 
 async def test_optionable_symbols() -> None:
     data, seen = md({"/v2/assets": [{"symbol": "SPY"}, {"symbol": "AAPL"}]})
-    assert await data.optionable_symbols() == {"SPY", "AAPL"}
+    assert await data.optionable_symbols() == {"SPY", "AAPL", "SPX", "SPXW"}  # index roots
     assert seen[0].url.params["attributes"] == "options_enabled"
 
 
